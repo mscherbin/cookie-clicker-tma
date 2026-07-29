@@ -39,6 +39,10 @@
     { id: 'global_u1', name: 'Печенье с золотом', desc: 'Всё производство x2', icon: '✨', cost: 5000000, category: 'global', req: (b, s) => s.totalBaked >= 1000000, effect: s => s.globalMult *= 2 },
     { id: 'bank_u1', name: 'Хрустящие проценты', desc: 'Банки x2', icon: '💰', cost: 20000000, category: 'building', buildingId: 'bank', req: b => b.bank >= 1, effect: s => s.buildingMult.bank *= 2 },
     { id: 'temple_u1', name: 'Древние благословения', desc: 'Храмы x2', icon: '🙏', cost: 260000000, category: 'building', buildingId: 'temple', req: b => b.temple >= 1, effect: s => s.buildingMult.temple *= 2 },
+    { id: 'lab_u1', name: 'Ядерная выпечка', desc: 'Лаборатории x2', icon: '☢️', cost: 3300000000, category: 'building', buildingId: 'lab', req: b => b.lab >= 1, effect: s => s.buildingMult.lab *= 2 },
+    { id: 'global_u2', name: 'Философский камень выпечки', desc: 'Всё производство x2', icon: '🧪', cost: 220000000, category: 'global', req: (b, s) => s.totalBaked >= 50000000, effect: s => s.globalMult *= 2 },
+    { id: 'global_u3', name: 'Печенье из другого измерения', desc: 'Всё производство x2', icon: '🌌', cost: 3500000000, category: 'global', req: (b, s) => s.totalBaked >= 800000000, effect: s => s.globalMult *= 2 },
+    { id: 'global_u4', name: 'Вселенская выпечка', desc: 'Всё производство x2', icon: '🌠', cost: 50000000000, category: 'global', req: (b, s) => s.totalBaked >= 12000000000, effect: s => s.globalMult *= 2 },
   ];
 
   const CATEGORY_LABELS = {
