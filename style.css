@@ -366,6 +366,46 @@ html, body {
 
 .stat-row span:last-child { color: var(--gold); font-weight: 700; }
 
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.leaderboard-row.me {
+  border-color: var(--accent);
+  background: #33280f;
+}
+
+.leaderboard-rank {
+  font-size: 15px;
+  font-weight: 800;
+  width: 28px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--hint);
+}
+
+.leaderboard-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leaderboard-score {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
+  flex-shrink: 0;
+}
+
 .reset-btn {
   width: 100%;
   padding: 12px;

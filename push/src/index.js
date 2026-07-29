@@ -69,7 +69,7 @@ function getActiveEvents(now) {
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 }
@@ -131,15 +131,41 @@ async function handleCheckin(request, env) {
   const { user } = result;
   const key = `user:${user.id}`;
   const now = Date.now();
+  const displayName = (user.first_name || user.username || 'Игрок').slice(0, 40);
   await env.USERS.put(key, JSON.stringify({
     chatId: user.id,
     lastActiveTs: now,
     pushStage: 0,
     lastDailyClaim: Number(body.lastDailyClaim) || 0,
     cps: Number(body.cps) || 0,
+    totalBaked: Number(body.totalBaked) || 0,
+    displayName,
   }));
 
   return jsonResponse({ ok: true });
+}
+
+async function handleLeaderboard(env) {
+  const entries = [];
+  let cursor;
+  for (;;) {
+    const list = await env.USERS.list({ prefix: 'user:', cursor });
+    for (const k of list.keys) {
+      const raw = await env.USERS.get(k.name);
+      if (!raw) continue;
+      let data;
+      try { data = JSON.parse(raw); } catch (e) { continue; }
+      entries.push({
+        userId: data.chatId,
+        name: data.displayName || 'Игрок',
+        totalBaked: data.totalBaked || 0,
+      });
+    }
+    if (list.list_complete || !list.cursor) break;
+    cursor = list.cursor;
+  }
+  entries.sort((a, b) => b.totalBaked - a.totalBaked);
+  return jsonResponse({ ok: true, entries: entries.slice(0, 50) });
 }
 
 function stage1Text(data) {
@@ -230,6 +256,10 @@ export default {
 
     if (url.pathname === '/checkin' && request.method === 'POST') {
       return handleCheckin(request, env);
+    }
+
+    if (url.pathname === '/leaderboard' && request.method === 'GET') {
+      return handleLeaderboard(env);
     }
 
     return jsonResponse({ ok: false, error: 'not_found' }, 404);

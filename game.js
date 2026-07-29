@@ -64,6 +64,7 @@
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
+  const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
 
   const defaultState = () => ({
     cookies: 0,
@@ -127,8 +128,47 @@
         initData: tg.initData,
         lastDailyClaim: state.lastDailyClaim || 0,
         cps: getCps(),
+        totalBaked: state.totalBaked,
       }),
     }).catch(() => {});
+  }
+
+  function ownTelegramUserId() {
+    return tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
+  }
+
+  function loadLeaderboard() {
+    el.leaderboardList.innerHTML = '<div class="empty-hint">Загрузка…</div>';
+    if (!LEADERBOARD_URL) {
+      el.leaderboardList.innerHTML = '<div class="empty-hint">Лидерборд скоро появится</div>';
+      return;
+    }
+    fetch(LEADERBOARD_URL)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok || !data.entries || data.entries.length === 0) {
+          el.leaderboardList.innerHTML = '<div class="empty-hint">Пока никого нет — станьте первым!</div>';
+          return;
+        }
+        const myId = ownTelegramUserId();
+        const medals = ['🥇', '🥈', '🥉'];
+        el.leaderboardList.innerHTML = data.entries.map((entry, i) => `
+          <div class="leaderboard-row${myId && entry.userId === myId ? ' me' : ''}">
+            <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
+            <div class="leaderboard-name">${escapeHtml(entry.name)}</div>
+            <div class="leaderboard-score">${formatNum(entry.totalBaked)} 🍪</div>
+          </div>
+        `).join('');
+      })
+      .catch(() => {
+        el.leaderboardList.innerHTML = '<div class="empty-hint">Не удалось загрузить лидерборд. Попробуйте позже.</div>';
+      });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   }
 
   function loadState() {
@@ -322,6 +362,7 @@
     dailyClaimBtn: document.getElementById('dailyClaimBtn'),
     eventBanner: document.getElementById('eventBanner'),
     eventBannerText: document.getElementById('eventBannerText'),
+    leaderboardList: document.getElementById('leaderboardList'),
   };
 
   function countBoughtUpgrades(category) {
@@ -577,6 +618,7 @@
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      if (btn.dataset.tab === 'leaderboard') loadLeaderboard();
     });
   });
 
