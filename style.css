@@ -17,6 +17,15 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* <button> does not inherit color/font from its ancestors by default in the
+   UA stylesheet (it uses the OS/webview's own control colors instead) — this
+   was the real cause of unreadable text on card buttons in some Telegram
+   clients, independent of the --text/--accent palette above. */
+button {
+  color: inherit;
+  font: inherit;
+}
+
 html, body {
   margin: 0;
   padding: 0;
