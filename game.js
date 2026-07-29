@@ -211,13 +211,14 @@
   // Fixed, deterministic schedule (UTC) — no server round-trip needed to know
   // whether an event is active right now. The push worker (push/src/index.js)
   // duplicates this same math to know when to broadcast "event started".
-  const HAPPY_HOUR_START_UTC = 18;
-  const HAPPY_HOUR_END_UTC = 19;
+  const HAPPY_HOUR_START_HOURS_UTC = [6, 18]; // twice a day, 12h apart
+  const HAPPY_HOUR_DURATION_H = 1;
 
-  function getHappyHourWindow(d) {
-    const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HAPPY_HOUR_START_UTC));
-    const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HAPPY_HOUR_END_UTC));
-    return { start, end };
+  function getHappyHourWindows(d) {
+    return HAPPY_HOUR_START_HOURS_UTC.map(h => ({
+      start: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h)),
+      end: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h + HAPPY_HOUR_DURATION_H)),
+    }));
   }
 
   function getWeekendWindow(d) {
@@ -230,9 +231,9 @@
 
   function getActiveEvents(now = new Date()) {
     const events = [];
-    const hh = getHappyHourWindow(now);
-    if (now >= hh.start && now < hh.end) {
-      events.push({ id: 'happyHour', label: '🎉 Печеньковый час', mult: 2, endsAt: hh.end.getTime() });
+    const activeHH = getHappyHourWindows(now).find(w => now >= w.start && now < w.end);
+    if (activeHH) {
+      events.push({ id: 'happyHour', label: '🎉 Печеньковый час', mult: 2, endsAt: activeHH.end.getTime() });
     }
     const we = getWeekendWindow(now);
     if (we && now >= we.start && now < we.end) {

@@ -17,8 +17,8 @@ const STAGE2_MS = 24 * 3600 * 1000; // 24h: "daily reward + cookies waiting"
 
 // Same schedule as game.js's Happy Hour / Weekend event math — keep these two
 // in sync if the schedule ever changes.
-const HAPPY_HOUR_START_UTC = 18;
-const HAPPY_HOUR_END_UTC = 19;
+const HAPPY_HOUR_START_HOURS_UTC = [6, 18]; // twice a day, 12h apart
+const HAPPY_HOUR_DURATION_H = 1;
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -28,10 +28,12 @@ function dateKey(d) {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
 
-function getHappyHourWindow(d) {
-  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HAPPY_HOUR_START_UTC));
-  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HAPPY_HOUR_END_UTC));
-  return { start, end };
+function getHappyHourWindows(d) {
+  return HAPPY_HOUR_START_HOURS_UTC.map(h => ({
+    start: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h)),
+    end: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h + HAPPY_HOUR_DURATION_H)),
+    startHour: h,
+  }));
 }
 
 function getWeekendWindow(d) {
@@ -44,14 +46,15 @@ function getWeekendWindow(d) {
 
 // Returns the events active right now, each tagged with an occurrenceKey that
 // stays constant for the whole duration of that specific occurrence — used to
-// make sure we broadcast "event started" exactly once per occurrence.
+// make sure we broadcast "event started" exactly once per occurrence. Happy
+// Hour's key includes the start hour since there are two occurrences a day.
 function getActiveEvents(now) {
   const events = [];
-  const hh = getHappyHourWindow(now);
-  if (now >= hh.start && now < hh.end) {
+  const activeHH = getHappyHourWindows(now).find(w => now >= w.start && now < w.end);
+  if (activeHH) {
     events.push({
       id: 'happyHour',
-      occurrenceKey: dateKey(now),
+      occurrenceKey: `${dateKey(now)}-${activeHH.startHour}`,
       text: '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
     });
   }

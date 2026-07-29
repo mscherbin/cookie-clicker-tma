@@ -85,10 +85,11 @@ batched across multiple invocations (e.g. via Cloudflare Queues) rather than
 one synchronous loop, and should respect Telegram's ~30 messages/sec bot-wide
 rate limit (not currently throttled). Not an issue at today's scale — flag it
 if the user base grows into the thousands.
-  - Also checks whether Happy Hour (daily 18:00–20:00 UTC) or the Weekend
-    event (Sat 00:00 UTC – Mon 00:00 UTC) just became active. If so, and it
-    hasn't already announced this specific occurrence (tracked via an
-    `eventflag:<id>:<date>` KV marker with a 5-day TTL), it broadcasts to
+  - Also checks whether Happy Hour (06:00–07:00 and 18:00–19:00 UTC, twice a
+    day) or the Weekend event (Sat 00:00 UTC – Mon 00:00 UTC) just became
+    active. If so, and it hasn't already announced this specific occurrence
+    (tracked via an `eventflag:<id>:<date>[-hour]` KV marker with a 5-day
+    TTL), it broadcasts to
     every `user:*` entry in KV.
 
 ## Local testing
