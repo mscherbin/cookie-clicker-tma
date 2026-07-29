@@ -132,7 +132,7 @@ async function handleCheckin(request, env) {
   const key = `user:${user.id}`;
   const now = Date.now();
   const displayName = (user.first_name || user.username || 'Игрок').slice(0, 40);
-  await env.USERS.put(key, JSON.stringify({
+  const data = {
     chatId: user.id,
     lastActiveTs: now,
     pushStage: 0,
@@ -140,7 +140,15 @@ async function handleCheckin(request, env) {
     cps: Number(body.cps) || 0,
     totalBaked: Number(body.totalBaked) || 0,
     displayName,
-  }));
+  };
+  // Mirroring `data` into KV metadata lets list-all operations (leaderboard,
+  // the push cron, broadcasts) read every user's fields straight off list()
+  // results — no per-key get() needed. That matters a lot: Workers caps the
+  // number of subrequests per invocation (50 on the free plan, 1000 on
+  // paid), and a get()-per-user loop would blow through that once there are
+  // more than a few dozen/thousand registered users, regardless of how many
+  // are actually active. list() only costs one subrequest per 1000 keys.
+  await env.USERS.put(key, JSON.stringify(data), { metadata: data });
 
   return jsonResponse({ ok: true });
 }
@@ -151,10 +159,8 @@ async function handleLeaderboard(env) {
   for (;;) {
     const list = await env.USERS.list({ prefix: 'user:', cursor });
     for (const k of list.keys) {
-      const raw = await env.USERS.get(k.name);
-      if (!raw) continue;
-      let data;
-      try { data = JSON.parse(raw); } catch (e) { continue; }
+      const data = k.metadata;
+      if (!data) continue; // older record written before metadata was added; heals on next checkin
       entries.push({
         userId: data.chatId,
         name: data.displayName || 'Игрок',
@@ -198,19 +204,18 @@ async function runPushCycle(env) {
   for (;;) {
     const list = await env.USERS.list({ prefix: 'user:', cursor });
     for (const k of list.keys) {
-      const raw = await env.USERS.get(k.name);
-      if (!raw) continue;
-      const data = JSON.parse(raw);
+      const data = k.metadata;
+      if (!data) continue; // older record written before metadata was added; heals on next checkin
       const elapsed = Date.now() - data.lastActiveTs;
 
       if (data.pushStage < 1 && elapsed >= STAGE1_MS) {
         await sendPush(env, data.chatId, stage1Text(data));
         data.pushStage = 1;
-        await env.USERS.put(k.name, JSON.stringify(data));
+        await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
       } else if (data.pushStage < 2 && elapsed >= STAGE2_MS) {
         await sendPush(env, data.chatId, stage2Text());
         data.pushStage = 2;
-        await env.USERS.put(k.name, JSON.stringify(data));
+        await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
       }
     }
     if (list.list_complete || !list.cursor) break;
@@ -223,11 +228,8 @@ async function broadcastToAllUsers(env, text) {
   for (;;) {
     const list = await env.USERS.list({ prefix: 'user:', cursor });
     for (const k of list.keys) {
-      const raw = await env.USERS.get(k.name);
-      if (!raw) continue;
-      let data;
-      try { data = JSON.parse(raw); } catch (e) { continue; }
-      if (data.chatId) await sendPush(env, data.chatId, text);
+      const data = k.metadata;
+      if (data && data.chatId) await sendPush(env, data.chatId, text);
     }
     if (list.list_complete || !list.cursor) break;
     cursor = list.cursor;

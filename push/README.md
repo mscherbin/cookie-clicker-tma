@@ -66,6 +66,25 @@ The check-in endpoint is `<that URL>/checkin` — put it into `game.js` as
     message, stamps `pushStage = 2`.
   - Neither fires again until the player reopens the app (which resets
     `pushStage` back to 0 via `/checkin`).
+
+## Scaling notes
+
+Every `user:*` record's fields are mirrored into that key's KV **metadata**
+(returned inline by `list()`), not just its value. `/leaderboard`, the
+inactivity scan, and broadcasts all read straight off `list()` results — no
+`get()`-per-user loop. This matters because Workers caps subrequests per
+invocation (50 on the free plan, 1000 on paid); a get()-per-user loop broke
+past a few dozen/thousand registered users regardless of how many were
+actually active. `list()` only costs one subrequest per 1000 keys, so this
+now scales to tens of thousands of registered users for free.
+
+What's *not* fixed: actually **sending** a push (`sendPush`'s `fetch()` call)
+is still one subrequest per recipient, and a broadcast (event start) contacts
+every registered user. At a few thousand+ users this would need to be
+batched across multiple invocations (e.g. via Cloudflare Queues) rather than
+one synchronous loop, and should respect Telegram's ~30 messages/sec bot-wide
+rate limit (not currently throttled). Not an issue at today's scale — flag it
+if the user base grows into the thousands.
   - Also checks whether Happy Hour (daily 18:00–20:00 UTC) or the Weekend
     event (Sat 00:00 UTC – Mon 00:00 UTC) just became active. If so, and it
     hasn't already announced this specific occurrence (tracked via an
