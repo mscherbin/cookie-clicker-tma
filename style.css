@@ -390,8 +390,12 @@ html, body {
   color: var(--hint);
 }
 
-.leaderboard-name {
+.leaderboard-info {
   flex: 1;
+  min-width: 0;
+}
+
+.leaderboard-name {
   font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
@@ -399,11 +403,26 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.leaderboard-total {
+  font-size: 11px;
+  color: var(--hint);
+  margin-top: 1px;
+}
+
 .leaderboard-score {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
   color: var(--gold);
   flex-shrink: 0;
+  text-align: right;
+  line-height: 1.15;
+}
+
+.leaderboard-score-unit {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--hint);
 }
 
 .reset-btn {

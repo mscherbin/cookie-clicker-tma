@@ -155,8 +155,11 @@
         el.leaderboardList.innerHTML = data.entries.map((entry, i) => `
           <div class="leaderboard-row${myId && entry.userId === myId ? ' me' : ''}">
             <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
-            <div class="leaderboard-name">${escapeHtml(entry.name)}</div>
-            <div class="leaderboard-score">${formatNum(entry.totalBaked)} 🍪</div>
+            <div class="leaderboard-info">
+              <div class="leaderboard-name">${escapeHtml(entry.name)}</div>
+              <div class="leaderboard-total">${formatNum(entry.totalBaked)} 🍪 всего</div>
+            </div>
+            <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">печ/сек</span></div>
           </div>
         `).join('');
       })

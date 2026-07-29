@@ -158,13 +158,14 @@ async function handleLeaderboard(env) {
       entries.push({
         userId: data.chatId,
         name: data.displayName || 'Игрок',
+        cps: data.cps || 0,
         totalBaked: data.totalBaked || 0,
       });
     }
     if (list.list_complete || !list.cursor) break;
     cursor = list.cursor;
   }
-  entries.sort((a, b) => b.totalBaked - a.totalBaked);
+  entries.sort((a, b) => b.cps - a.cps);
   return jsonResponse({ ok: true, entries: entries.slice(0, 50) });
 }
 
