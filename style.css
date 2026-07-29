@@ -1,10 +1,14 @@
 :root {
-  --bg: var(--tg-theme-bg-color, #1b120a);
-  --bg-secondary: var(--tg-theme-secondary-bg-color, #241a10);
-  --text: var(--tg-theme-text-color, #f5e6d3);
-  --hint: var(--tg-theme-hint-color, #b39a7c);
-  --accent: var(--tg-theme-button-color, #e8a33d);
-  --accent-text: var(--tg-theme-button-text-color, #1b120a);
+  /* Fixed game palette — deliberately NOT tied to the user's Telegram theme.
+     Card backgrounds are always this warm dark brown, so borrowing text/accent
+     colors from an arbitrary Telegram theme risks unreadable contrast
+     (e.g. a theme's near-black text color meant for light bubbles). */
+  --bg: #1b120a;
+  --bg-secondary: #241a10;
+  --text: #f5e6d3;
+  --hint: #b39a7c;
+  --accent: #e8a33d;
+  --accent-text: #1b120a;
   --card: #2c2013;
   --card-border: #4a3820;
   --gold: #ffd166;
