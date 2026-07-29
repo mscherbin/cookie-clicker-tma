@@ -18,7 +18,7 @@ const STAGE2_MS = 24 * 3600 * 1000; // 24h: "daily reward + cookies waiting"
 // Same schedule as game.js's Happy Hour / Weekend event math — keep these two
 // in sync if the schedule ever changes.
 const HAPPY_HOUR_START_UTC = 18;
-const HAPPY_HOUR_END_UTC = 20;
+const HAPPY_HOUR_END_UTC = 19;
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -52,7 +52,7 @@ function getActiveEvents(now) {
     events.push({
       id: 'happyHour',
       occurrenceKey: dateKey(now),
-      text: '🎉 Печеньковый час начался! Все печеньки x2 следующие 2 часа — заходи скорее.',
+      text: '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
     });
   }
   const we = getWeekendWindow(now);

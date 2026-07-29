@@ -212,7 +212,7 @@
   // whether an event is active right now. The push worker (push/src/index.js)
   // duplicates this same math to know when to broadcast "event started".
   const HAPPY_HOUR_START_UTC = 18;
-  const HAPPY_HOUR_END_UTC = 20;
+  const HAPPY_HOUR_END_UTC = 19;
 
   function getHappyHourWindow(d) {
     const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HAPPY_HOUR_START_UTC));
