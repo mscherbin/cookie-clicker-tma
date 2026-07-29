@@ -107,7 +107,6 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 8px 18px rgba(0,0,0,0.5));
   transition: transform 0.06s ease-out;
   touch-action: manipulation;
 }
@@ -116,9 +115,10 @@ html, body {
   transform: scale(0.92);
 }
 
-.cookie-emoji {
-  font-size: min(38vw, 180px);
-  line-height: 1;
+.cookie-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
   pointer-events: none;
 }
 
