@@ -3,13 +3,68 @@
 // - POST /checkin  — called by the mini app on every load. Validates Telegram
 //   initData, then records "this user was just active" so the scheduled job
 //   knows not to (yet) nag them.
-// - scheduled()     — runs on a cron trigger. For every known user, checks how
-//   long it's been since they were last active and sends at most one push per
-//   inactivity stage (never repeats a stage, resets when they check in again).
+// - scheduled()     — runs on a cron trigger. Does two things:
+//     1. For every known user, checks how long it's been since they were
+//        last active and sends at most one push per inactivity stage (never
+//        repeats a stage, resets when they check in again).
+//     2. Checks whether a scheduled event (Happy Hour / Weekend) just started
+//        and, if so, broadcasts an announcement to every known user — once
+//        per occurrence, tracked via an eventflag:* KV marker.
 
 const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/';
 const STAGE1_MS = 5 * 3600 * 1000; // ~5h: "cookies piling up"
 const STAGE2_MS = 24 * 3600 * 1000; // 24h: "daily reward + cookies waiting"
+
+// Same schedule as game.js's Happy Hour / Weekend event math — keep these two
+// in sync if the schedule ever changes.
+const HAPPY_HOUR_START_UTC = 18;
+const HAPPY_HOUR_END_UTC = 20;
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function dateKey(d) {
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+function getHappyHourWindow(d) {
+  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HAPPY_HOUR_START_UTC));
+  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HAPPY_HOUR_END_UTC));
+  return { start, end };
+}
+
+function getWeekendWindow(d) {
+  const day = d.getUTCDay(); // 0 = Sun, 6 = Sat
+  if (day !== 6 && day !== 0) return null;
+  const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const satMidnight = midnight - (day === 0 ? 1 : 0) * 86400000;
+  return { start: new Date(satMidnight), end: new Date(satMidnight + 2 * 86400000) };
+}
+
+// Returns the events active right now, each tagged with an occurrenceKey that
+// stays constant for the whole duration of that specific occurrence — used to
+// make sure we broadcast "event started" exactly once per occurrence.
+function getActiveEvents(now) {
+  const events = [];
+  const hh = getHappyHourWindow(now);
+  if (now >= hh.start && now < hh.end) {
+    events.push({
+      id: 'happyHour',
+      occurrenceKey: dateKey(now),
+      text: '🎉 Печеньковый час начался! Все печеньки x2 следующие 2 часа — заходи скорее.',
+    });
+  }
+  const we = getWeekendWindow(now);
+  if (we && now >= we.start && now < we.end) {
+    events.push({
+      id: 'weekend',
+      occurrenceKey: dateKey(we.start),
+      text: '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
+    });
+  }
+  return events;
+}
 
 function corsHeaders() {
   return {
@@ -114,7 +169,7 @@ async function sendPush(env, chatId, text) {
 async function runPushCycle(env) {
   let cursor;
   for (;;) {
-    const list = await env.USERS.list({ cursor });
+    const list = await env.USERS.list({ prefix: 'user:', cursor });
     for (const k of list.keys) {
       const raw = await env.USERS.get(k.name);
       if (!raw) continue;
@@ -136,6 +191,35 @@ async function runPushCycle(env) {
   }
 }
 
+async function broadcastToAllUsers(env, text) {
+  let cursor;
+  for (;;) {
+    const list = await env.USERS.list({ prefix: 'user:', cursor });
+    for (const k of list.keys) {
+      const raw = await env.USERS.get(k.name);
+      if (!raw) continue;
+      let data;
+      try { data = JSON.parse(raw); } catch (e) { continue; }
+      if (data.chatId) await sendPush(env, data.chatId, text);
+    }
+    if (list.list_complete || !list.cursor) break;
+    cursor = list.cursor;
+  }
+}
+
+// Broadcasts an "event started" push to every known user, exactly once per
+// event occurrence (tracked via a short-lived eventflag:* marker in KV).
+async function checkAndBroadcastEvents(env) {
+  const now = new Date();
+  for (const ev of getActiveEvents(now)) {
+    const markerKey = `eventflag:${ev.id}:${ev.occurrenceKey}`;
+    const already = await env.USERS.get(markerKey);
+    if (already) continue;
+    await env.USERS.put(markerKey, '1', { expirationTtl: 5 * 24 * 3600 });
+    await broadcastToAllUsers(env, ev.text);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -152,6 +236,6 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runPushCycle(env));
+    ctx.waitUntil(Promise.all([runPushCycle(env), checkAndBroadcastEvents(env)]));
   },
 };

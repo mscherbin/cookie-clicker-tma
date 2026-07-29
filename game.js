@@ -26,6 +26,10 @@
     { id: 'bank',     name: 'Банк',          icon: '🏦', baseCost: 1400000, baseCps: 1400 },
     { id: 'temple',   name: 'Храм',          icon: '⛩️', baseCost: 20000000, baseCps: 7800 },
     { id: 'lab',      name: 'Лаборатория',   icon: '🧪', baseCost: 330000000, baseCps: 44000 },
+    { id: 'portal',   name: 'Портал',        icon: '🌀', baseCost: 5100000000, baseCps: 260000 },
+    { id: 'timeMachine', name: 'Машина времени', icon: '⏳', baseCost: 75000000000, baseCps: 1600000 },
+    { id: 'antimatter', name: 'Антиматерия', icon: '⚛️', baseCost: 1000000000000, baseCps: 10000000 },
+    { id: 'prism',    name: 'Призма',        icon: '🔷', baseCost: 14000000000000, baseCps: 65000000 },
   ];
 
   const UPGRADES = [
@@ -43,6 +47,10 @@
     { id: 'global_u2', name: 'Философский камень выпечки', desc: 'Всё производство x2', icon: '🧪', cost: 220000000, category: 'global', reqType: 'baked', reqValue: 50000000, req: (b, s) => s.totalBaked >= 50000000, effect: s => s.globalMult *= 2 },
     { id: 'global_u3', name: 'Печенье из другого измерения', desc: 'Всё производство x2', icon: '🌌', cost: 3500000000, category: 'global', reqType: 'baked', reqValue: 800000000, req: (b, s) => s.totalBaked >= 800000000, effect: s => s.globalMult *= 2 },
     { id: 'global_u4', name: 'Вселенская выпечка', desc: 'Всё производство x2', icon: '🌠', cost: 50000000000, category: 'global', reqType: 'baked', reqValue: 12000000000, req: (b, s) => s.totalBaked >= 12000000000, effect: s => s.globalMult *= 2 },
+    { id: 'portal_u1', name: 'Стабилизатор портала', desc: 'Порталы x2', icon: '🌀', cost: 51000000000, category: 'building', buildingId: 'portal', reqType: 'building', req: b => b.portal >= 1, effect: s => s.buildingMult.portal *= 2 },
+    { id: 'timeMachine_u1', name: 'Хроноускоритель', desc: 'Машины времени x2', icon: '⏳', cost: 750000000000, category: 'building', buildingId: 'timeMachine', reqType: 'building', req: b => b.timeMachine >= 1, effect: s => s.buildingMult.timeMachine *= 2 },
+    { id: 'antimatter_u1', name: 'Сжатое антивещество', desc: 'Антиматерия x2', icon: '⚛️', cost: 10000000000000, category: 'building', buildingId: 'antimatter', reqType: 'building', req: b => b.antimatter >= 1, effect: s => s.buildingMult.antimatter *= 2 },
+    { id: 'prism_u1', name: 'Огранка призмы', desc: 'Призмы x2', icon: '🔷', cost: 140000000000000, category: 'building', buildingId: 'prism', reqType: 'building', req: b => b.prism >= 1, effect: s => s.buildingMult.prism *= 2 },
   ];
 
   const CATEGORY_LABELS = {
@@ -153,6 +161,44 @@
     }
   }
 
+  // ---------- Seasonal events ----------
+  // Fixed, deterministic schedule (UTC) — no server round-trip needed to know
+  // whether an event is active right now. The push worker (push/src/index.js)
+  // duplicates this same math to know when to broadcast "event started".
+  const HAPPY_HOUR_START_UTC = 18;
+  const HAPPY_HOUR_END_UTC = 20;
+
+  function getHappyHourWindow(d) {
+    const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HAPPY_HOUR_START_UTC));
+    const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), HAPPY_HOUR_END_UTC));
+    return { start, end };
+  }
+
+  function getWeekendWindow(d) {
+    const day = d.getUTCDay(); // 0 = Sun, 6 = Sat
+    if (day !== 6 && day !== 0) return null;
+    const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const satMidnight = midnight - (day === 0 ? 1 : 0) * 86400000;
+    return { start: new Date(satMidnight), end: new Date(satMidnight + 2 * 86400000) };
+  }
+
+  function getActiveEvents(now = new Date()) {
+    const events = [];
+    const hh = getHappyHourWindow(now);
+    if (now >= hh.start && now < hh.end) {
+      events.push({ id: 'happyHour', label: '🎉 Печеньковый час', mult: 2, endsAt: hh.end.getTime() });
+    }
+    const we = getWeekendWindow(now);
+    if (we && now >= we.start && now < we.end) {
+      events.push({ id: 'weekend', label: '🎊 Печеньковые выходные', mult: 1.5, endsAt: we.end.getTime() });
+    }
+    return events;
+  }
+
+  function eventMultiplier() {
+    return getActiveEvents().reduce((m, e) => m * e.mult, 1);
+  }
+
   // ---------- Formulas ----------
   function buildingCost(b, count) {
     return Math.ceil(b.baseCost * Math.pow(1.15, count));
@@ -167,16 +213,16 @@
   function getCps() {
     let total = 0;
     for (const b of BUILDINGS) total += buildingCps(b) * state.buildings[b.id];
-    return total * state.globalMult;
+    return total * state.globalMult * eventMultiplier();
   }
 
   function getClickPower() {
-    return (1 + state.buildings.cursor * 0.1) * state.clickMult * state.globalMult;
+    return (1 + state.buildings.cursor * 0.1) * state.clickMult * state.globalMult * eventMultiplier();
   }
 
   function formatNum(n) {
     if (n < 1000) return n < 100 ? (Math.floor(n * 10) / 10).toString() : Math.floor(n).toString();
-    const units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx'];
+    const units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
     let u = 0;
     while (n >= 1000 && u < units.length - 1) { n /= 1000; u++; }
     return n.toFixed(n < 10 ? 2 : n < 100 ? 1 : 0) + units[u];
@@ -274,6 +320,8 @@
     dailyStreakNum: document.getElementById('dailyStreakNum'),
     dailyRewardAmount: document.getElementById('dailyRewardAmount'),
     dailyClaimBtn: document.getElementById('dailyClaimBtn'),
+    eventBanner: document.getElementById('eventBanner'),
+    eventBannerText: document.getElementById('eventBannerText'),
   };
 
   function countBoughtUpgrades(category) {
@@ -285,6 +333,23 @@
     el.cps.textContent = `${formatNum(getCps())} печенек/сек`;
     const clickUpgradesOwned = countBoughtUpgrades('click');
     el.clickPowerLine.textContent = `Сила клика: ${formatNum(getClickPower())} · апгрейдов клика: ${clickUpgradesOwned}/${CLICK_UPGRADES_TOTAL}`;
+  }
+
+  function updateEventBanner() {
+    const events = getActiveEvents();
+    if (events.length === 0) {
+      el.eventBanner.hidden = true;
+      return;
+    }
+    const soonestEnd = Math.min(...events.map(e => e.endsAt));
+    const remain = Math.max(0, soonestEnd - Date.now());
+    const totalMult = events.reduce((m, e) => m * e.mult, 1);
+    const label = events.map(e => e.label).join(' + ');
+    const hh = String(Math.floor(remain / 3600000)).padStart(2, '0');
+    const mm = String(Math.floor((remain % 3600000) / 60000)).padStart(2, '0');
+    const ss = String(Math.floor((remain % 60000) / 1000)).padStart(2, '0');
+    el.eventBannerText.textContent = `${label} · x${totalMult} · осталось ${hh}:${mm}:${ss}`;
+    el.eventBanner.hidden = false;
   }
 
   function renderBuildings() {
@@ -496,7 +561,9 @@
   }
 
   function scheduleGolden() {
-    const delay = 25000 + Math.random() * 45000;
+    const weekendActive = getActiveEvents().some(e => e.id === 'weekend');
+    const factor = weekendActive ? 0.5 : 1;
+    const delay = (25000 + Math.random() * 45000) * factor;
     setTimeout(() => {
       spawnGoldenCookie();
       scheduleGolden();
@@ -542,6 +609,8 @@
   requestAnimationFrame(tick);
   setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); updateDailyBadge(); }, 3000);
   setInterval(() => { state.lastTs = Date.now(); saveState(); }, 10000);
+  updateEventBanner();
+  setInterval(updateEventBanner, 1000);
   scheduleGolden();
 
   window.addEventListener('beforeunload', () => { state.lastTs = Date.now(); saveState(); });

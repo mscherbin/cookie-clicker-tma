@@ -1,9 +1,14 @@
 # Push worker
 
 Cloudflare Worker that sends retention push notifications for the Cookie
-Clicker mini app: a "cookies piling up" nudge ~5h after the player was last
-active, and a "daily reward is waiting" nudge at 24h. Never sends more than
-one push per inactivity cycle — checking in (opening the app) resets it.
+Clicker mini app:
+
+- Per-user inactivity nudges: "cookies piling up" ~5h after the player was
+  last active, and "daily reward is waiting" at 24h. Never sends more than
+  one push per inactivity cycle — checking in (opening the app) resets it.
+- Broadcast event announcements: when Happy Hour or the Weekend event starts
+  (schedule defined in `game.js` and duplicated here), every known user gets
+  a one-time "event started" push — regardless of their own activity.
 
 ## One-time setup
 
@@ -61,6 +66,11 @@ The check-in endpoint is `<that URL>/checkin` — put it into `game.js` as
     message, stamps `pushStage = 2`.
   - Neither fires again until the player reopens the app (which resets
     `pushStage` back to 0 via `/checkin`).
+  - Also checks whether Happy Hour (daily 18:00–20:00 UTC) or the Weekend
+    event (Sat 00:00 UTC – Mon 00:00 UTC) just became active. If so, and it
+    hasn't already announced this specific occurrence (tracked via an
+    `eventflag:<id>:<date>` KV marker with a 5-day TTL), it broadcasts to
+    every `user:*` entry in KV.
 
 ## Local testing
 

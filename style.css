@@ -73,6 +73,28 @@ html, body {
   50% { box-shadow: 0 0 0 8px rgba(255, 209, 102, 0); }
 }
 
+.event-banner {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1b120a;
+  background: linear-gradient(90deg, var(--gold), var(--accent), var(--gold));
+  background-size: 200% 100%;
+  animation: eventShimmer 3s linear infinite;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.event-banner[hidden] {
+  display: none;
+}
+
+@keyframes eventShimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
 .cookie-count {
   font-size: 32px;
   font-weight: 800;
