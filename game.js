@@ -29,16 +29,16 @@
   ];
 
   const UPGRADES = [
-    { id: 'cursor_u1', name: 'Наточенные курсоры', desc: 'Курсоры x2', icon: '✌️', cost: 100, category: 'building', req: b => b.cursor >= 1, effect: s => s.cursorMult *= 2 },
-    { id: 'grandma_u1', name: 'Бабушкины рецепты', desc: 'Бабушки x2', icon: '📖', cost: 1000, category: 'building', req: b => b.grandma >= 1, effect: s => s.buildingMult.grandma *= 2 },
-    { id: 'farm_u1', name: 'Удобрения', desc: 'Фермы x2', icon: '🌱', cost: 11000, category: 'building', req: b => b.farm >= 1, effect: s => s.buildingMult.farm *= 2 },
+    { id: 'cursor_u1', name: 'Наточенные курсоры', desc: 'Курсоры x2', icon: '✌️', cost: 100, category: 'building', buildingId: 'cursor', req: b => b.cursor >= 1, effect: s => s.cursorMult *= 2 },
+    { id: 'grandma_u1', name: 'Бабушкины рецепты', desc: 'Бабушки x2', icon: '📖', cost: 1000, category: 'building', buildingId: 'grandma', req: b => b.grandma >= 1, effect: s => s.buildingMult.grandma *= 2 },
+    { id: 'farm_u1', name: 'Удобрения', desc: 'Фермы x2', icon: '🌱', cost: 11000, category: 'building', buildingId: 'farm', req: b => b.farm >= 1, effect: s => s.buildingMult.farm *= 2 },
     { id: 'click_u1', name: 'Крепкая хватка', desc: 'Сила клика x2', icon: '💪', cost: 500, category: 'click', req: (b, s) => s.totalClicks >= 20, effect: s => s.clickMult *= 2 },
-    { id: 'mine_u1', name: 'Новые кирки', desc: 'Шахты x2', icon: '⚒️', cost: 130000, category: 'building', req: b => b.mine >= 1, effect: s => s.buildingMult.mine *= 2 },
+    { id: 'mine_u1', name: 'Новые кирки', desc: 'Шахты x2', icon: '⚒️', cost: 130000, category: 'building', buildingId: 'mine', req: b => b.mine >= 1, effect: s => s.buildingMult.mine *= 2 },
     { id: 'click_u2', name: 'Стальные пальцы', desc: 'Сила клика x2', icon: '🖐️', cost: 10000, category: 'click', req: (b, s) => s.totalClicks >= 200, effect: s => s.clickMult *= 2 },
-    { id: 'factory_u1', name: 'Автоматизация', desc: 'Фабрики x2', icon: '⚙️', cost: 1400000, category: 'building', req: b => b.factory >= 1, effect: s => s.buildingMult.factory *= 2 },
+    { id: 'factory_u1', name: 'Автоматизация', desc: 'Фабрики x2', icon: '⚙️', cost: 1400000, category: 'building', buildingId: 'factory', req: b => b.factory >= 1, effect: s => s.buildingMult.factory *= 2 },
     { id: 'global_u1', name: 'Печенье с золотом', desc: 'Всё производство x2', icon: '✨', cost: 5000000, category: 'global', req: (b, s) => s.totalBaked >= 1000000, effect: s => s.globalMult *= 2 },
-    { id: 'bank_u1', name: 'Хрустящие проценты', desc: 'Банки x2', icon: '💰', cost: 20000000, category: 'building', req: b => b.bank >= 1, effect: s => s.buildingMult.bank *= 2 },
-    { id: 'temple_u1', name: 'Древние благословения', desc: 'Храмы x2', icon: '🙏', cost: 260000000, category: 'building', req: b => b.temple >= 1, effect: s => s.buildingMult.temple *= 2 },
+    { id: 'bank_u1', name: 'Хрустящие проценты', desc: 'Банки x2', icon: '💰', cost: 20000000, category: 'building', buildingId: 'bank', req: b => b.bank >= 1, effect: s => s.buildingMult.bank *= 2 },
+    { id: 'temple_u1', name: 'Древние благословения', desc: 'Храмы x2', icon: '🙏', cost: 260000000, category: 'building', buildingId: 'temple', req: b => b.temple >= 1, effect: s => s.buildingMult.temple *= 2 },
   ];
 
   const CATEGORY_LABELS = {
@@ -151,6 +151,20 @@
     return n.toFixed(n < 10 ? 2 : n < 100 ? 1 : 0) + units[u];
   }
 
+  function upgradeEffectText(u) {
+    if (u.category === 'click') {
+      const before = getClickPower();
+      return `Сила клика: ${formatNum(before)} → ${formatNum(before * 2)}`;
+    }
+    if (u.category === 'global') {
+      const before = getCps();
+      return `Всё производство: ${formatNum(before)} → ${formatNum(before * 2)} печ/сек`;
+    }
+    const b = BUILDINGS.find(x => x.id === u.buildingId);
+    const before = buildingCps(b);
+    return `${b.name}: ${formatNum(before)} → ${formatNum(before * 2)} печ/сек за шт.`;
+  }
+
   // ---------- Rendering ----------
   const el = {
     cookieCount: document.getElementById('cookieCount'),
@@ -226,6 +240,7 @@
           <div class="item-info">
             <div class="upgrade-name">${u.name}</div>
             <div class="upgrade-desc">${u.desc}</div>
+            ${bought ? '' : `<div class="upgrade-effect">${upgradeEffectText(u)}</div>`}
           </div>
           ${bought ? '' : `<div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>`}
         `;
