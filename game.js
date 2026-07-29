@@ -621,7 +621,7 @@
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-      if (btn.dataset.tab === 'leaderboard') loadLeaderboard();
+      if (btn.dataset.tab === 'leaderboard') { sendCheckin(); loadLeaderboard(); }
     });
   });
 
@@ -654,6 +654,9 @@
   requestAnimationFrame(tick);
   setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); updateDailyBadge(); }, 3000);
   setInterval(() => { state.lastTs = Date.now(); saveState(); }, 10000);
+  // Keep the leaderboard/push-worker record fresh during a long play session
+  // instead of only ever reflecting the moment the app was opened.
+  setInterval(sendCheckin, 120000);
   updateEventBanner();
   setInterval(updateEventBanner, 1000);
   scheduleGolden();
