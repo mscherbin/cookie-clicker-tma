@@ -37,12 +37,40 @@ html, body {
 }
 
 .topbar {
+  position: relative;
   padding: 10px 16px calc(env(safe-area-inset-top, 0px) + 6px);
   padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
   background: linear-gradient(180deg, var(--bg-secondary), var(--bg));
   border-bottom: 1px solid var(--card-border);
   text-align: center;
   flex-shrink: 0;
+}
+
+.daily-badge {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 0 rgba(255, 209, 102, 0.5);
+  animation: dailyBadgePulse 1.6s ease-in-out infinite;
+}
+
+.daily-badge[hidden] {
+  display: none;
+}
+
+@keyframes dailyBadgePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 209, 102, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 209, 102, 0); }
 }
 
 .cookie-count {
@@ -354,4 +382,78 @@ html, body {
 .toast.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+.daily-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  padding: 24px;
+}
+
+.daily-modal.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.daily-modal-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  padding: 28px 30px 24px;
+  text-align: center;
+  max-width: 280px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: dailyPop 0.3s ease-out;
+}
+
+@keyframes dailyPop {
+  from { transform: scale(0.85); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.daily-gift-icon {
+  font-size: 56px;
+  margin-bottom: 6px;
+  animation: goldenPulse 1.4s ease-in-out infinite;
+}
+
+.daily-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.daily-streak {
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 14px;
+}
+
+.daily-reward-amount {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--gold);
+  margin-bottom: 18px;
+}
+
+.daily-claim-btn {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  color: var(--accent-text);
+  border: none;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
 }

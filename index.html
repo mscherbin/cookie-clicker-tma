@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=2" />
+<link rel="stylesheet" href="style.css?v=3" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -17,6 +17,7 @@
       <div id="cps" class="cps">0 печенек/сек</div>
       <div id="clickPowerLine" class="click-power">Сила клика: 1 &middot; апгрейдов клика: 0/0</div>
     </div>
+    <button id="dailyBadge" class="daily-badge" aria-label="Ежедневная награда" hidden>🎁</button>
   </header>
 
   <main class="main">
@@ -130,8 +131,18 @@
 
   <div id="goldenLayer"></div>
   <div id="toast" class="toast"></div>
+
+  <div id="dailyModal" class="daily-modal">
+    <div class="daily-modal-card">
+      <div class="daily-gift-icon">🎁</div>
+      <div class="daily-title">Ежедневная награда</div>
+      <div class="daily-streak">День <span id="dailyStreakNum">1</span></div>
+      <div class="daily-reward-amount">+<span id="dailyRewardAmount">0</span> 🍪</div>
+      <button id="dailyClaimBtn" class="daily-claim-btn">Забрать</button>
+    </div>
+  </div>
 </div>
 
-<script src="game.js?v=2"></script>
+<script src="game.js?v=3"></script>
 </body>
 </html>

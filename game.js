@@ -62,6 +62,8 @@
     buildings: Object.fromEntries(BUILDINGS.map(b => [b.id, 0])),
     upgrades: {},
     lastTs: Date.now(),
+    dailyStreak: 0,
+    lastDailyClaim: 0,
   });
 
   let state = defaultState();
@@ -103,8 +105,13 @@
     // Render immediately with defaults so the UI never sits blank while an async load resolves.
     refreshAll();
 
+    const afterLoad = () => {
+      setTimeout(() => { if (dailyRewardAvailable()) showDailyModal(); }, 900);
+    };
+
     const loadFromLocal = () => {
       try { applyLoaded(localStorage.getItem(SAVE_KEY)); } catch (e) { /* keep defaults */ }
+      afterLoad();
     };
 
     if (cloudStorageUsable()) {
@@ -116,6 +123,7 @@
         clearTimeout(fallbackTimer);
         if (!err && value) applyLoaded(value);
         else loadFromLocal();
+        if (!err && value) afterLoad();
       });
     } else {
       loadFromLocal();
@@ -165,6 +173,58 @@
     return `${b.name}: ${formatNum(before)} → ${formatNum(before * 2)} печ/сек за шт.`;
   }
 
+  // ---------- Daily reward ----------
+  const DAILY_MIN_GAP = 20 * 3600 * 1000;
+  const DAILY_RESET_GAP = 48 * 3600 * 1000;
+  const DAILY_MAX_STREAK_BONUS = 6;
+
+  function dailyRewardAvailable() {
+    return state.lastDailyClaim === 0 || (Date.now() - state.lastDailyClaim) >= DAILY_MIN_GAP;
+  }
+
+  function previewDailyStreak() {
+    if (state.lastDailyClaim === 0) return 1;
+    const gap = Date.now() - state.lastDailyClaim;
+    return gap > DAILY_RESET_GAP ? 1 : (state.dailyStreak || 0) + 1;
+  }
+
+  function computeDailyReward(streakDay) {
+    const base = Math.max(50, getCps() * 300);
+    const mult = 1 + 0.15 * Math.min(streakDay - 1, DAILY_MAX_STREAK_BONUS);
+    return Math.round(base * mult);
+  }
+
+  function updateDailyBadge() {
+    el.dailyBadge.hidden = !dailyRewardAvailable();
+  }
+
+  function showDailyModal() {
+    if (!dailyRewardAvailable()) return;
+    const streak = previewDailyStreak();
+    el.dailyStreakNum.textContent = streak;
+    el.dailyRewardAmount.textContent = formatNum(computeDailyReward(streak));
+    el.dailyModal.classList.add('show');
+  }
+
+  function hideDailyModal() {
+    el.dailyModal.classList.remove('show');
+  }
+
+  function claimDailyReward() {
+    if (!dailyRewardAvailable()) return;
+    const streak = previewDailyStreak();
+    const reward = computeDailyReward(streak);
+    state.cookies += reward;
+    state.totalBaked += reward;
+    state.dailyStreak = streak;
+    state.lastDailyClaim = Date.now();
+    hideDailyModal();
+    haptic('heavy');
+    showToast(`🎁 День ${streak}: +${formatNum(reward)} 🍪`);
+    saveState();
+    refreshAll();
+  }
+
   // ---------- Rendering ----------
   const el = {
     cookieCount: document.getElementById('cookieCount'),
@@ -177,6 +237,11 @@
     statsList: document.getElementById('statsList'),
     toast: document.getElementById('toast'),
     goldenLayer: document.getElementById('goldenLayer'),
+    dailyBadge: document.getElementById('dailyBadge'),
+    dailyModal: document.getElementById('dailyModal'),
+    dailyStreakNum: document.getElementById('dailyStreakNum'),
+    dailyRewardAmount: document.getElementById('dailyRewardAmount'),
+    dailyClaimBtn: document.getElementById('dailyClaimBtn'),
   };
 
   function countBoughtUpgrades(category) {
@@ -261,6 +326,7 @@
       ['Апгрейдов клика', `${countBoughtUpgrades('click')}/${CLICK_UPGRADES_TOTAL}`],
       ['Зданий всего', Object.values(state.buildings).reduce((a, c) => a + c, 0)],
       ['Апгрейдов куплено', Object.keys(state.upgrades).length],
+      ['Дней подряд', state.dailyStreak || 0],
     ];
     el.statsList.innerHTML = rows.map(([k, v]) => `<div class="stat-row"><span>${k}</span><span>${v}</span></div>`).join('');
   }
@@ -270,6 +336,7 @@
     renderBuildings();
     renderUpgrades();
     renderStats();
+    updateDailyBadge();
   }
 
   // ---------- Actions ----------
@@ -414,10 +481,12 @@
   });
 
   document.getElementById('resetBtn').addEventListener('click', resetProgress);
+  el.dailyBadge.addEventListener('click', showDailyModal);
+  el.dailyClaimBtn.addEventListener('click', claimDailyReward);
 
   loadState();
   requestAnimationFrame(tick);
-  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); }, 3000);
+  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); updateDailyBadge(); }, 3000);
   setInterval(() => { state.lastTs = Date.now(); saveState(); }, 10000);
   scheduleGolden();
 
