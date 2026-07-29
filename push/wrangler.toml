@@ -1,0 +1,10 @@
+name = "cookie-clicker-tma-push"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[[kv_namespaces]]
+binding = "USERS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

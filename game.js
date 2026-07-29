@@ -51,6 +51,11 @@
 
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
 
+  // Set this to the deployed push-worker URL (see push/README.md), e.g.
+  // 'https://cookie-clicker-tma-push.<subdomain>.workers.dev/checkin'.
+  // Left blank until deployed — checkin silently no-ops until then.
+  const CHECKIN_URL = '';
+
   const defaultState = () => ({
     cookies: 0,
     totalBaked: 0,
@@ -101,11 +106,28 @@
     return !!(tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9'));
   }
 
+  // Tells the push worker "this user is active right now", so it holds off
+  // on retention nags until they've been away again for a while. Silent
+  // no-op outside Telegram (no initData) or before CHECKIN_URL is deployed.
+  function sendCheckin() {
+    if (!CHECKIN_URL || !tg || !tg.initData) return;
+    fetch(CHECKIN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        initData: tg.initData,
+        lastDailyClaim: state.lastDailyClaim || 0,
+        cps: getCps(),
+      }),
+    }).catch(() => {});
+  }
+
   function loadState() {
     // Render immediately with defaults so the UI never sits blank while an async load resolves.
     refreshAll();
 
     const afterLoad = () => {
+      sendCheckin();
       setTimeout(() => { if (dailyRewardAvailable()) showDailyModal(); }, 900);
     };
 
