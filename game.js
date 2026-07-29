@@ -29,17 +29,25 @@
   ];
 
   const UPGRADES = [
-    { id: 'cursor_u1', name: 'Наточенные курсоры', desc: 'Курсоры x2', icon: '✌️', cost: 100, req: b => b.cursor >= 1, effect: s => s.cursorMult *= 2 },
-    { id: 'grandma_u1', name: 'Бабушкины рецепты', desc: 'Бабушки x2', icon: '📖', cost: 1000, req: b => b.grandma >= 1, effect: s => s.buildingMult.grandma *= 2 },
-    { id: 'farm_u1', name: 'Удобрения', desc: 'Фермы x2', icon: '🌱', cost: 11000, req: b => b.farm >= 1, effect: s => s.buildingMult.farm *= 2 },
-    { id: 'click_u1', name: 'Крепкая хватка', desc: 'Сила клика x2', icon: '💪', cost: 500, req: (b, s) => s.totalClicks >= 20, effect: s => s.clickMult *= 2 },
-    { id: 'mine_u1', name: 'Новые кирки', desc: 'Шахты x2', icon: '⚒️', cost: 130000, req: b => b.mine >= 1, effect: s => s.buildingMult.mine *= 2 },
-    { id: 'click_u2', name: 'Стальные пальцы', desc: 'Сила клика x2', icon: '🖐️', cost: 10000, req: (b, s) => s.totalClicks >= 200, effect: s => s.clickMult *= 2 },
-    { id: 'factory_u1', name: 'Автоматизация', desc: 'Фабрики x2', icon: '⚙️', cost: 1400000, req: b => b.factory >= 1, effect: s => s.buildingMult.factory *= 2 },
-    { id: 'global_u1', name: 'Печенье с золотом', desc: 'Всё производство x2', icon: '✨', cost: 5000000, req: (b, s) => s.totalBaked >= 1000000, effect: s => s.globalMult *= 2 },
-    { id: 'bank_u1', name: 'Хрустящие проценты', desc: 'Банки x2', icon: '💰', cost: 20000000, req: b => b.bank >= 1, effect: s => s.buildingMult.bank *= 2 },
-    { id: 'temple_u1', name: 'Древние благословения', desc: 'Храмы x2', icon: '🙏', cost: 260000000, req: b => b.temple >= 1, effect: s => s.buildingMult.temple *= 2 },
+    { id: 'cursor_u1', name: 'Наточенные курсоры', desc: 'Курсоры x2', icon: '✌️', cost: 100, category: 'building', req: b => b.cursor >= 1, effect: s => s.cursorMult *= 2 },
+    { id: 'grandma_u1', name: 'Бабушкины рецепты', desc: 'Бабушки x2', icon: '📖', cost: 1000, category: 'building', req: b => b.grandma >= 1, effect: s => s.buildingMult.grandma *= 2 },
+    { id: 'farm_u1', name: 'Удобрения', desc: 'Фермы x2', icon: '🌱', cost: 11000, category: 'building', req: b => b.farm >= 1, effect: s => s.buildingMult.farm *= 2 },
+    { id: 'click_u1', name: 'Крепкая хватка', desc: 'Сила клика x2', icon: '💪', cost: 500, category: 'click', req: (b, s) => s.totalClicks >= 20, effect: s => s.clickMult *= 2 },
+    { id: 'mine_u1', name: 'Новые кирки', desc: 'Шахты x2', icon: '⚒️', cost: 130000, category: 'building', req: b => b.mine >= 1, effect: s => s.buildingMult.mine *= 2 },
+    { id: 'click_u2', name: 'Стальные пальцы', desc: 'Сила клика x2', icon: '🖐️', cost: 10000, category: 'click', req: (b, s) => s.totalClicks >= 200, effect: s => s.clickMult *= 2 },
+    { id: 'factory_u1', name: 'Автоматизация', desc: 'Фабрики x2', icon: '⚙️', cost: 1400000, category: 'building', req: b => b.factory >= 1, effect: s => s.buildingMult.factory *= 2 },
+    { id: 'global_u1', name: 'Печенье с золотом', desc: 'Всё производство x2', icon: '✨', cost: 5000000, category: 'global', req: (b, s) => s.totalBaked >= 1000000, effect: s => s.globalMult *= 2 },
+    { id: 'bank_u1', name: 'Хрустящие проценты', desc: 'Банки x2', icon: '💰', cost: 20000000, category: 'building', req: b => b.bank >= 1, effect: s => s.buildingMult.bank *= 2 },
+    { id: 'temple_u1', name: 'Древние благословения', desc: 'Храмы x2', icon: '🙏', cost: 260000000, category: 'building', req: b => b.temple >= 1, effect: s => s.buildingMult.temple *= 2 },
   ];
+
+  const CATEGORY_LABELS = {
+    click: '⚡ Улучшения клика',
+    building: '🏭 Улучшения зданий',
+    global: '✨ Глобальные',
+  };
+  const CATEGORY_ORDER = ['click', 'building', 'global'];
+  const CLICK_UPGRADES_TOTAL = UPGRADES.filter(u => u.category === 'click').length;
 
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
 
@@ -147,6 +155,7 @@
   const el = {
     cookieCount: document.getElementById('cookieCount'),
     cps: document.getElementById('cps'),
+    clickPowerLine: document.getElementById('clickPowerLine'),
     bigCookie: document.getElementById('bigCookie'),
     floatLayer: document.getElementById('floatLayer'),
     buildingsList: document.getElementById('buildingsList'),
@@ -156,9 +165,15 @@
     goldenLayer: document.getElementById('goldenLayer'),
   };
 
+  function countBoughtUpgrades(category) {
+    return UPGRADES.filter(u => u.category === category && state.upgrades[u.id]).length;
+  }
+
   function renderTopbar() {
     el.cookieCount.textContent = formatNum(state.cookies);
     el.cps.textContent = `${formatNum(getCps())} печенек/сек`;
+    const clickUpgradesOwned = countBoughtUpgrades('click');
+    el.clickPowerLine.textContent = `Сила клика: ${formatNum(getClickPower())} · апгрейдов клика: ${clickUpgradesOwned}/${CLICK_UPGRADES_TOTAL}`;
   }
 
   function renderBuildings() {
@@ -190,24 +205,35 @@
       el.upgradesList.innerHTML = '<div class="empty-hint">Апгрейды появятся по мере роста производства</div>';
       return;
     }
-    for (const u of visible) {
-      const bought = !!state.upgrades[u.id];
-      const unlocked = u.req(state.buildings, state);
-      const affordable = state.cookies >= u.cost;
-      const card = document.createElement('button');
-      card.className = 'upgrade-card' + (bought ? ' bought' : unlocked ? (affordable ? '' : ' disabled') : ' locked');
-      card.innerHTML = `
-        <div class="upgrade-icon">${bought ? '✅' : u.icon}</div>
-        <div class="item-info">
-          <div class="upgrade-name">${u.name}</div>
-          <div class="upgrade-desc">${u.desc}</div>
-        </div>
-        ${bought ? '' : `<div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>`}
-      `;
-      if (!bought && unlocked) {
-        card.addEventListener('click', () => buyUpgrade(u));
+    for (const category of CATEGORY_ORDER) {
+      const items = visible.filter(u => u.category === category);
+      if (items.length === 0) continue;
+
+      const boughtCount = items.filter(u => state.upgrades[u.id]).length;
+      const header = document.createElement('div');
+      header.className = 'section-header';
+      header.textContent = `${CATEGORY_LABELS[category]} (${boughtCount}/${items.length})`;
+      el.upgradesList.appendChild(header);
+
+      for (const u of items) {
+        const bought = !!state.upgrades[u.id];
+        const unlocked = u.req(state.buildings, state);
+        const affordable = state.cookies >= u.cost;
+        const card = document.createElement('button');
+        card.className = 'upgrade-card' + (bought ? ' bought' : unlocked ? (affordable ? '' : ' disabled') : ' locked');
+        card.innerHTML = `
+          <div class="upgrade-icon">${bought ? '✅' : u.icon}</div>
+          <div class="item-info">
+            <div class="upgrade-name">${u.name}</div>
+            <div class="upgrade-desc">${u.desc}</div>
+          </div>
+          ${bought ? '' : `<div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>`}
+        `;
+        if (!bought && unlocked) {
+          card.addEventListener('click', () => buyUpgrade(u));
+        }
+        el.upgradesList.appendChild(card);
       }
-      el.upgradesList.appendChild(card);
     }
   }
 
@@ -217,6 +243,7 @@
       ['Кликов сделано', formatNum(state.totalClicks)],
       ['Печенек в секунду', formatNum(getCps())],
       ['Сила клика', formatNum(getClickPower())],
+      ['Апгрейдов клика', `${countBoughtUpgrades('click')}/${CLICK_UPGRADES_TOTAL}`],
       ['Зданий всего', Object.values(state.buildings).reduce((a, c) => a + c, 0)],
       ['Апгрейдов куплено', Object.keys(state.upgrades).length],
     ];
