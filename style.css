@@ -295,6 +295,13 @@ html, body {
   cursor: default;
 }
 
+.upgrade-card.teaser {
+  opacity: 0.5;
+  cursor: default;
+  border-style: dashed;
+  background: transparent;
+}
+
 .upgrade-icon { font-size: 24px; width: 32px; text-align: center; }
 
 .upgrade-name { font-size: 13px; font-weight: 700; }

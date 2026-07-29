@@ -29,20 +29,20 @@
   ];
 
   const UPGRADES = [
-    { id: 'cursor_u1', name: 'Наточенные курсоры', desc: 'Курсоры x2', icon: '✌️', cost: 100, category: 'building', buildingId: 'cursor', req: b => b.cursor >= 1, effect: s => s.cursorMult *= 2 },
-    { id: 'grandma_u1', name: 'Бабушкины рецепты', desc: 'Бабушки x2', icon: '📖', cost: 1000, category: 'building', buildingId: 'grandma', req: b => b.grandma >= 1, effect: s => s.buildingMult.grandma *= 2 },
-    { id: 'farm_u1', name: 'Удобрения', desc: 'Фермы x2', icon: '🌱', cost: 11000, category: 'building', buildingId: 'farm', req: b => b.farm >= 1, effect: s => s.buildingMult.farm *= 2 },
-    { id: 'click_u1', name: 'Крепкая хватка', desc: 'Сила клика x2', icon: '💪', cost: 500, category: 'click', req: (b, s) => s.totalClicks >= 20, effect: s => s.clickMult *= 2 },
-    { id: 'mine_u1', name: 'Новые кирки', desc: 'Шахты x2', icon: '⚒️', cost: 130000, category: 'building', buildingId: 'mine', req: b => b.mine >= 1, effect: s => s.buildingMult.mine *= 2 },
-    { id: 'click_u2', name: 'Стальные пальцы', desc: 'Сила клика x2', icon: '🖐️', cost: 10000, category: 'click', req: (b, s) => s.totalClicks >= 200, effect: s => s.clickMult *= 2 },
-    { id: 'factory_u1', name: 'Автоматизация', desc: 'Фабрики x2', icon: '⚙️', cost: 1400000, category: 'building', buildingId: 'factory', req: b => b.factory >= 1, effect: s => s.buildingMult.factory *= 2 },
-    { id: 'global_u1', name: 'Печенье с золотом', desc: 'Всё производство x2', icon: '✨', cost: 5000000, category: 'global', req: (b, s) => s.totalBaked >= 1000000, effect: s => s.globalMult *= 2 },
-    { id: 'bank_u1', name: 'Хрустящие проценты', desc: 'Банки x2', icon: '💰', cost: 20000000, category: 'building', buildingId: 'bank', req: b => b.bank >= 1, effect: s => s.buildingMult.bank *= 2 },
-    { id: 'temple_u1', name: 'Древние благословения', desc: 'Храмы x2', icon: '🙏', cost: 260000000, category: 'building', buildingId: 'temple', req: b => b.temple >= 1, effect: s => s.buildingMult.temple *= 2 },
-    { id: 'lab_u1', name: 'Ядерная выпечка', desc: 'Лаборатории x2', icon: '☢️', cost: 3300000000, category: 'building', buildingId: 'lab', req: b => b.lab >= 1, effect: s => s.buildingMult.lab *= 2 },
-    { id: 'global_u2', name: 'Философский камень выпечки', desc: 'Всё производство x2', icon: '🧪', cost: 220000000, category: 'global', req: (b, s) => s.totalBaked >= 50000000, effect: s => s.globalMult *= 2 },
-    { id: 'global_u3', name: 'Печенье из другого измерения', desc: 'Всё производство x2', icon: '🌌', cost: 3500000000, category: 'global', req: (b, s) => s.totalBaked >= 800000000, effect: s => s.globalMult *= 2 },
-    { id: 'global_u4', name: 'Вселенская выпечка', desc: 'Всё производство x2', icon: '🌠', cost: 50000000000, category: 'global', req: (b, s) => s.totalBaked >= 12000000000, effect: s => s.globalMult *= 2 },
+    { id: 'cursor_u1', name: 'Наточенные курсоры', desc: 'Курсоры x2', icon: '✌️', cost: 100, category: 'building', buildingId: 'cursor', reqType: 'building', req: b => b.cursor >= 1, effect: s => s.cursorMult *= 2 },
+    { id: 'grandma_u1', name: 'Бабушкины рецепты', desc: 'Бабушки x2', icon: '📖', cost: 1000, category: 'building', buildingId: 'grandma', reqType: 'building', req: b => b.grandma >= 1, effect: s => s.buildingMult.grandma *= 2 },
+    { id: 'farm_u1', name: 'Удобрения', desc: 'Фермы x2', icon: '🌱', cost: 11000, category: 'building', buildingId: 'farm', reqType: 'building', req: b => b.farm >= 1, effect: s => s.buildingMult.farm *= 2 },
+    { id: 'click_u1', name: 'Крепкая хватка', desc: 'Сила клика x2', icon: '💪', cost: 500, category: 'click', reqType: 'clicks', reqValue: 20, req: (b, s) => s.totalClicks >= 20, effect: s => s.clickMult *= 2 },
+    { id: 'mine_u1', name: 'Новые кирки', desc: 'Шахты x2', icon: '⚒️', cost: 130000, category: 'building', buildingId: 'mine', reqType: 'building', req: b => b.mine >= 1, effect: s => s.buildingMult.mine *= 2 },
+    { id: 'click_u2', name: 'Стальные пальцы', desc: 'Сила клика x2', icon: '🖐️', cost: 10000, category: 'click', reqType: 'clicks', reqValue: 200, req: (b, s) => s.totalClicks >= 200, effect: s => s.clickMult *= 2 },
+    { id: 'factory_u1', name: 'Автоматизация', desc: 'Фабрики x2', icon: '⚙️', cost: 1400000, category: 'building', buildingId: 'factory', reqType: 'building', req: b => b.factory >= 1, effect: s => s.buildingMult.factory *= 2 },
+    { id: 'global_u1', name: 'Печенье с золотом', desc: 'Всё производство x2', icon: '✨', cost: 5000000, category: 'global', reqType: 'baked', reqValue: 1000000, req: (b, s) => s.totalBaked >= 1000000, effect: s => s.globalMult *= 2 },
+    { id: 'bank_u1', name: 'Хрустящие проценты', desc: 'Банки x2', icon: '💰', cost: 20000000, category: 'building', buildingId: 'bank', reqType: 'building', req: b => b.bank >= 1, effect: s => s.buildingMult.bank *= 2 },
+    { id: 'temple_u1', name: 'Древние благословения', desc: 'Храмы x2', icon: '🙏', cost: 260000000, category: 'building', buildingId: 'temple', reqType: 'building', req: b => b.temple >= 1, effect: s => s.buildingMult.temple *= 2 },
+    { id: 'lab_u1', name: 'Ядерная выпечка', desc: 'Лаборатории x2', icon: '☢️', cost: 3300000000, category: 'building', buildingId: 'lab', reqType: 'building', req: b => b.lab >= 1, effect: s => s.buildingMult.lab *= 2 },
+    { id: 'global_u2', name: 'Философский камень выпечки', desc: 'Всё производство x2', icon: '🧪', cost: 220000000, category: 'global', reqType: 'baked', reqValue: 50000000, req: (b, s) => s.totalBaked >= 50000000, effect: s => s.globalMult *= 2 },
+    { id: 'global_u3', name: 'Печенье из другого измерения', desc: 'Всё производство x2', icon: '🌌', cost: 3500000000, category: 'global', reqType: 'baked', reqValue: 800000000, req: (b, s) => s.totalBaked >= 800000000, effect: s => s.globalMult *= 2 },
+    { id: 'global_u4', name: 'Вселенская выпечка', desc: 'Всё производство x2', icon: '🌠', cost: 50000000000, category: 'global', reqType: 'baked', reqValue: 12000000000, req: (b, s) => s.totalBaked >= 12000000000, effect: s => s.globalMult *= 2 },
   ];
 
   const CATEGORY_LABELS = {
@@ -199,6 +199,15 @@
     return `${b.name}: ${formatNum(before)} → ${formatNum(before * 2)} печ/сек за шт.`;
   }
 
+  function upgradeReqText(u) {
+    if (u.reqType === 'building') {
+      const b = BUILDINGS.find(x => x.id === u.buildingId);
+      return `🔒 Откроется: купите ${b.icon} ${b.name}`;
+    }
+    if (u.reqType === 'clicks') return `🔒 Откроется: ${formatNum(u.reqValue)} кликов`;
+    return `🔒 Откроется: испечено ${formatNum(u.reqValue)} печенек`;
+  }
+
   // ---------- Daily reward ----------
   const DAILY_MIN_GAP = 20 * 3600 * 1000;
   const DAILY_RESET_GAP = 48 * 3600 * 1000;
@@ -305,28 +314,46 @@
 
   function renderUpgrades() {
     el.upgradesList.innerHTML = '';
-    const visible = UPGRADES.filter(u => !state.upgrades[u.id] ? u.req(state.buildings, state) || state.cookies >= u.cost * 0.5 : true);
-    if (visible.length === 0) {
-      el.upgradesList.innerHTML = '<div class="empty-hint">Апгрейды появятся по мере роста производства</div>';
-      return;
-    }
-    for (const category of CATEGORY_ORDER) {
-      const items = visible.filter(u => u.category === category);
-      if (items.length === 0) continue;
+    let anyRendered = false;
 
-      const boughtCount = items.filter(u => state.upgrades[u.id]).length;
+    for (const category of CATEGORY_ORDER) {
+      const categoryAll = UPGRADES.filter(u => u.category === category);
+      let items = categoryAll.filter(u => !state.upgrades[u.id] ? u.req(state.buildings, state) || state.cookies >= u.cost * 0.5 : true);
+
+      // Always surface a preview of the next locked upgrade in this category
+      // (even far from unlocking it) so players know there's more coming.
+      const teaserIds = new Set();
+      if (items.length < categoryAll.length) {
+        const shown = new Set(items.map(u => u.id));
+        const next = categoryAll.filter(u => !shown.has(u.id)).sort((a, b) => a.cost - b.cost)[0];
+        if (next) {
+          items = [...items, next];
+          teaserIds.add(next.id);
+        }
+      }
+      if (items.length === 0) continue;
+      anyRendered = true;
+
+      const boughtCount = categoryAll.filter(u => state.upgrades[u.id]).length;
       const header = document.createElement('div');
       header.className = 'section-header';
-      header.textContent = `${CATEGORY_LABELS[category]} (${boughtCount}/${items.length})`;
+      header.textContent = `${CATEGORY_LABELS[category]} (${boughtCount}/${categoryAll.length})`;
       el.upgradesList.appendChild(header);
 
       for (const u of items) {
         const bought = !!state.upgrades[u.id];
+        const isTeaser = teaserIds.has(u.id);
         const unlocked = u.req(state.buildings, state);
         const affordable = state.cookies >= u.cost;
         const card = document.createElement('button');
-        card.className = 'upgrade-card' + (bought ? ' bought' : unlocked ? (affordable ? '' : ' disabled') : ' locked');
-        card.innerHTML = `
+        card.className = 'upgrade-card' + (bought ? ' bought' : isTeaser ? ' teaser' : unlocked ? (affordable ? '' : ' disabled') : ' locked');
+        card.innerHTML = isTeaser ? `
+          <div class="upgrade-icon">🔒</div>
+          <div class="item-info">
+            <div class="upgrade-name">${u.name}</div>
+            <div class="upgrade-desc">${upgradeReqText(u)}</div>
+          </div>
+        ` : `
           <div class="upgrade-icon">${bought ? '✅' : u.icon}</div>
           <div class="item-info">
             <div class="upgrade-name">${u.name}</div>
@@ -335,11 +362,15 @@
           </div>
           ${bought ? '' : `<div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>`}
         `;
-        if (!bought && unlocked) {
+        if (!bought && !isTeaser && unlocked) {
           card.addEventListener('click', () => buyUpgrade(u));
         }
         el.upgradesList.appendChild(card);
       }
+    }
+
+    if (!anyRendered) {
+      el.upgradesList.innerHTML = '<div class="empty-hint">Апгрейды появятся по мере роста производства</div>';
     }
   }
 
