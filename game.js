@@ -55,10 +55,7 @@
 
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
 
-  // Set this to the deployed push-worker URL (see push/README.md), e.g.
-  // 'https://cookie-clicker-tma-push.<subdomain>.workers.dev/checkin'.
-  // Left blank until deployed — checkin silently no-ops until then.
-  const CHECKIN_URL = '';
+  const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
 
   const defaultState = () => ({
     cookies: 0,
