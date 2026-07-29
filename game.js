@@ -83,9 +83,9 @@
       state.buildings = Object.assign(defaultState().buildings, loaded.buildings || {});
       state.buildingMult = Object.assign(defaultState().buildingMult, loaded.buildingMult || {});
       state.upgrades = loaded.upgrades || {};
-      // offline progress
+      // offline progress: full speed, uncapped — cookies keep baking while the app is closed
       const elapsed = Math.max(0, (Date.now() - (loaded.lastTs || Date.now())) / 1000);
-      const offlineGain = Math.min(elapsed, 3600 * 8) * getCps() * 0.5;
+      const offlineGain = elapsed * getCps();
       if (offlineGain > 1) {
         state.cookies += offlineGain;
         state.totalBaked += offlineGain;
