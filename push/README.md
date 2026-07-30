@@ -72,6 +72,77 @@ The check-in endpoint is `<that URL>/checkin` — put it into `game.js` as
     message, stamps `pushStage = 3`.
   - None of these fire again until the player reopens the app (which resets
     `pushStage` back to 0 via `/checkin`).
+  - Also checks whether Happy Hour (06:00–07:00 and 18:00–19:00 UTC, twice a
+    day) or the Weekend event (Sat 00:00 UTC – Mon 00:00 UTC) just became
+    active. If so, and it hasn't already announced this specific occurrence
+    (tracked via an `eventflag:<id>:<date>[-hour]` KV marker with a 5-day
+    TTL), it broadcasts to every `user:*` entry in KV.
+
+## Analytics setup
+
+Uses a Cloudflare D1 database (`events` table — see `schema.sql`) instead of
+a third-party tool, so no extra account and funnel/cohort queries are just
+SQL against data you already control.
+
+```bash
+wrangler d1 create cookie-clicker-analytics
+```
+
+Prints a `database_id` — paste it into `wrangler.toml` replacing
+`REPLACE_WITH_D1_DATABASE_ID`. Then apply the schema:
+
+```bash
+wrangler d1 execute cookie-clicker-analytics --remote --file=schema.sql
+```
+
+Set two more secrets:
+
+```bash
+wrangler secret put WEBHOOK_SECRET   # any random string you make up
+wrangler secret put ADMIN_KEY        # any random string you make up
+```
+
+`WEBHOOK_SECRET` verifies incoming Telegram webhook calls actually came from
+Telegram (sent back as a header on every call once registered — see below).
+`ADMIN_KEY` gates `GET /funnel?key=<ADMIN_KEY>`, the only way to read
+aggregate stats without querying D1 directly.
+
+Deploy, then register the webhook (needs your bot token — replace
+`<BOT_TOKEN>` and `<WEBHOOK_SECRET>` with the actual values, and
+`<WORKER_URL>` with your deployed Worker's `*.workers.dev` URL):
+
+```bash
+curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
+  -d "url=<WORKER_URL>/telegram-webhook" \
+  -d "secret_token=<WEBHOOK_SECRET>"
+```
+
+Telegram will now POST every incoming message to `/telegram-webhook`; the
+Worker only acts on `/start` (bot_start, and ref_click if a referral
+`start` payload is present).
+
+Check it's wired up:
+
+```bash
+curl -s "https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo"
+```
+
+Should show your Worker's URL with no `last_error_message`.
+
+### Reading the funnel
+
+```bash
+curl -s "<WORKER_URL>/funnel?key=<ADMIN_KEY>"
+```
+
+Returns distinct-user counts per event — a quick pulse check, not a strict
+sequential funnel. For real funnel/cohort analysis (e.g. "of everyone who
+did ref_click, what % reached first_upgrade"), query `events` directly:
+
+```bash
+wrangler d1 execute cookie-clicker-analytics --remote \
+  --command "SELECT event, COUNT(DISTINCT user_id) FROM events GROUP BY event"
+```
 
 ## Scaling notes
 
@@ -91,12 +162,6 @@ batched across multiple invocations (e.g. via Cloudflare Queues) rather than
 one synchronous loop, and should respect Telegram's ~30 messages/sec bot-wide
 rate limit (not currently throttled). Not an issue at today's scale — flag it
 if the user base grows into the thousands.
-  - Also checks whether Happy Hour (06:00–07:00 and 18:00–19:00 UTC, twice a
-    day) or the Weekend event (Sat 00:00 UTC – Mon 00:00 UTC) just became
-    active. If so, and it hasn't already announced this specific occurrence
-    (tracked via an `eventflag:<id>:<date>[-hour]` KV marker with a 5-day
-    TTL), it broadcasts to
-    every `user:*` entry in KV.
 
 ## Local testing
 
