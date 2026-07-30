@@ -361,6 +361,39 @@ html, body {
   text-align: right;
 }
 
+/* Referral-unlocked building states in the shop list */
+.item-card.referral.ready {
+  border-color: var(--gold);
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.12), var(--card));
+}
+
+.item-card.referral.placed {
+  border-color: var(--accent);
+}
+
+.item-cost.referral-place {
+  color: var(--accent-text);
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  border-radius: 8px;
+  padding: 5px 10px;
+}
+
+.item-cost.referral-locked {
+  color: var(--hint);
+}
+
+.item-cost.referral-tag {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.unlock-desc {
+  font-size: 12px;
+  color: var(--hint);
+  line-height: 1.4;
+  margin-bottom: 18px;
+}
+
 .upgrade-card {
   display: flex;
   align-items: center;

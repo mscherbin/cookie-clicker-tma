@@ -35,6 +35,11 @@
     { id: 'supernova', name: 'Сверхновая',   icon: '💥', baseCost: 1900000000000000, baseCps: 17000000000 },
     { id: 'cosmicString', name: 'Космическая струна', icon: '🧵', baseCost: 18000000000000000, baseCps: 110000000000 },
     { id: 'primeMover', name: 'Первопричина', icon: '🌟', baseCost: 170000000000000000, baseCps: 700000000000 },
+    // Special building: can't be bought for cookies (referralLocked). Unlocked
+    // by reaching unlockFriends peak active friends, then placed for free.
+    // Its output scales with your peak army size (see buildingCps), so it
+    // grows along the same social axis that unlocks it.
+    { id: 'friendBakery', name: 'Пекарня дружбы', icon: '🫶', baseCps: 5000, referralLocked: true, unlockFriends: 10 },
   ];
 
   const UPGRADES = [
@@ -182,6 +187,7 @@
     ascensionCount: 0,
     activeReferrals: 0, // active friends invited; server-authoritative, refreshed each checkin
     maxActiveFriendsEver: 0, // peak active friends; drives referral titles, never regresses (server-authoritative)
+    referralOffered: {}, // per-building flag: unlock popup already shown for this referral building
     refBoostMax: REF_BOOST_MAX_DEFAULT, // cookie-army boost ceiling; overridden by server config on checkin
     refBoostTau: REF_BOOST_TAU_DEFAULT, // cookie-army boost growth constant; overridden by server config on checkin
     offlineBaseHours: OFFLINE_BASE_HOURS_DEFAULT, // Layer 2 offline-cap knobs; overridden by server config on checkin
@@ -352,6 +358,7 @@
           state.maxActiveFriendsEver = data.maxActiveFriendsEver;
           saveState();
           refreshAll();
+          maybeOfferReferralBuildings();
         }
         // Cookie-army boost knobs (MAX/TAU) are tuned server-side and pushed
         // down here, so the curve changes without a frontend release.
@@ -569,6 +576,9 @@
   function buildingCps(b) {
     let mult = state.buildingMult[b.id] || 1;
     if (b.id === 'cursor') mult *= state.cursorMult;
+    // Referral building output scales with peak army size — one bakery, but it
+    // bakes harder the more friends you've ever had active.
+    if (b.referralLocked) return b.baseCps * (state.maxActiveFriendsEver || 0) * mult;
     return b.baseCps * mult;
   }
 
@@ -682,6 +692,11 @@
     dailyStreakNum: document.getElementById('dailyStreakNum'),
     dailyRewardAmount: document.getElementById('dailyRewardAmount'),
     dailyClaimBtn: document.getElementById('dailyClaimBtn'),
+    unlockModal: document.getElementById('unlockModal'),
+    unlockIcon: document.getElementById('unlockIcon'),
+    unlockName: document.getElementById('unlockName'),
+    unlockDesc: document.getElementById('unlockDesc'),
+    unlockPlaceBtn: document.getElementById('unlockPlaceBtn'),
     eventBanner: document.getElementById('eventBanner'),
     eventBannerText: document.getElementById('eventBannerText'),
     leaderboardList: document.getElementById('leaderboardList'),
@@ -736,6 +751,10 @@
     el.buildingsList.innerHTML = '';
     for (const b of BUILDINGS) {
       const count = state.buildings[b.id];
+      if (b.referralLocked) {
+        el.buildingsList.appendChild(referralBuildingCard(b, count));
+        continue;
+      }
       const cost = buildingCost(b, count);
       const affordable = state.cookies >= cost;
       const card = document.createElement('button');
@@ -752,6 +771,50 @@
       card.addEventListener('click', () => buyBuilding(b));
       el.buildingsList.appendChild(card);
     }
+  }
+
+  // A referral-locked building shows right inside the normal shop list — as a
+  // 🔒 locked row (with the friend requirement as its tooltip/subtitle) until
+  // the peak-friends threshold is met, then as a free "Поставить" row, then as
+  // a placed producer. It's never purchasable for cookies.
+  function referralBuildingCard(b, count) {
+    const peak = state.maxActiveFriendsEver || 0;
+    const unlocked = peak >= b.unlockFriends;
+    const placed = count >= 1;
+    const tip = `Доступно за ${b.unlockFriends} активных друзей`;
+    const card = document.createElement('button');
+
+    let subText, costHtml;
+    if (placed) {
+      card.className = 'item-card referral placed';
+      subText = `${formatNum(buildingCps(b))} печ/сек`;
+      costHtml = '<div class="item-cost referral-tag">🫶 дар друзей</div>';
+    } else if (unlocked) {
+      card.className = 'item-card referral ready';
+      subText = 'Готово к установке — бесплатно';
+      costHtml = '<div class="item-cost referral-place">Поставить</div>';
+    } else {
+      card.className = 'item-card disabled referral locked';
+      card.title = tip;
+      subText = tip;
+      costHtml = `<div class="item-cost referral-locked">🔒 ${b.unlockFriends} друзей</div>`;
+    }
+
+    card.innerHTML = `
+      <div class="item-icon">${b.icon}</div>
+      <div class="item-info">
+        <div class="item-name">${b.name}</div>
+        <div class="item-sub">${subText}</div>
+      </div>
+      <div class="item-count">${count}</div>
+      ${costHtml}
+    `;
+    card.addEventListener('click', () => {
+      if (placed) { haptic('light'); return; }
+      if (unlocked) placeReferralBuilding(b);
+      else { showToast(tip); haptic('light'); }
+    });
+    return card;
   }
 
   function renderUpgrades() {
@@ -895,6 +958,7 @@
 
   // ---------- Actions ----------
   function buyBuilding(b) {
+    if (b.referralLocked) return; // referral buildings are placed for free, never bought
     const count = state.buildings[b.id];
     const cost = buildingCost(b, count);
     if (state.cookies < cost) { haptic('light'); return; }
@@ -902,6 +966,52 @@
     state.buildings[b.id] += 1;
     haptic('medium');
     refreshAll();
+  }
+
+  function placeReferralBuilding(b) {
+    const peak = state.maxActiveFriendsEver || 0;
+    if (peak < b.unlockFriends) { showToast(`Доступно за ${b.unlockFriends} активных друзей`); haptic('light'); return; }
+    if (state.buildings[b.id] >= 1) return; // unique — already placed
+    state.buildings[b.id] = 1;
+    if (state.referralOffered) state.referralOffered[b.id] = true;
+    haptic('heavy');
+    showToast(`${b.icon} ${b.name} установлена!`);
+    refreshAll();
+  }
+
+  // Referral-building unlock popup. Fires once per building (referralOffered
+  // flag) when its threshold is first met and it hasn't been placed — covers
+  // both crossing the threshold live and being already-eligible on load. Held
+  // back while the daily-reward modal is up so the two never stack.
+  let pendingUnlockBuilding = null;
+
+  function maybeOfferReferralBuildings() {
+    if (!el.unlockModal || el.dailyModal.classList.contains('show') || el.unlockModal.classList.contains('show')) return;
+    if (!state.referralOffered) state.referralOffered = {};
+    const peak = state.maxActiveFriendsEver || 0;
+    for (const b of BUILDINGS) {
+      if (!b.referralLocked) continue;
+      if (peak >= b.unlockFriends && !state.buildings[b.id] && !state.referralOffered[b.id]) {
+        state.referralOffered[b.id] = true;
+        saveState();
+        showUnlockModal(b);
+        return; // one at a time
+      }
+    }
+  }
+
+  function showUnlockModal(b) {
+    pendingUnlockBuilding = b;
+    el.unlockIcon.textContent = b.icon;
+    el.unlockName.textContent = b.name;
+    el.unlockDesc.textContent = `Награда за ${b.unlockFriends} активных друзей. Ставится бесплатно и печёт вместе с твоей армией!`;
+    el.unlockModal.classList.add('show');
+    haptic('heavy');
+  }
+
+  function hideUnlockModal() {
+    el.unlockModal.classList.remove('show');
+    pendingUnlockBuilding = null;
   }
 
   function buyUpgrade(u) {
@@ -1062,10 +1172,19 @@
   el.inviteBtn.addEventListener('click', inviteFriend);
   el.dailyBadge.addEventListener('click', showDailyModal);
   el.dailyClaimBtn.addEventListener('click', claimDailyReward);
+  el.unlockPlaceBtn.addEventListener('click', () => {
+    const b = pendingUnlockBuilding;
+    hideUnlockModal();
+    if (b) {
+      placeReferralBuilding(b);
+      document.querySelector('.tab-btn[data-tab="buildings"]').click(); // show the newly placed building
+    }
+  });
+  el.unlockModal.addEventListener('click', (e) => { if (e.target === el.unlockModal) hideUnlockModal(); });
 
   loadState();
   requestAnimationFrame(tick);
-  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); updateDailyBadge(); }, 3000);
+  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); updateDailyBadge(); maybeOfferReferralBuildings(); }, 3000);
   setInterval(() => { state.lastTs = Date.now(); saveState(); }, 10000);
   // Keep the leaderboard/push-worker record fresh during a long play session
   // instead of only ever reflecting the moment the app was opened.
