@@ -697,6 +697,11 @@
     unlockName: document.getElementById('unlockName'),
     unlockDesc: document.getElementById('unlockDesc'),
     unlockPlaceBtn: document.getElementById('unlockPlaceBtn'),
+    rewardTeaser: document.getElementById('rewardTeaser'),
+    rewardTeaserTitle: document.getElementById('rewardTeaserTitle'),
+    rewardTeaserSub: document.getElementById('rewardTeaserSub'),
+    rewardTeaserFill: document.getElementById('rewardTeaserFill'),
+    rewardTeaserCta: document.getElementById('rewardTeaserCta'),
     eventBanner: document.getElementById('eventBanner'),
     eventBannerText: document.getElementById('eventBannerText'),
     leaderboardList: document.getElementById('leaderboardList'),
@@ -953,6 +958,7 @@
     renderBuildings();
     renderUpgrades();
     renderStats();
+    renderRewardTeaser();
     updateDailyBadge();
   }
 
@@ -1012,6 +1018,44 @@
   function hideUnlockModal() {
     el.unlockModal.classList.remove('show');
     pendingUnlockBuilding = null;
+  }
+
+  // Persistent teaser above the cookie for the first not-yet-placed referral
+  // building: shows friend progress ("ещё N друзей") and a tap-to-invite CTA,
+  // or a "поставить" CTA once unlocked. Hides itself once the building is
+  // placed (or if there are no referral buildings left to earn).
+  let teaserBuilding = null;
+  function renderRewardTeaser() {
+    if (!el.rewardTeaser) return;
+    const b = BUILDINGS.find(x => x.referralLocked && !state.buildings[x.id]);
+    teaserBuilding = b || null;
+    if (!b) { el.rewardTeaser.hidden = true; return; }
+    el.rewardTeaser.hidden = false;
+
+    const peak = state.maxActiveFriendsEver || 0;
+    const unlocked = peak >= b.unlockFriends;
+    el.rewardTeaser.classList.toggle('ready', unlocked);
+    el.rewardTeaserTitle.textContent = b.name;
+    el.rewardTeaserFill.style.width = Math.min(100, peak / b.unlockFriends * 100) + '%';
+    if (unlocked) {
+      el.rewardTeaserSub.textContent = 'Открыта! Нажми, чтобы поставить';
+      el.rewardTeaserCta.textContent = 'Поставить';
+    } else {
+      const n = b.unlockFriends - peak;
+      el.rewardTeaserSub.textContent = `Ещё ${n} ${friendWord(n)} — особое здание`;
+      el.rewardTeaserCta.textContent = 'Позвать';
+    }
+  }
+
+  function onRewardTeaserClick() {
+    const b = teaserBuilding;
+    if (!b) return;
+    if ((state.maxActiveFriendsEver || 0) >= b.unlockFriends) {
+      placeReferralBuilding(b);
+      document.querySelector('.tab-btn[data-tab="buildings"]').click();
+    } else {
+      inviteFriend();
+    }
   }
 
   function buyUpgrade(u) {
@@ -1181,10 +1225,11 @@
     }
   });
   el.unlockModal.addEventListener('click', (e) => { if (e.target === el.unlockModal) hideUnlockModal(); });
+  el.rewardTeaser.addEventListener('click', onRewardTeaserClick);
 
   loadState();
   requestAnimationFrame(tick);
-  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); updateDailyBadge(); maybeOfferReferralBuildings(); }, 3000);
+  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); renderRewardTeaser(); updateDailyBadge(); maybeOfferReferralBuildings(); }, 3000);
   setInterval(() => { state.lastTs = Date.now(); saveState(); }, 10000);
   // Keep the leaderboard/push-worker record fresh during a long play session
   // instead of only ever reflecting the moment the app was opened.
