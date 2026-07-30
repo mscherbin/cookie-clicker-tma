@@ -175,11 +175,17 @@ async function getEconomyConfig(env) {
     offlineBaseHours: OFFLINE_BASE_HOURS_DEFAULT,
     offlineMaxExtra: OFFLINE_MAX_EXTRA_DEFAULT,
     offlineTau: OFFLINE_TAU_DEFAULT,
+    // Referral boost event: a manually-scheduled window that multiplies the
+    // one-time referral reward (Layer 1). Toggled before traffic pushes.
+    refEventActive: false,
+    refEventMultiplier: 1,
+    refEventStart: 0, // ms epoch; 0 = no lower bound
+    refEventEnd: 0,   // ms epoch; 0 = no upper bound
   };
   if (env.DB) {
     try {
       const rows = await env.DB.prepare(
-        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau')"
+        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end')"
       ).all();
       const map = {};
       for (const r of (rows.results || [])) map[r.key] = Number(r.value);
@@ -188,11 +194,25 @@ async function getEconomyConfig(env) {
       if (Number.isFinite(map.offline_base_hours)) cfg.offlineBaseHours = map.offline_base_hours;
       if (Number.isFinite(map.offline_max_extra_hours)) cfg.offlineMaxExtra = map.offline_max_extra_hours;
       if (Number.isFinite(map.offline_tau) && map.offline_tau > 0) cfg.offlineTau = map.offline_tau;
+      cfg.refEventActive = map.ref_event_active > 0;
+      if (Number.isFinite(map.ref_event_multiplier) && map.ref_event_multiplier > 0) cfg.refEventMultiplier = map.ref_event_multiplier;
+      if (Number.isFinite(map.ref_event_start)) cfg.refEventStart = map.ref_event_start;
+      if (Number.isFinite(map.ref_event_end)) cfg.refEventEnd = map.ref_event_end;
     } catch (e) { /* table may not exist yet — fall back to defaults */ }
   }
   _configCache = cfg;
   _configCacheTs = now;
   return cfg;
+}
+
+// Whether the referral boost event is live right now: master switch on, inside
+// the [start, end] window (0 bounds = open-ended), and the multiplier actually
+// boosts (> 1). Everything reads through this one predicate.
+function refEventActiveNow(cfg, now) {
+  if (!cfg.refEventActive || !(cfg.refEventMultiplier > 1)) return false;
+  if (cfg.refEventStart && now < cfg.refEventStart) return false;
+  if (cfg.refEventEnd && now > cfg.refEventEnd) return false;
+  return true;
 }
 
 // Every user who ever triggers any event gets a `users` row (idempotent —
@@ -285,10 +305,14 @@ async function logEvent(env, userId, eventName, refCode) {
           const userRow = await env.DB.prepare('SELECT referrer_id FROM users WHERE user_id = ?').bind(userId).first();
           const referrerId = userRow && userRow.referrer_id;
           if (referrerId) {
-            await grantReward(env, userId, REFEREE_WELCOME_BONUS);
+            // Layer 1 one-time reward, scaled by the referral event multiplier
+            // while a boost event is live (used before traffic pushes).
+            const cfg = await getEconomyConfig(env);
+            const eventMult = refEventActiveNow(cfg, now) ? cfg.refEventMultiplier : 1;
+            await grantReward(env, userId, REFEREE_WELCOME_BONUS * eventMult);
             const referrerCps = await getKnownCps(env, referrerId);
             const referrerBonus = Math.max(REFERRER_BONUS_MIN, referrerCps * REFERRER_BONUS_SECONDS);
-            await grantReward(env, referrerId, referrerBonus);
+            await grantReward(env, referrerId, referrerBonus * eventMult);
           }
         }
       }
@@ -456,8 +480,11 @@ async function handleCheckin(request, env) {
   const cfg = await getEconomyConfig(env);
   const refConfig = { max: cfg.refBoostMax, tau: cfg.refBoostTau };
   const offlineConfig = { base: cfg.offlineBaseHours, maxExtra: cfg.offlineMaxExtra, tau: cfg.offlineTau };
+  const refEvent = refEventActiveNow(cfg, now)
+    ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
+    : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent });
 }
 
 async function handleLeaderboard(env) {
@@ -597,6 +624,22 @@ async function checkAndBroadcastEvents(env) {
     if (already) continue;
     await env.USERS.put(markerKey, '1', { expirationTtl: 5 * 24 * 3600 });
     await broadcastToAllUsers(env, ev.text);
+  }
+
+  // Referral boost event (config-driven). Announced once per occurrence,
+  // keyed by its start + multiplier — to re-announce a new run, set a fresh
+  // ref_event_start. Fires within one cron tick (~15 min) of the event
+  // turning on.
+  const cfg = await getEconomyConfig(env);
+  if (refEventActiveNow(cfg, Date.now())) {
+    const occ = `${cfg.refEventStart || 'manual'}:${cfg.refEventMultiplier}`;
+    const markerKey = `eventflag:refevent:${occ}`;
+    const already = await env.USERS.get(markerKey);
+    if (!already) {
+      await env.USERS.put(markerKey, '1', { expirationTtl: 7 * 24 * 3600 });
+      const tail = cfg.refEventEnd ? ' Успей позвать друзей!' : '';
+      await broadcastToAllUsers(env, `🎉 Событие рефералов! Награда за приглашённых друзей ×${cfg.refEventMultiplier}.${tail}`);
+    }
   }
 }
 

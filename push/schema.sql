@@ -62,4 +62,12 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   ('ref_boost_tau', '25'),
   ('offline_base_hours', '2'),
   ('offline_max_extra_hours', '8'),
-  ('offline_tau', '35');
+  ('offline_tau', '35'),
+  -- Referral boost event, toggled manually before traffic pushes.
+  -- ref_event_active: 1 to arm; ref_event_multiplier: e.g. 3 for x3 Layer-1
+  -- reward; start/end: ms epoch window (0 = open-ended). Active when armed AND
+  -- inside the window AND multiplier > 1.
+  ('ref_event_active', '0'),
+  ('ref_event_multiplier', '1'),
+  ('ref_event_start', '0'),
+  ('ref_event_end', '0');

@@ -388,6 +388,11 @@
             refreshAll();
           }
         }
+        // Referral boost event (server-config-driven): show/hide the banner.
+        if (data && data.refEvent) {
+          refEventInfo = data.refEvent.active ? data.refEvent : null;
+          updateRefEventBanner();
+        }
       })
       .catch(() => {});
   }
@@ -756,6 +761,8 @@
     rewardTeaserCta: document.getElementById('rewardTeaserCta'),
     eventBanner: document.getElementById('eventBanner'),
     eventBannerText: document.getElementById('eventBannerText'),
+    refEventBanner: document.getElementById('refEventBanner'),
+    refEventBannerText: document.getElementById('refEventBannerText'),
     leaderboardList: document.getElementById('leaderboardList'),
     referralLeaderboardList: document.getElementById('referralLeaderboardList'),
     refToggleWeekly: document.getElementById('refToggleWeekly'),
@@ -805,6 +812,27 @@
     const ss = String(Math.floor((remain % 60000) / 1000)).padStart(2, '0');
     el.eventBannerText.textContent = `${label} · x${totalMult} · осталось ${hh}:${mm}:${ss}`;
     el.eventBanner.hidden = false;
+  }
+
+  // Referral boost event banner — driven by server config (refEventInfo set on
+  // checkin), with a live countdown when the event has an end time.
+  let refEventInfo = null;
+  function updateRefEventBanner() {
+    if (!el.refEventBanner) return;
+    if (!refEventInfo || !refEventInfo.active) { el.refEventBanner.hidden = true; return; }
+    const mult = refEventInfo.multiplier || 1;
+    let text = `🎉 Награда за друзей ×${mult}`;
+    if (refEventInfo.endAt) {
+      const remain = refEventInfo.endAt - Date.now();
+      if (remain <= 0) { el.refEventBanner.hidden = true; refEventInfo = null; return; }
+      const hh = String(Math.floor(remain / 3600000)).padStart(2, '0');
+      const mm = String(Math.floor((remain % 3600000) / 60000)).padStart(2, '0');
+      const ss = String(Math.floor((remain % 60000) / 1000)).padStart(2, '0');
+      text += ` · осталось ${hh}:${mm}:${ss}`;
+    }
+    text += ' · зови друзей!';
+    el.refEventBannerText.textContent = text;
+    el.refEventBanner.hidden = false;
   }
 
   function renderBuildings() {
@@ -1295,6 +1323,7 @@
   setInterval(sendCheckin, 120000);
   updateEventBanner();
   setInterval(updateEventBanner, 1000);
+  setInterval(updateRefEventBanner, 1000);
   scheduleGolden();
 
   window.addEventListener('beforeunload', () => { state.lastTs = Date.now(); saveState(); });

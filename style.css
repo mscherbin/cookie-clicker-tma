@@ -99,6 +99,13 @@ html, body {
   display: none;
 }
 
+/* Referral boost event — distinct pink→gold so it reads separately from the
+   Happy Hour / Weekend gold banner even when both are up. */
+.ref-event-banner {
+  background: linear-gradient(90deg, #ff9ec7, var(--gold), #ff9ec7);
+  background-size: 200% 100%;
+}
+
 @keyframes eventShimmer {
   0% { background-position: 0% 50%; }
   100% { background-position: 200% 50%; }
