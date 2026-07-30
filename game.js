@@ -713,6 +713,14 @@
     const streak = previewDailyStreak();
     el.dailyStreakNum.textContent = streak;
     el.dailyRewardAmount.textContent = formatNum(computeDailyReward(streak));
+    // Tutorial step 3: introduce referrals on a RETURN day (lastDailyClaim != 0
+    // means they've claimed before, so this modal is a comeback). Shown once —
+    // by now they have progress to protect and have felt the offline mechanic,
+    // so "invite a friend, both get a bonus" reads as value, not bot spam.
+    const t = tut();
+    const showRef = state.lastDailyClaim !== 0 && !t.referralIntroShown;
+    if (el.dailyReferral) el.dailyReferral.hidden = !showRef;
+    if (showRef) { t.referralIntroShown = true; saveState(); }
     el.dailyModal.classList.add('show');
   }
 
@@ -754,6 +762,8 @@
     dailyStreakNum: document.getElementById('dailyStreakNum'),
     dailyRewardAmount: document.getElementById('dailyRewardAmount'),
     dailyClaimBtn: document.getElementById('dailyClaimBtn'),
+    dailyReferral: document.getElementById('dailyReferral'),
+    dailyInviteBtn: document.getElementById('dailyInviteBtn'),
     unlockModal: document.getElementById('unlockModal'),
     unlockIcon: document.getElementById('unlockIcon'),
     unlockName: document.getElementById('unlockName'),
@@ -1384,6 +1394,7 @@
   el.inviteBtn.addEventListener('click', inviteFriend);
   el.dailyBadge.addEventListener('click', showDailyModal);
   el.dailyClaimBtn.addEventListener('click', claimDailyReward);
+  el.dailyInviteBtn.addEventListener('click', inviteFriend);
   el.unlockPlaceBtn.addEventListener('click', () => {
     const b = pendingUnlockBuilding;
     hideUnlockModal();

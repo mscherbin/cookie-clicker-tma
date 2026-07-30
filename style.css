@@ -1090,3 +1090,31 @@ html, body {
   font-weight: 800;
   cursor: pointer;
 }
+
+/* Tutorial step 3: referral intro shown inside the daily modal on return. */
+.daily-referral {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--card-border);
+}
+
+.daily-referral[hidden] { display: none; }
+
+.daily-referral-text {
+  font-size: 12px;
+  color: var(--hint);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+.daily-invite-btn {
+  width: 100%;
+  padding: 12px;
+  background: rgba(255, 209, 102, 0.12);
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
