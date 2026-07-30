@@ -66,6 +66,7 @@
 
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
   const BACKUP_KEY = SAVE_KEY + '_backup';
+  const OFFLINE_RATE = 0.1; // production while the mini app is closed, as a fraction of normal cps
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
@@ -113,9 +114,10 @@
       state.buildingMult = Object.assign(defaultState().buildingMult, loaded.buildingMult || {});
       state.upgrades = loaded.upgrades || {};
       if (opts.grantOfflineProgress !== false) {
-        // offline progress: full speed, uncapped — cookies keep baking while the app is closed
+        // offline progress: 10% of normal rate, uncapped duration — cookies
+        // keep baking while the app is closed, but much slower than active play
         const elapsed = Math.max(0, (Date.now() - (loaded.lastTs || Date.now())) / 1000);
-        const offlineGain = elapsed * getCps();
+        const offlineGain = elapsed * getCps() * OFFLINE_RATE;
         if (offlineGain > 1) {
           state.cookies += offlineGain;
           state.totalBaked += offlineGain;

@@ -14,6 +14,7 @@
 const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/';
 const STAGE1_MS = 5 * 3600 * 1000; // ~5h: "cookies piling up"
 const STAGE2_MS = 24 * 3600 * 1000; // 24h: "daily reward + cookies waiting"
+const OFFLINE_RATE = 0.1; // must match game.js's OFFLINE_RATE — production while closed
 
 // Same schedule as game.js's Happy Hour / Weekend event math — keep these two
 // in sync if the schedule ever changes.
@@ -179,7 +180,7 @@ async function handleLeaderboard(env) {
 }
 
 function stage1Text(data) {
-  const approxCookies = Math.round((data.cps || 0) * (STAGE1_MS / 1000));
+  const approxCookies = Math.round((data.cps || 0) * (STAGE1_MS / 1000) * OFFLINE_RATE);
   const cookiesLine = approxCookies > 0 ? ` Уже накопилось ~${approxCookies} 🍪.` : '';
   return `🍪 Твои печеньки скучают без присмотра!${cookiesLine} Заходи, пока курсоры не разбежались.`;
 }
