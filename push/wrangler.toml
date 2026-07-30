@@ -8,3 +8,8 @@ crons = ["*/15 * * * *"]
 [[kv_namespaces]]
 binding = "USERS"
 id = "198ea5dd232e422ba569ab6a3ff05993"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cookie-clicker-analytics"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

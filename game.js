@@ -78,6 +78,8 @@
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
+  const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
+  const BOT_USERNAME = 'bestcookieclickerbot';
 
   const defaultState = () => ({
     cookies: 0,
@@ -236,8 +238,27 @@
     }).catch(() => {});
   }
 
+  // Funnel events (app_open is logged server-side as part of /checkin,
+  // since it already fires on every load — no need for a separate call).
+  function sendAnalyticsEvent(eventName) {
+    if (!EVENTS_URL || !tg || !tg.initData) return;
+    fetch(EVENTS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tg.initData, event: eventName }),
+    }).catch(() => {});
+  }
+
   function ownTelegramUserId() {
     return tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
+  }
+
+  function inviteFriend() {
+    const myId = ownTelegramUserId();
+    if (!myId || !tg || !tg.openTelegramLink) { showToast('Доступно только в Telegram'); return; }
+    const deepLink = `https://t.me/${BOT_USERNAME}?start=ref${myId}`;
+    const shareText = 'Залипаю в Cookie Clicker — залетай печь печеньки со мной! 🍪';
+    tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(shareText)}`);
   }
 
   function loadLeaderboard() {
@@ -518,6 +539,7 @@
     pushCloudBtn: document.getElementById('pushCloudBtn'),
     pullCloudBtn: document.getElementById('pullCloudBtn'),
     restoreBackupBtn: document.getElementById('restoreBackupBtn'),
+    inviteBtn: document.getElementById('inviteBtn'),
   };
 
   function countBoughtUpgrades(category) {
@@ -675,6 +697,7 @@
   function buyUpgrade(u) {
     if (state.upgrades[u.id]) return;
     if (state.cookies < u.cost) { haptic('light'); return; }
+    if (Object.keys(state.upgrades).length === 0) sendAnalyticsEvent('first_upgrade');
     state.cookies -= u.cost;
     state.upgrades[u.id] = true;
     u.effect(state);
@@ -684,6 +707,7 @@
   }
 
   function clickCookie(x, y) {
+    if (state.totalClicks === 0) sendAnalyticsEvent('first_click');
     const gain = getClickPower();
     state.cookies += gain;
     state.totalBaked += gain;
@@ -811,6 +835,7 @@
   el.pushCloudBtn.addEventListener('click', pushToCloud);
   el.pullCloudBtn.addEventListener('click', pullFromCloud);
   el.restoreBackupBtn.addEventListener('click', restoreBackup);
+  el.inviteBtn.addEventListener('click', inviteFriend);
   el.dailyBadge.addEventListener('click', showDailyModal);
   el.dailyClaimBtn.addEventListener('click', claimDailyReward);
 

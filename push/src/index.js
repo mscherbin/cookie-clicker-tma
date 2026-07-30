@@ -131,6 +131,113 @@ async function validateInitData(initData, botToken) {
   return { user, authDate };
 }
 
+// ---------- Analytics (D1) ----------
+// Inserts a raw event row, then derives two things automatically so callers
+// only ever report what actually happened (bot_start, ref_click, app_open,
+// first_click, first_upgrade) — never the derived stages themselves:
+//   - d1_return: the first event on a calendar day after this user's very
+//     first-ever event, logged once.
+//   - ref_install / ref_active: if this user's history includes a ref_click,
+//     their first app_open promotes them to ref_install, and their first
+//     first_click/d1_return promotes them to ref_active — each logged once.
+async function logEvent(env, userId, eventName, refCode) {
+  const now = Date.now();
+  await env.DB.prepare('INSERT INTO events (user_id, event, ref_code, ts) VALUES (?, ?, ?, ?)')
+    .bind(userId, eventName, refCode || null, now).run();
+
+  if (eventName !== 'd1_return') {
+    const first = await env.DB.prepare('SELECT MIN(ts) as firstTs FROM events WHERE user_id = ?').bind(userId).first();
+    if (first && first.firstTs && first.firstTs < now) {
+      const firstDay = new Date(first.firstTs).toISOString().slice(0, 10);
+      const thisDay = new Date(now).toISOString().slice(0, 10);
+      if (thisDay > firstDay) {
+        const already = await env.DB.prepare("SELECT 1 FROM events WHERE user_id = ? AND event = 'd1_return' LIMIT 1").bind(userId).first();
+        if (!already) {
+          await env.DB.prepare('INSERT INTO events (user_id, event, ref_code, ts) VALUES (?, ?, ?, ?)')
+            .bind(userId, 'd1_return', null, now).run();
+        }
+      }
+    }
+  }
+
+  if (eventName === 'app_open' || eventName === 'first_click' || eventName === 'd1_return') {
+    const refRow = await env.DB.prepare("SELECT ref_code FROM events WHERE user_id = ? AND event = 'ref_click' ORDER BY ts ASC LIMIT 1").bind(userId).first();
+    if (refRow && refRow.ref_code) {
+      const derived = eventName === 'app_open' ? 'ref_install' : 'ref_active';
+      const already = await env.DB.prepare('SELECT 1 FROM events WHERE user_id = ? AND event = ? LIMIT 1').bind(userId, derived).first();
+      if (!already) {
+        await env.DB.prepare('INSERT INTO events (user_id, event, ref_code, ts) VALUES (?, ?, ?, ?)')
+          .bind(userId, derived, refRow.ref_code, now).run();
+      }
+    }
+  }
+}
+
+async function handleEvent(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ ok: false, error: 'bad_json' }, 400);
+  }
+
+  const ALLOWED_EVENTS = new Set(['app_open', 'first_click', 'first_upgrade']);
+  if (!ALLOWED_EVENTS.has(body.event)) return jsonResponse({ ok: false, error: 'bad_event' }, 400);
+
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+
+  await logEvent(env, result.user.id, body.event);
+  return jsonResponse({ ok: true });
+}
+
+// Telegram calls this on every message once a webhook is registered (see
+// push/README.md for the setWebhook command). Only handles /start — that's
+// all we need for bot_start / ref_click attribution.
+async function handleTelegramWebhook(request, env) {
+  const secret = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
+  if (!env.WEBHOOK_SECRET || secret !== env.WEBHOOK_SECRET) {
+    return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  }
+
+  let update;
+  try {
+    update = await request.json();
+  } catch (e) {
+    return jsonResponse({ ok: true }); // don't make Telegram retry on a malformed body
+  }
+
+  const msg = update.message;
+  if (msg && msg.text && msg.text.startsWith('/start') && msg.from) {
+    const userId = msg.from.id;
+    await logEvent(env, userId, 'bot_start');
+    const startParam = msg.text.trim().split(/\s+/)[1];
+    if (startParam) {
+      await logEvent(env, userId, 'ref_click', startParam);
+    }
+  }
+
+  return jsonResponse({ ok: true });
+}
+
+// GET /funnel?key=<ADMIN_KEY> — distinct-user counts per event, the
+// simplest useful view of the funnel. Not a strict sequential-conversion
+// funnel yet; good enough to sanity-check the pipeline is capturing data,
+// query push/schema.sql's `events` table directly (via `wrangler d1
+// execute`) for real funnel/cohort SQL once there's enough data to matter.
+async function handleFunnel(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) {
+    return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  }
+
+  const stages = await env.DB.prepare(
+    'SELECT event, COUNT(DISTINCT user_id) as users FROM events GROUP BY event ORDER BY users DESC'
+  ).all();
+
+  return jsonResponse({ ok: true, stages: stages.results });
+}
+
 async function handleCheckin(request, env) {
   let body;
   try {
@@ -165,6 +272,10 @@ async function handleCheckin(request, env) {
   // more than a few dozen/thousand registered users, regardless of how many
   // are actually active. list() only costs one subrequest per 1000 keys.
   await env.USERS.put(key, JSON.stringify(data), { metadata: data });
+
+  if (env.DB) {
+    try { await logEvent(env, user.id, 'app_open'); } catch (e) { /* analytics must never break checkin */ }
+  }
 
   return jsonResponse({ ok: true });
 }
@@ -287,6 +398,18 @@ export default {
 
     if (url.pathname === '/leaderboard' && request.method === 'GET') {
       return handleLeaderboard(env);
+    }
+
+    if (url.pathname === '/event' && request.method === 'POST') {
+      return handleEvent(request, env);
+    }
+
+    if (url.pathname === '/telegram-webhook' && request.method === 'POST') {
+      return handleTelegramWebhook(request, env);
+    }
+
+    if (url.pathname === '/funnel' && request.method === 'GET') {
+      return handleFunnel(request, env);
     }
 
     return jsonResponse({ ok: false, error: 'not_found' }, 404);
