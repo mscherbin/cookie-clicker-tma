@@ -194,6 +194,7 @@
     offlineBaseHours: OFFLINE_BASE_HOURS_DEFAULT, // Layer 2 offline-cap knobs; overridden by server config on checkin
     offlineMaxExtra: OFFLINE_MAX_EXTRA_DEFAULT,
     offlineTau: OFFLINE_TAU_DEFAULT,
+    tutorial: {}, // completed onboarding hints, keyed by step id (e.g. { clicked: true })
   });
 
   let state = defaultState();
@@ -612,12 +613,14 @@
     const keepLastDailyClaim = state.lastDailyClaim;
     const keepTotalCrumbs = (state.totalCrumbs || 0) + crumbsEarned;
     const keepAscensionCount = (state.ascensionCount || 0) + 1;
+    const keepTutorial = state.tutorial || {}; // don't re-show onboarding hints to a veteran
 
     state = defaultState();
     state.dailyStreak = keepDailyStreak;
     state.lastDailyClaim = keepLastDailyClaim;
     state.totalCrumbs = keepTotalCrumbs;
     state.ascensionCount = keepAscensionCount;
+    state.tutorial = keepTutorial;
 
     haptic('heavy');
     showToast(`👼 Вознесение! +${formatNum(crumbsEarned)} крошек · бонус теперь +${keepTotalCrumbs}%`);
@@ -738,6 +741,7 @@
     cps: document.getElementById('cps'),
     clickPowerLine: document.getElementById('clickPowerLine'),
     bigCookie: document.getElementById('bigCookie'),
+    clickHint: document.getElementById('clickHint'),
     floatLayer: document.getElementById('floatLayer'),
     buildingsList: document.getElementById('buildingsList'),
     upgradesList: document.getElementById('upgradesList'),
@@ -1042,7 +1046,17 @@
     renderUpgrades();
     renderStats();
     renderRewardTeaser();
+    updateTutorial();
     updateDailyBadge();
+  }
+
+  // Onboarding. Step 0: until the very first cookie tap, gently pulse the
+  // cookie and show a non-blocking "tap me" hint. Nothing intercepts the tap.
+  function updateTutorial() {
+    if (!el.clickHint) return;
+    const showClick = !(state.tutorial && state.tutorial.clicked);
+    el.clickHint.hidden = !showClick;
+    el.bigCookie.classList.toggle('tutorial-pulse', showClick);
   }
 
   // ---------- Actions ----------
@@ -1162,6 +1176,9 @@
     spawnFloatNum(gain, x, y);
     haptic('light');
     renderTopbar();
+    // Step 0 done on the first-ever tap: dismiss the hint, stop the pulse.
+    state.tutorial = state.tutorial || {};
+    if (!state.tutorial.clicked) { state.tutorial.clicked = true; saveState(); updateTutorial(); }
     if (state.totalClicks % 5 === 0) { renderBuildings(); renderUpgrades(); }
   }
 
