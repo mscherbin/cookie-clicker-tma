@@ -527,6 +527,11 @@ html, body {
   line-height: 1.4;
 }
 
+.restore-btn {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .golden-cookie {
   position: absolute;
   font-size: 40px;
