@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=17" />
+<link rel="stylesheet" href="style.css?v=18" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -140,6 +140,16 @@
         <button id="ascendBtn" class="ascend-btn">Вознестись</button>
       </div>
 
+      <div class="sync-card">
+        <div class="sync-title">Синхронизация между устройствами</div>
+        <div id="syncStatus" class="sync-status">—</div>
+        <div class="sync-buttons">
+          <button id="pushCloudBtn" class="sync-btn">⬆️ Отправить в облако</button>
+          <button id="pullCloudBtn" class="sync-btn">⬇️ Загрузить из облака</button>
+        </div>
+        <div class="sync-hint">Если на разных устройствах разные цифры — на том, чей прогресс хотите оставить, нажмите «Отправить», а на остальных — «Загрузить».</div>
+      </div>
+
       <button id="resetBtn" class="reset-btn">Сбросить прогресс полностью</button>
     </section>
 
@@ -162,6 +172,6 @@
   </div>
 </div>
 
-<script src="game.js?v=17"></script>
+<script src="game.js?v=18"></script>
 </body>
 </html>

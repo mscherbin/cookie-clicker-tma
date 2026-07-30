@@ -92,33 +92,84 @@
   function saveState() {
     const data = JSON.stringify(state);
     if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-      tg.CloudStorage.setItem(SAVE_KEY, data, () => {});
+      tg.CloudStorage.setItem(SAVE_KEY, data, (err, success) => {
+        // Swallowed everywhere before — a device whose CloudStorage save
+        // silently failed just diverged from every other device forever,
+        // with no way to tell why. Not toasting here (autosave runs every
+        // 10s, would spam) but at least it's visible in devtools.
+        if (err || success === false) console.warn('CloudStorage save failed:', err);
+      });
     }
     try { localStorage.setItem(SAVE_KEY, data); } catch (e) {}
   }
 
-  function applyLoaded(raw) {
-    if (!raw) return;
+  function applyLoaded(raw, opts = {}) {
+    if (!raw) return false;
     try {
       const loaded = JSON.parse(raw);
       state = Object.assign(defaultState(), loaded);
       state.buildings = Object.assign(defaultState().buildings, loaded.buildings || {});
       state.buildingMult = Object.assign(defaultState().buildingMult, loaded.buildingMult || {});
       state.upgrades = loaded.upgrades || {};
-      // offline progress: full speed, uncapped — cookies keep baking while the app is closed
-      const elapsed = Math.max(0, (Date.now() - (loaded.lastTs || Date.now())) / 1000);
-      const offlineGain = elapsed * getCps();
-      if (offlineGain > 1) {
-        state.cookies += offlineGain;
-        state.totalBaked += offlineGain;
-        showToast(`Пока вас не было, испечено ${formatNum(offlineGain)} 🍪`);
+      if (opts.grantOfflineProgress !== false) {
+        // offline progress: full speed, uncapped — cookies keep baking while the app is closed
+        const elapsed = Math.max(0, (Date.now() - (loaded.lastTs || Date.now())) / 1000);
+        const offlineGain = elapsed * getCps();
+        if (offlineGain > 1) {
+          state.cookies += offlineGain;
+          state.totalBaked += offlineGain;
+          showToast(`Пока вас не было, испечено ${formatNum(offlineGain)} 🍪`);
+        }
       }
-    } catch (e) { /* ignore corrupt save */ }
+    } catch (e) { return false; }
     refreshAll();
+    return true;
   }
 
   function cloudStorageUsable() {
     return !!(tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9'));
+  }
+
+  // Diagnoses *why* two devices might have diverged saves: if this returns
+  // anything other than 'ok' on a given device, that device has never been
+  // syncing through CloudStorage at all — it's been living in its own
+  // browser-local bubble the whole time.
+  function cloudStorageStatus() {
+    if (!tg) return 'no-telegram';
+    if (!tg.CloudStorage) return 'no-cloudstorage-api';
+    if (!(tg.isVersionAtLeast && tg.isVersionAtLeast('6.9'))) return 'version-too-old';
+    return 'ok';
+  }
+
+  function cloudStorageStatusText() {
+    switch (cloudStorageStatus()) {
+      case 'ok': return '☁️ Облако Telegram — синхронизируется между устройствами';
+      case 'no-telegram': return '📱 Не в Telegram — сохранение только в этом браузере';
+      case 'no-cloudstorage-api': return '⚠️ CloudStorage недоступен — сохранение только на этом устройстве';
+      default: return '⚠️ Версия Telegram устарела для облака — сохранение только на этом устройстве';
+    }
+  }
+
+  function pushToCloud() {
+    if (!tg || !tg.CloudStorage) { showToast('CloudStorage недоступен на этом устройстве'); return; }
+    tg.CloudStorage.setItem(SAVE_KEY, JSON.stringify(state), (err, success) => {
+      if (err || success === false) { showToast('Не удалось отправить в облако'); return; }
+      showToast('✅ Это сохранение отправлено в облако');
+    });
+  }
+
+  function pullFromCloud() {
+    if (!tg || !tg.CloudStorage) { showToast('CloudStorage недоступен на этом устройстве'); return; }
+    tg.CloudStorage.getItem(SAVE_KEY, (err, value) => {
+      if (err || !value) { showToast('В облаке пусто или ошибка загрузки'); return; }
+      if (!confirm('Заменить прогресс на этом устройстве тем, что сохранено в облаке?')) return;
+      if (applyLoaded(value, { grantOfflineProgress: false })) {
+        saveState();
+        showToast('✅ Загружено из облака');
+      } else {
+        showToast('Не удалось разобрать сохранение из облака');
+      }
+    });
   }
 
   // Tells the push worker "this user is active right now", so it holds off
@@ -415,6 +466,9 @@
     ascendBonus: document.getElementById('ascendBonus'),
     ascendPreview: document.getElementById('ascendPreview'),
     ascendBtn: document.getElementById('ascendBtn'),
+    syncStatus: document.getElementById('syncStatus'),
+    pushCloudBtn: document.getElementById('pushCloudBtn'),
+    pullCloudBtn: document.getElementById('pullCloudBtn'),
   };
 
   function countBoughtUpgrades(category) {
@@ -546,6 +600,8 @@
     el.ascendCrumbs.textContent = formatNum(state.totalCrumbs || 0);
     el.ascendBonus.textContent = `+${state.totalCrumbs || 0}%`;
     el.ascendPreview.textContent = `+${formatNum(potentialCrumbs())} 👼`;
+
+    el.syncStatus.textContent = cloudStorageStatusText();
   }
 
   function refreshAll() {
@@ -702,6 +758,8 @@
 
   document.getElementById('resetBtn').addEventListener('click', resetProgress);
   el.ascendBtn.addEventListener('click', ascend);
+  el.pushCloudBtn.addEventListener('click', pushToCloud);
+  el.pullCloudBtn.addEventListener('click', pullFromCloud);
   el.dailyBadge.addEventListener('click', showDailyModal);
   el.dailyClaimBtn.addEventListener('click', claimDailyReward);
 
