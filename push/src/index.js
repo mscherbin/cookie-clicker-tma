@@ -146,6 +146,11 @@ const REFERRER_BONUS_MIN = 200; // floor, for referrers with ~0 cps so far
 // its own matching fallback for the offline / pre-checkin case.
 const REF_BOOST_MAX_DEFAULT = 1.0; // ceiling: +100% production
 const REF_BOOST_TAU_DEFAULT = 25;  // growth constant: ~63% of MAX at 25 friends
+// Layer 2: active friends extend the full-rate offline window (client applies
+// it; these are the fallbacks if the config rows are missing).
+const OFFLINE_BASE_HOURS_DEFAULT = 2;
+const OFFLINE_MAX_EXTRA_DEFAULT = 8;
+const OFFLINE_TAU_DEFAULT = 35;
 
 // The config rarely changes, but /checkin runs constantly, so cache it in
 // isolate memory for a short TTL rather than hitting D1 on every request.
@@ -157,14 +162,25 @@ let _configCacheTs = 0;
 async function getEconomyConfig(env) {
   const now = Date.now();
   if (_configCache && now - _configCacheTs < CONFIG_TTL_MS) return _configCache;
-  const cfg = { refBoostMax: REF_BOOST_MAX_DEFAULT, refBoostTau: REF_BOOST_TAU_DEFAULT };
+  const cfg = {
+    refBoostMax: REF_BOOST_MAX_DEFAULT,
+    refBoostTau: REF_BOOST_TAU_DEFAULT,
+    offlineBaseHours: OFFLINE_BASE_HOURS_DEFAULT,
+    offlineMaxExtra: OFFLINE_MAX_EXTRA_DEFAULT,
+    offlineTau: OFFLINE_TAU_DEFAULT,
+  };
   if (env.DB) {
     try {
-      const rows = await env.DB.prepare("SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau')").all();
+      const rows = await env.DB.prepare(
+        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau')"
+      ).all();
       const map = {};
       for (const r of (rows.results || [])) map[r.key] = Number(r.value);
       if (Number.isFinite(map.ref_boost_max)) cfg.refBoostMax = map.ref_boost_max;
       if (Number.isFinite(map.ref_boost_tau) && map.ref_boost_tau > 0) cfg.refBoostTau = map.ref_boost_tau;
+      if (Number.isFinite(map.offline_base_hours)) cfg.offlineBaseHours = map.offline_base_hours;
+      if (Number.isFinite(map.offline_max_extra_hours)) cfg.offlineMaxExtra = map.offline_max_extra_hours;
+      if (Number.isFinite(map.offline_tau) && map.offline_tau > 0) cfg.offlineTau = map.offline_tau;
     } catch (e) { /* table may not exist yet — fall back to defaults */ }
   }
   _configCache = cfg;
@@ -404,8 +420,9 @@ async function handleCheckin(request, env) {
   // retuned server-side without a frontend release.
   const cfg = await getEconomyConfig(env);
   const refConfig = { max: cfg.refBoostMax, tau: cfg.refBoostTau };
+  const offlineConfig = { base: cfg.offlineBaseHours, maxExtra: cfg.offlineMaxExtra, tau: cfg.offlineTau };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, refConfig });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, refConfig, offlineConfig });
 }
 
 async function handleLeaderboard(env) {

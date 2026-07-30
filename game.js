@@ -66,8 +66,30 @@
 
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
   const BACKUP_KEY = SAVE_KEY + '_backup';
-  const OFFLINE_FULL_RATE_SECONDS = 2 * 3600; // first 2h offline accrue at 100%
-  const OFFLINE_RATE = 0.1; // after that, production drops to this fraction until the player returns
+  const OFFLINE_RATE = 0.1; // after the full-rate window, production drops to this fraction until the player returns
+
+  // Layer 2 "cookie army" perk: active friends extend how long offline
+  // production stays at 100% before the OFFLINE_RATE slowdown kicks in.
+  // Same saturating-exponential shape as the Layer 1 boost (one continuous
+  // curve, no thresholds): BASE hours for everyone, plus up to MAX_EXTRA more
+  // as the friend count grows. Knobs live in the same server-side D1 `config`
+  // table and arrive on every /checkin; constants below are only the
+  // offline / first-load fallback. The post-cap rate (OFFLINE_RATE) is
+  // unchanged — only the full-rate duration moves.
+  const OFFLINE_BASE_HOURS_DEFAULT = 2; // full-rate hours with zero friends (unchanged baseline)
+  const OFFLINE_MAX_EXTRA_DEFAULT = 8;  // max extra full-rate hours a top referrer can reach (asymptote)
+  const OFFLINE_TAU_DEFAULT = 35;       // growth constant
+
+  function getOfflineCapHours(n) {
+    const base = Number.isFinite(state.offlineBaseHours) ? state.offlineBaseHours : OFFLINE_BASE_HOURS_DEFAULT;
+    const maxExtra = Number.isFinite(state.offlineMaxExtra) ? state.offlineMaxExtra : OFFLINE_MAX_EXTRA_DEFAULT;
+    const tau = state.offlineTau > 0 ? state.offlineTau : OFFLINE_TAU_DEFAULT;
+    return base + maxExtra * (1 - Math.exp(-(n || 0) / tau));
+  }
+
+  function offlineFullRateSeconds() {
+    return getOfflineCapHours(state.activeReferrals || 0) * 3600;
+  }
 
   // "Cookie army": every friend you invite who becomes active (ref_active,
   // validated server-side) permanently boosts production. Saturating
@@ -90,11 +112,13 @@
     return 1 + referralBoost(state.activeReferrals || 0);
   }
 
-  // Same two-stage math duplicated in push/src/index.js's stage1Text — keep
-  // both in sync if this schedule ever changes.
+  // Full-rate window is per-player now (extended by active friends, see
+  // getOfflineCapHours). The worker keeps its own base-2h copy for push-text
+  // estimates — that's intentionally friend-agnostic, see push/src/index.js.
   function computeOfflineGain(elapsedSeconds, cps) {
-    if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
-    return OFFLINE_FULL_RATE_SECONDS * cps + (elapsedSeconds - OFFLINE_FULL_RATE_SECONDS) * cps * OFFLINE_RATE;
+    const fullRate = offlineFullRateSeconds();
+    if (elapsedSeconds <= fullRate) return elapsedSeconds * cps;
+    return fullRate * cps + (elapsedSeconds - fullRate) * cps * OFFLINE_RATE;
   }
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
@@ -120,6 +144,9 @@
     activeReferrals: 0, // active friends invited; server-authoritative, refreshed each checkin
     refBoostMax: REF_BOOST_MAX_DEFAULT, // cookie-army boost ceiling; overridden by server config on checkin
     refBoostTau: REF_BOOST_TAU_DEFAULT, // cookie-army boost growth constant; overridden by server config on checkin
+    offlineBaseHours: OFFLINE_BASE_HOURS_DEFAULT, // Layer 2 offline-cap knobs; overridden by server config on checkin
+    offlineMaxExtra: OFFLINE_MAX_EXTRA_DEFAULT,
+    offlineTau: OFFLINE_TAU_DEFAULT,
   });
 
   let state = defaultState();
@@ -288,6 +315,21 @@
           if (Number.isFinite(m) && Number.isFinite(t) && t > 0 && (m !== state.refBoostMax || t !== state.refBoostTau)) {
             state.refBoostMax = m;
             state.refBoostTau = t;
+            saveState();
+            refreshAll();
+          }
+        }
+        // Layer 2 offline-cap knobs (BASE/MAX_EXTRA/TAU), same server-side
+        // config, same release-free tuning.
+        if (data && data.offlineConfig) {
+          const b = Number(data.offlineConfig.base);
+          const mx = Number(data.offlineConfig.maxExtra);
+          const t = Number(data.offlineConfig.tau);
+          if (Number.isFinite(b) && Number.isFinite(mx) && Number.isFinite(t) && t > 0 &&
+              (b !== state.offlineBaseHours || mx !== state.offlineMaxExtra || t !== state.offlineTau)) {
+            state.offlineBaseHours = b;
+            state.offlineMaxExtra = mx;
+            state.offlineTau = t;
             saveState();
             refreshAll();
           }
@@ -600,6 +642,7 @@
     inviteBtn: document.getElementById('inviteBtn'),
     armyCount: document.getElementById('armyCount'),
     armyBoost: document.getElementById('armyBoost'),
+    armyOfflineCap: document.getElementById('armyOfflineCap'),
     rewardBurst: document.getElementById('rewardBurst'),
     rewardBurstAmount: document.getElementById('rewardBurstAmount'),
   };
@@ -737,6 +780,8 @@
     const army = state.activeReferrals || 0;
     el.armyCount.textContent = formatNum(army);
     el.armyBoost.textContent = `+${(referralBoost(army) * 100).toFixed(1).replace(/\.0$/, '')}%`;
+    const capTotalMin = Math.round(getOfflineCapHours(army) * 60);
+    el.armyOfflineCap.textContent = `${Math.floor(capTotalMin / 60)}ч ${capTotalMin % 60}мин`;
 
     el.syncStatus.textContent = cloudStorageStatusText();
   }

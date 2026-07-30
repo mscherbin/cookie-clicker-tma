@@ -34,4 +34,7 @@ CREATE TABLE IF NOT EXISTS config (
 
 INSERT OR IGNORE INTO config (key, value) VALUES
   ('ref_boost_max', '1.0'),
-  ('ref_boost_tau', '25');
+  ('ref_boost_tau', '25'),
+  ('offline_base_hours', '2'),
+  ('offline_max_extra_hours', '8'),
+  ('offline_tau', '35');
