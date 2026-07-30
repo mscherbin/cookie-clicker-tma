@@ -245,7 +245,7 @@
           state.cookies += data.pendingReward;
           state.totalBaked += data.pendingReward;
           haptic('heavy');
-          showToast(`🤝 Реферальный бонус: +${formatNum(data.pendingReward)} 🍪`);
+          showRewardBurst(data.pendingReward);
           saveState();
           refreshAll();
         }
@@ -555,6 +555,8 @@
     pullCloudBtn: document.getElementById('pullCloudBtn'),
     restoreBackupBtn: document.getElementById('restoreBackupBtn'),
     inviteBtn: document.getElementById('inviteBtn'),
+    rewardBurst: document.getElementById('rewardBurst'),
+    rewardBurstAmount: document.getElementById('rewardBurstAmount'),
   };
 
   function countBoughtUpgrades(category) {
@@ -753,6 +755,20 @@
     el.toast.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2200);
+  }
+
+  let rewardBurstTimer = null;
+  function showRewardBurst(amount) {
+    el.rewardBurstAmount.textContent = formatNum(amount);
+    el.rewardBurst.hidden = false;
+    el.rewardBurst.classList.remove('show');
+    void el.rewardBurst.offsetWidth; // restart the animation if it's already mid-play
+    el.rewardBurst.classList.add('show');
+    clearTimeout(rewardBurstTimer);
+    rewardBurstTimer = setTimeout(() => {
+      el.rewardBurst.hidden = true;
+      el.rewardBurst.classList.remove('show');
+    }, 3500);
   }
 
   function resetProgress() {

@@ -192,6 +192,62 @@ html, body {
   overflow: hidden;
 }
 
+.reward-burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.7);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 22px 34px;
+  border-radius: 24px;
+  background: radial-gradient(circle, rgba(255, 209, 102, 0.97), rgba(232, 163, 61, 0.97));
+  box-shadow: 0 0 0 rgba(255, 209, 102, 0.6), 0 12px 40px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+}
+
+.reward-burst[hidden] {
+  display: none;
+}
+
+.reward-burst.show {
+  animation: rewardBurstPop 3.5s ease-out forwards;
+}
+
+.reward-burst-icon {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.reward-burst-text {
+  font-size: 34px;
+  font-weight: 900;
+  color: #1b120a;
+  line-height: 1.1;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.reward-burst-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #3a2510;
+  margin-top: 4px;
+}
+
+@keyframes rewardBurstPop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  12% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  20% { transform: translate(-50%, -50%) scale(1); }
+  82% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+}
+
 .float-num {
   position: absolute;
   font-weight: 700;
