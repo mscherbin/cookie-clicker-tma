@@ -133,7 +133,11 @@ async function validateInitData(initData, botToken) {
 
 // ---------- Analytics + referral rewards (D1) ----------
 const REFEREE_WELCOME_BONUS = 300; // flat starter gift for whoever clicked the link
-const REFERRER_BONUS_SECONDS = 1.5 * 3600; // ~1.5h of the referrer's own current cps
+// Referrer's reward when their invite becomes active: 10 minutes of the
+// REFERRER's own current production (their cps × 600s), floored for
+// referrers who've barely started. The bigger your empire, the more each
+// successful invite is worth.
+const REFERRER_BONUS_SECONDS = 600; // 10 min of the referrer's own cps
 const REFERRER_BONUS_MIN = 200; // floor, for referrers with ~0 cps so far
 
 // Every user who ever triggers any event gets a `users` row (idempotent —
@@ -342,6 +346,7 @@ async function handleCheckin(request, env) {
   // exactly the amount just read (not resetting to 0) so a reward granted
   // concurrently by someone else's ref_active isn't clobbered mid-request.
   let pendingReward = 0;
+  let activeReferrals = 0;
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -351,10 +356,19 @@ async function handleCheckin(request, env) {
         await env.DB.prepare('UPDATE users SET pending_reward = pending_reward - ? WHERE user_id = ?')
           .bind(pendingReward, user.id).run();
       }
+      // "Cookie army": how many people this user referred have become active
+      // (reached ref_active). Counted off the validated referrer_id link — so
+      // it inherits the anti-self / referrer-must-be-real gating that guards
+      // referrer_id, no farming via bare ref_clicks. Drives a permanent
+      // client-side production multiplier, so it's returned on every checkin.
+      const armyRow = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM users u WHERE u.referrer_id = ? AND EXISTS (SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.event = 'ref_active')"
+      ).bind(user.id).first();
+      activeReferrals = (armyRow && armyRow.n) || 0;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
-  return jsonResponse({ ok: true, pendingReward });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals });
 }
 
 async function handleLeaderboard(env) {

@@ -69,6 +69,26 @@
   const OFFLINE_FULL_RATE_SECONDS = 2 * 3600; // first 2h offline accrue at 100%
   const OFFLINE_RATE = 0.1; // after that, production drops to this fraction until the player returns
 
+  // "Cookie army": every friend you invite who becomes active (ref_active,
+  // validated server-side) permanently boosts production. Full REF_BOOST_PER
+  // each up to REF_BOOST_KNEE friends, then a damped tail (REF_BOOST_TAIL of
+  // the rate) so top referrers keep growing without breaking the economy.
+  // The count itself is authoritative on the server, refreshed every checkin.
+  const REF_BOOST_PER = 0.015; // +1.5% production per active friend
+  const REF_BOOST_KNEE = 35;   // full rate up to this many friends
+  const REF_BOOST_TAIL = 0.25; // friends beyond the knee count at 25% rate
+
+  function referralBoost(n) {
+    if (!n || n <= 0) return 0;
+    const full = Math.min(n, REF_BOOST_KNEE);
+    const tail = Math.max(0, n - REF_BOOST_KNEE) * REF_BOOST_TAIL;
+    return (full + tail) * REF_BOOST_PER;
+  }
+
+  function referralMultiplier() {
+    return 1 + referralBoost(state.activeReferrals || 0);
+  }
+
   // Same two-stage math duplicated in push/src/index.js's stage1Text — keep
   // both in sync if this schedule ever changes.
   function computeOfflineGain(elapsedSeconds, cps) {
@@ -96,6 +116,7 @@
     lastDailyClaim: 0,
     totalCrumbs: 0,
     ascensionCount: 0,
+    activeReferrals: 0, // active friends invited; server-authoritative, refreshed each checkin
   });
 
   let state = defaultState();
@@ -246,6 +267,13 @@
           state.totalBaked += data.pendingReward;
           haptic('heavy');
           showRewardBurst(data.pendingReward);
+          saveState();
+          refreshAll();
+        }
+        // Cookie-army size is server-authoritative. Refresh it (and the
+        // production boost it drives) whenever the count changes.
+        if (data && typeof data.activeReferrals === 'number' && data.activeReferrals !== (state.activeReferrals || 0)) {
+          state.activeReferrals = data.activeReferrals;
           saveState();
           refreshAll();
         }
@@ -436,11 +464,11 @@
   function getCps() {
     let total = 0;
     for (const b of BUILDINGS) total += buildingCps(b) * state.buildings[b.id];
-    return total * state.globalMult * eventMultiplier() * prestigeMultiplier();
+    return total * state.globalMult * eventMultiplier() * prestigeMultiplier() * referralMultiplier();
   }
 
   function getClickPower() {
-    return (1 + state.buildings.cursor * 0.1) * state.clickMult * state.globalMult * eventMultiplier() * prestigeMultiplier();
+    return (1 + state.buildings.cursor * 0.1) * state.clickMult * state.globalMult * eventMultiplier() * prestigeMultiplier() * referralMultiplier();
   }
 
   function formatNum(n) {
@@ -555,6 +583,8 @@
     pullCloudBtn: document.getElementById('pullCloudBtn'),
     restoreBackupBtn: document.getElementById('restoreBackupBtn'),
     inviteBtn: document.getElementById('inviteBtn'),
+    armyCount: document.getElementById('armyCount'),
+    armyBoost: document.getElementById('armyBoost'),
     rewardBurst: document.getElementById('rewardBurst'),
     rewardBurstAmount: document.getElementById('rewardBurstAmount'),
   };
@@ -688,6 +718,10 @@
     el.ascendCrumbs.textContent = formatNum(state.totalCrumbs || 0);
     el.ascendBonus.textContent = `+${state.totalCrumbs || 0}%`;
     el.ascendPreview.textContent = `+${formatNum(potentialCrumbs())} 👼`;
+
+    const army = state.activeReferrals || 0;
+    el.armyCount.textContent = formatNum(army);
+    el.armyBoost.textContent = `+${(referralBoost(army) * 100).toFixed(1).replace(/\.0$/, '')}%`;
 
     el.syncStatus.textContent = cloudStorageStatusText();
   }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=23" />
+<link rel="stylesheet" href="style.css?v=24" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -137,9 +137,11 @@
       <div id="statsList" class="stats-list"></div>
 
       <div class="invite-card">
-        <div class="invite-title">🤝 Пригласи друга</div>
-        <div class="invite-desc">Друг получит стартовый подарок печенек, а вы — бонус, когда он начнёт активно играть.</div>
-        <button id="inviteBtn" class="invite-btn">📤 Отправить приглашение</button>
+        <div class="invite-title">🤝 Печенькина армия</div>
+        <div class="invite-desc">Каждый друг, который начнёт активно играть, навсегда ускоряет твоё производство на +1,5%. Зови всех — армия печёт вместе с тобой!</div>
+        <div class="army-row"><span>Друзей в строю</span><span id="armyCount">0</span></div>
+        <div class="army-row"><span>Бонус к производству</span><span id="armyBoost">+0%</span></div>
+        <button id="inviteBtn" class="invite-btn">📤 Позвать друга в армию</button>
       </div>
 
       <div class="ascend-card">
@@ -184,6 +186,6 @@
   </div>
 </div>
 
-<script src="game.js?v=23"></script>
+<script src="game.js?v=24"></script>
 </body>
 </html>
