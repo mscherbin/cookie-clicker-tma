@@ -78,11 +78,32 @@ The check-in endpoint is `<that URL>/checkin` — put it into `game.js` as
     (tracked via an `eventflag:<id>:<date>[-hour]` KV marker with a 5-day
     TTL), it broadcasts to every `user:*` entry in KV.
 
-## Analytics setup
+## Analytics + referral rewards
 
-Uses a Cloudflare D1 database (`events` table — see `schema.sql`) instead of
-a third-party tool, so no extra account and funnel/cohort queries are just
-SQL against data you already control.
+Uses a Cloudflare D1 database (`events` + `users` tables — see `schema.sql`)
+instead of a third-party tool, so no extra account and funnel/cohort queries
+are just SQL against data you already control.
+
+`events` is the append-only funnel log. `users` is one row per user (created
+lazily the first time they trigger any event) holding `referrer_id` and
+`pending_reward`:
+
+- `referrer_id` is set **once**, at the user's first `ref_install`, parsed
+  from their `ref_click`'s `ref_code` (format `ref<inviterUserId>`, from the
+  "Пригласить друга" button's deep link) — and only if that inviter id
+  already exists as a real user in `users` (blocks `/start ref999999999`
+  with a made-up id) and isn't the user's own id (blocks self-referral).
+- `pending_reward` accumulates cookies owed to a user — as a referrer
+  (~1.5h of their own last-known cps, floor 200) when someone they referred
+  reaches `ref_active`, or as that referee (flat 300 starter bonus) at the
+  same moment. `/checkin` reads and decrements it on every call, handing it
+  back in the response as `pendingReward` for the client to add to
+  `state.cookies` — so a reward granted while a player is away just shows up
+  next time they open the app.
+
+Both bonus amounts (`REFEREE_WELCOME_BONUS`, `REFERRER_BONUS_SECONDS`,
+`REFERRER_BONUS_MIN` in `src/index.js`) are easy to retune once there's data
+on how they affect K-factor.
 
 ```bash
 wrangler d1 create cookie-clicker-analytics

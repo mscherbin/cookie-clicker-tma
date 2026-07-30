@@ -131,17 +131,54 @@ async function validateInitData(initData, botToken) {
   return { user, authDate };
 }
 
-// ---------- Analytics (D1) ----------
-// Inserts a raw event row, then derives two things automatically so callers
+// ---------- Analytics + referral rewards (D1) ----------
+const REFEREE_WELCOME_BONUS = 300; // flat starter gift for whoever clicked the link
+const REFERRER_BONUS_SECONDS = 1.5 * 3600; // ~1.5h of the referrer's own current cps
+const REFERRER_BONUS_MIN = 200; // floor, for referrers with ~0 cps so far
+
+// Every user who ever triggers any event gets a `users` row (idempotent —
+// ON CONFLICT DO NOTHING). This is what referrer-id validation checks
+// against: a referral only counts if the referrer id has itself shown up
+// here from a real event, not an arbitrary number someone typed into
+// /start.
+async function ensureUser(env, userId, now) {
+  await env.DB.prepare('INSERT INTO users (user_id, first_seen_ts) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING')
+    .bind(userId, now).run();
+}
+
+async function grantReward(env, userId, amount) {
+  if (!(amount > 0)) return;
+  await env.DB.prepare('UPDATE users SET pending_reward = pending_reward + ? WHERE user_id = ?')
+    .bind(amount, userId).run();
+}
+
+// Best-effort read of a user's last-known cps from the push worker's own KV
+// store (populated by every /checkin) — used to size the referrer's reward
+// relative to their actual production, not a flat number for everyone.
+async function getKnownCps(env, userId) {
+  const raw = await env.USERS.get(`user:${userId}`);
+  if (!raw) return 0;
+  try { return JSON.parse(raw).cps || 0; } catch (e) { return 0; }
+}
+
+// Inserts a raw event row, then derives things automatically so callers
 // only ever report what actually happened (bot_start, ref_click, app_open,
-// first_click, first_upgrade) — never the derived stages themselves:
+// first_click, first_upgrade) — never the derived stages or rewards
+// themselves:
 //   - d1_return: the first event on a calendar day after this user's very
 //     first-ever event, logged once.
-//   - ref_install / ref_active: if this user's history includes a ref_click,
-//     their first app_open promotes them to ref_install, and their first
-//     first_click/d1_return promotes them to ref_active — each logged once.
+//   - ref_install: this user's first app_open after a ref_click. Also the
+//     moment referrer_id gets validated and attached (once, only if the
+//     referrer is a real known user, and never to yourself).
+//   - ref_active: this user's first first_click/d1_return after ref_click.
+//     Grants both the referee's welcome bonus and the referrer's bonus,
+//     exactly once — gated on the same "does ref_active already exist"
+//     check that guards the event row itself, so there's no separate
+//     idempotency flag to keep in sync.
 async function logEvent(env, userId, eventName, refCode) {
   const now = Date.now();
+  await ensureUser(env, userId, now);
+
   await env.DB.prepare('INSERT INTO events (user_id, event, ref_code, ts) VALUES (?, ?, ?, ?)')
     .bind(userId, eventName, refCode || null, now).run();
 
@@ -168,6 +205,33 @@ async function logEvent(env, userId, eventName, refCode) {
       if (!already) {
         await env.DB.prepare('INSERT INTO events (user_id, event, ref_code, ts) VALUES (?, ?, ?, ?)')
           .bind(userId, derived, refRow.ref_code, now).run();
+
+        if (derived === 'ref_install') {
+          const match = /^ref(\d+)$/.exec(refRow.ref_code);
+          if (match) {
+            const referrerId = Number(match[1]);
+            if (referrerId !== userId) {
+              const referrerExists = await env.DB.prepare('SELECT 1 FROM users WHERE user_id = ?').bind(referrerId).first();
+              if (referrerExists) {
+                // Only ever set once — a user's referrer can't be reassigned
+                // by a later, unrelated ref_click.
+                await env.DB.prepare('UPDATE users SET referrer_id = ? WHERE user_id = ? AND referrer_id IS NULL')
+                  .bind(referrerId, userId).run();
+              }
+            }
+          }
+        }
+
+        if (derived === 'ref_active') {
+          const userRow = await env.DB.prepare('SELECT referrer_id FROM users WHERE user_id = ?').bind(userId).first();
+          const referrerId = userRow && userRow.referrer_id;
+          if (referrerId) {
+            await grantReward(env, userId, REFEREE_WELCOME_BONUS);
+            const referrerCps = await getKnownCps(env, referrerId);
+            const referrerBonus = Math.max(REFERRER_BONUS_MIN, referrerCps * REFERRER_BONUS_SECONDS);
+            await grantReward(env, referrerId, referrerBonus);
+          }
+        }
       }
     }
   }
@@ -273,11 +337,24 @@ async function handleCheckin(request, env) {
   // are actually active. list() only costs one subrequest per 1000 keys.
   await env.USERS.put(key, JSON.stringify(data), { metadata: data });
 
+  // Claim-on-checkin: reads whatever referral reward has accumulated for
+  // this user since their last checkin and zeroes it out, decrementing by
+  // exactly the amount just read (not resetting to 0) so a reward granted
+  // concurrently by someone else's ref_active isn't clobbered mid-request.
+  let pendingReward = 0;
   if (env.DB) {
-    try { await logEvent(env, user.id, 'app_open'); } catch (e) { /* analytics must never break checkin */ }
+    try {
+      await logEvent(env, user.id, 'app_open');
+      const row = await env.DB.prepare('SELECT pending_reward FROM users WHERE user_id = ?').bind(user.id).first();
+      if (row && row.pending_reward > 0) {
+        pendingReward = row.pending_reward;
+        await env.DB.prepare('UPDATE users SET pending_reward = pending_reward - ? WHERE user_id = ?')
+          .bind(pendingReward, user.id).run();
+      }
+    } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
-  return jsonResponse({ ok: true });
+  return jsonResponse({ ok: true, pendingReward });
 }
 
 async function handleLeaderboard(env) {

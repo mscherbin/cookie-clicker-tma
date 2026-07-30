@@ -235,7 +235,22 @@
         cps: getCps(),
         totalBaked: state.totalBaked,
       }),
-    }).catch(() => {});
+    })
+      .then(r => r.json())
+      .then(data => {
+        // Referral reward (as inviter or as invitee) accumulates server-side
+        // and gets handed back — and zeroed there — on whichever checkin
+        // picks it up first.
+        if (data && data.pendingReward > 0) {
+          state.cookies += data.pendingReward;
+          state.totalBaked += data.pendingReward;
+          haptic('heavy');
+          showToast(`🤝 Реферальный бонус: +${formatNum(data.pendingReward)} 🍪`);
+          saveState();
+          refreshAll();
+        }
+      })
+      .catch(() => {});
   }
 
   // Funnel events (app_open is logged server-side as part of /checkin,
