@@ -742,6 +742,7 @@
     clickPowerLine: document.getElementById('clickPowerLine'),
     bigCookie: document.getElementById('bigCookie'),
     clickHint: document.getElementById('clickHint'),
+    upgradeHint: document.getElementById('upgradeHint'),
     floatLayer: document.getElementById('floatLayer'),
     buildingsList: document.getElementById('buildingsList'),
     upgradesList: document.getElementById('upgradesList'),
@@ -1050,13 +1051,65 @@
     updateDailyBadge();
   }
 
-  // Onboarding. Step 0: until the very first cookie tap, gently pulse the
-  // cookie and show a non-blocking "tap me" hint. Nothing intercepts the tap.
+  // Onboarding.
+  //  Step 0: until the very first cookie tap, gently pulse the cookie and show
+  //          a non-blocking "tap me" hint. Nothing intercepts the tap.
+  //  Step 1: once tapping is understood and the player can actually afford an
+  //          upgrade, glow the "Апгрейды" tab + a bubble above it. Non-modal,
+  //          dismissed by the next tap anywhere (or by opening the tab).
+  const upgradesTabBtn = document.querySelector('.tab-btn[data-tab="upgrades"]');
+
+  function hasAffordableUpgrade() {
+    return UPGRADES.some(u => !state.upgrades[u.id] && u.req(state.buildings, state) && state.cookies >= u.cost);
+  }
+
+  function tut() { state.tutorial = state.tutorial || {}; return state.tutorial; }
+
   function updateTutorial() {
     if (!el.clickHint) return;
-    const showClick = !(state.tutorial && state.tutorial.clicked);
+    const t = tut();
+    // totalClicks === 0 keeps step 0 from ambushing players who existed before
+    // the tutorial (their tutorial flags are empty but they've clearly tapped).
+    const showClick = !t.clicked && state.totalClicks === 0;
     el.clickHint.hidden = !showClick;
     el.bigCookie.classList.toggle('tutorial-pulse', showClick);
+
+    const activeTab = document.querySelector('.tab-btn.active');
+    const onUpgrades = activeTab && activeTab.dataset.tab === 'upgrades';
+    // Only nudge toward the FIRST upgrade (none bought yet) — excludes veterans.
+    const showUpgrade = t.clicked && !t.upgradeHintDone &&
+      Object.keys(state.upgrades).length === 0 &&
+      state.totalClicks >= 5 && !onUpgrades && hasAffordableUpgrade();
+    el.upgradeHint.hidden = !showUpgrade;
+    if (upgradesTabBtn) upgradesTabBtn.classList.toggle('tutorial-pulse-tab', showUpgrade);
+    if (showUpgrade) { positionUpgradeHint(); armUpgradeDismiss(); }
+    else disarmUpgradeDismiss();
+  }
+
+  function positionUpgradeHint() {
+    const tabs = document.querySelector('.tabs');
+    if (!tabs) return;
+    const r = tabs.getBoundingClientRect();
+    el.upgradeHint.style.bottom = (window.innerHeight - r.top + 8) + 'px';
+  }
+
+  let upgradeDismissArmed = false;
+  function onUpgradeDismiss() { markUpgradeHintSeen(); }
+  function armUpgradeDismiss() {
+    if (upgradeDismissArmed) return;
+    upgradeDismissArmed = true;
+    document.addEventListener('pointerdown', onUpgradeDismiss, { capture: true, once: true });
+  }
+  function disarmUpgradeDismiss() {
+    if (!upgradeDismissArmed) return;
+    upgradeDismissArmed = false;
+    document.removeEventListener('pointerdown', onUpgradeDismiss, { capture: true });
+  }
+  function markUpgradeHintSeen() {
+    upgradeDismissArmed = false;
+    const t = tut();
+    if (!t.upgradeHintDone) { t.upgradeHintDone = true; saveState(); }
+    updateTutorial();
   }
 
   // ---------- Actions ----------
@@ -1285,6 +1338,7 @@
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
       if (btn.dataset.tab === 'leaderboard') { sendCheckin(); loadLeaderboard(); }
       if (btn.dataset.tab === 'friends') { sendCheckin(); loadReferralLeaderboard(); }
+      if (btn.dataset.tab === 'upgrades') markUpgradeHintSeen(); // they followed the step-1 nudge
     });
   });
 
@@ -1333,7 +1387,7 @@
 
   loadState();
   requestAnimationFrame(tick);
-  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); renderRewardTeaser(); updateDailyBadge(); maybeOfferReferralBuildings(); }, 3000);
+  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); renderRewardTeaser(); updateTutorial(); updateDailyBadge(); maybeOfferReferralBuildings(); }, 3000);
   setInterval(() => { state.lastTs = Date.now(); saveState(); }, 10000);
   // Keep the leaderboard/push-worker record fresh during a long play session
   // instead of only ever reflecting the moment the app was opened.
