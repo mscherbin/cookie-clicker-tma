@@ -436,6 +436,52 @@ html, body {
   font-weight: 700;
 }
 
+.ascend-card {
+  background: linear-gradient(160deg, #33280f, var(--card));
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.ascend-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+
+.ascend-desc {
+  font-size: 12px;
+  color: var(--hint);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.ascend-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.ascend-row span:last-child {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.ascend-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  color: var(--accent-text);
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
 .golden-cookie {
   position: absolute;
   font-size: 40px;

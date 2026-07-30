@@ -82,6 +82,8 @@
     lastTs: Date.now(),
     dailyStreak: 0,
     lastDailyClaim: 0,
+    totalCrumbs: 0,
+    ascensionCount: 0,
   });
 
   let state = defaultState();
@@ -246,6 +248,45 @@
     return getActiveEvents().reduce((m, e) => m * e.mult, 1);
   }
 
+  // ---------- Prestige (ascension) ----------
+  // Resets the run but banks lifetime totalBaked into a permanent, additive
+  // bonus (+1% production per crumb, never lost on future resets) — the
+  // usual idle-game answer to "I've hit the ceiling, there's nothing left to
+  // do." Cube-root curve keeps early ascensions modest and later ones (with
+  // a much bigger totalBaked) meaningfully more rewarding.
+  function potentialCrumbs() {
+    return Math.floor(Math.cbrt(state.totalBaked / 1e9));
+  }
+
+  function prestigeMultiplier() {
+    return 1 + (state.totalCrumbs || 0) * 0.01;
+  }
+
+  function ascend() {
+    const crumbsEarned = potentialCrumbs();
+    if (crumbsEarned <= 0) {
+      showToast('Пока рано — испеките больше печенек, чтобы получить крошки');
+      return;
+    }
+    if (!confirm(`Вознестись? Прогресс обнулится, но вы получите ${formatNum(crumbsEarned)} 👼 небесных крошек (+${crumbsEarned}% к производству навсегда).`)) return;
+
+    const keepDailyStreak = state.dailyStreak;
+    const keepLastDailyClaim = state.lastDailyClaim;
+    const keepTotalCrumbs = (state.totalCrumbs || 0) + crumbsEarned;
+    const keepAscensionCount = (state.ascensionCount || 0) + 1;
+
+    state = defaultState();
+    state.dailyStreak = keepDailyStreak;
+    state.lastDailyClaim = keepLastDailyClaim;
+    state.totalCrumbs = keepTotalCrumbs;
+    state.ascensionCount = keepAscensionCount;
+
+    haptic('heavy');
+    showToast(`👼 Вознесение! +${formatNum(crumbsEarned)} крошек · бонус теперь +${keepTotalCrumbs}%`);
+    saveState();
+    refreshAll();
+  }
+
   // ---------- Formulas ----------
   function buildingCost(b, count) {
     return Math.ceil(b.baseCost * Math.pow(1.15, count));
@@ -260,11 +301,11 @@
   function getCps() {
     let total = 0;
     for (const b of BUILDINGS) total += buildingCps(b) * state.buildings[b.id];
-    return total * state.globalMult * eventMultiplier();
+    return total * state.globalMult * eventMultiplier() * prestigeMultiplier();
   }
 
   function getClickPower() {
-    return (1 + state.buildings.cursor * 0.1) * state.clickMult * state.globalMult * eventMultiplier();
+    return (1 + state.buildings.cursor * 0.1) * state.clickMult * state.globalMult * eventMultiplier() * prestigeMultiplier();
   }
 
   function formatNum(n) {
@@ -370,6 +411,10 @@
     eventBanner: document.getElementById('eventBanner'),
     eventBannerText: document.getElementById('eventBannerText'),
     leaderboardList: document.getElementById('leaderboardList'),
+    ascendCrumbs: document.getElementById('ascendCrumbs'),
+    ascendBonus: document.getElementById('ascendBonus'),
+    ascendPreview: document.getElementById('ascendPreview'),
+    ascendBtn: document.getElementById('ascendBtn'),
   };
 
   function countBoughtUpgrades(category) {
@@ -494,8 +539,13 @@
       ['Зданий всего', Object.values(state.buildings).reduce((a, c) => a + c, 0)],
       ['Апгрейдов куплено', Object.keys(state.upgrades).length],
       ['Дней подряд', state.dailyStreak || 0],
+      ['Вознесений', state.ascensionCount || 0],
     ];
     el.statsList.innerHTML = rows.map(([k, v]) => `<div class="stat-row"><span>${k}</span><span>${v}</span></div>`).join('');
+
+    el.ascendCrumbs.textContent = formatNum(state.totalCrumbs || 0);
+    el.ascendBonus.textContent = `+${state.totalCrumbs || 0}%`;
+    el.ascendPreview.textContent = `+${formatNum(potentialCrumbs())} 👼`;
   }
 
   function refreshAll() {
@@ -651,6 +701,7 @@
   });
 
   document.getElementById('resetBtn').addEventListener('click', resetProgress);
+  el.ascendBtn.addEventListener('click', ascend);
   el.dailyBadge.addEventListener('click', showDailyModal);
   el.dailyClaimBtn.addEventListener('click', claimDailyReward);
 
