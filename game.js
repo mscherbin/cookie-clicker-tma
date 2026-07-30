@@ -30,6 +30,11 @@
     { id: 'timeMachine', name: 'Машина времени', icon: '⏳', baseCost: 27000000000, baseCps: 1600000 },
     { id: 'antimatter', name: 'Антиматерия', icon: '⚛️', baseCost: 240000000000, baseCps: 10000000 },
     { id: 'prism',    name: 'Призма',        icon: '🔷', baseCost: 2200000000000, baseCps: 65000000 },
+    { id: 'quasar',   name: 'Квазар',        icon: '☄️', baseCost: 21000000000000, baseCps: 420000000 },
+    { id: 'pulsar',   name: 'Пульсар',       icon: '💫', baseCost: 200000000000000, baseCps: 2700000000 },
+    { id: 'supernova', name: 'Сверхновая',   icon: '💥', baseCost: 1900000000000000, baseCps: 17000000000 },
+    { id: 'cosmicString', name: 'Космическая струна', icon: '🧵', baseCost: 18000000000000000, baseCps: 110000000000 },
+    { id: 'primeMover', name: 'Первопричина', icon: '🌟', baseCost: 170000000000000000, baseCps: 700000000000 },
   ];
 
   const UPGRADES = [
@@ -54,6 +59,19 @@
     { id: 'global_u5', name: 'Печенье-сингулярность', desc: 'Всё производство x2', icon: '🕳️', cost: 700000000000, category: 'global', reqType: 'baked', reqValue: 150000000000, req: (b, s) => s.totalBaked >= 150000000000, effect: s => s.globalMult *= 2 },
     { id: 'global_u6', name: 'Мультивселенная печенек', desc: 'Всё производство x2', icon: '🌈', cost: 9000000000000, category: 'global', reqType: 'baked', reqValue: 2000000000000, req: (b, s) => s.totalBaked >= 2000000000000, effect: s => s.globalMult *= 2 },
     { id: 'global_u7', name: 'Бесконечная выпечка', desc: 'Всё производство x2', icon: '♾️', cost: 115000000000000, category: 'global', reqType: 'baked', reqValue: 26000000000000, req: (b, s) => s.totalBaked >= 26000000000000, effect: s => s.globalMult *= 2 },
+    // --- New building upgrades (cosmic tier) ---
+    { id: 'quasar_u1', name: 'Квазарный ускоритель', desc: 'Квазары x2', icon: '☄️', cost: 210000000000000, category: 'building', buildingId: 'quasar', reqType: 'building', req: b => b.quasar >= 1, effect: s => s.buildingMult.quasar *= 2 },
+    { id: 'pulsar_u1', name: 'Магнитное поле пульсара', desc: 'Пульсары x2', icon: '💫', cost: 2000000000000000, category: 'building', buildingId: 'pulsar', reqType: 'building', req: b => b.pulsar >= 1, effect: s => s.buildingMult.pulsar *= 2 },
+    { id: 'supernova_u1', name: 'Управляемый коллапс', desc: 'Сверхновые x2', icon: '💥', cost: 19000000000000000, category: 'building', buildingId: 'supernova', reqType: 'building', req: b => b.supernova >= 1, effect: s => s.buildingMult.supernova *= 2 },
+    { id: 'cosmicString_u1', name: 'Натяжение струны', desc: 'Космические струны x2', icon: '🧵', cost: 180000000000000000, category: 'building', buildingId: 'cosmicString', reqType: 'building', req: b => b.cosmicString >= 1, effect: s => s.buildingMult.cosmicString *= 2 },
+    { id: 'primeMover_u1', name: 'Замысел творца', desc: 'Первопричины x2', icon: '🌟', cost: 1700000000000000000, category: 'building', buildingId: 'primeMover', reqType: 'building', req: b => b.primeMover >= 1, effect: s => s.buildingMult.primeMover *= 2 },
+    // --- New click upgrades ---
+    { id: 'click_u3', name: 'Титановые ногти', desc: 'Сила клика x2', icon: '🦾', cost: 200000, category: 'click', reqType: 'clicks', reqValue: 2000, req: (b, s) => s.totalClicks >= 2000, effect: s => s.clickMult *= 2 },
+    { id: 'click_u4', name: 'Космический щелчок', desc: 'Сила клика x2', icon: '👊', cost: 4000000, category: 'click', reqType: 'clicks', reqValue: 20000, req: (b, s) => s.totalClicks >= 20000, effect: s => s.clickMult *= 2 },
+    // --- New global upgrades ---
+    { id: 'global_u8', name: 'Космическая закваска', desc: 'Всё производство x2', icon: '💠', cost: 1500000000000000, category: 'global', reqType: 'baked', reqValue: 340000000000000, req: (b, s) => s.totalBaked >= 340000000000000, effect: s => s.globalMult *= 2 },
+    { id: 'global_u9', name: 'Пекарня богов', desc: 'Всё производство x2', icon: '🔆', cost: 20000000000000000, category: 'global', reqType: 'baked', reqValue: 4500000000000000, req: (b, s) => s.totalBaked >= 4500000000000000, effect: s => s.globalMult *= 2 },
+    { id: 'global_u10', name: 'Печенька-творец', desc: 'Всё производство x2', icon: '🎆', cost: 260000000000000000, category: 'global', reqType: 'baked', reqValue: 60000000000000000, req: (b, s) => s.totalBaked >= 60000000000000000, effect: s => s.globalMult *= 2 },
   ];
 
   const CATEGORY_LABELS = {
