@@ -82,6 +82,27 @@
   const CATEGORY_ORDER = ['click', 'building', 'global'];
   const CLICK_UPGRADES_TOTAL = UPGRADES.filter(u => u.category === 'click').length;
 
+  // Referral titles, unlocked by peak active-friend count (max_active_friends_ever
+  // on the server — never the live count, so a title never regresses when a
+  // friend goes inactive). Ascending by threshold. Also used to render other
+  // players' titles in the leaderboard from their maxActiveFriendsEver.
+  const TITLES = [
+    { threshold: 25,  name: 'Общительная печенька', icon: '🍪' },
+    { threshold: 50,  name: 'Легенда Печенек',      icon: '⭐' },
+    { threshold: 100, name: 'Император Печенек',    icon: '👑' },
+  ];
+
+  function titleFor(peak) {
+    let found = null;
+    for (const t of TITLES) if ((peak || 0) >= t.threshold) found = t;
+    return found; // highest unlocked title, or null
+  }
+
+  function nextTitle(peak) {
+    for (const t of TITLES) if ((peak || 0) < t.threshold) return t;
+    return null; // all unlocked
+  }
+
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
   const BACKUP_KEY = SAVE_KEY + '_backup';
   const OFFLINE_RATE = 0.1; // after the full-rate window, production drops to this fraction until the player returns
@@ -160,6 +181,7 @@
     totalCrumbs: 0,
     ascensionCount: 0,
     activeReferrals: 0, // active friends invited; server-authoritative, refreshed each checkin
+    maxActiveFriendsEver: 0, // peak active friends; drives referral titles, never regresses (server-authoritative)
     refBoostMax: REF_BOOST_MAX_DEFAULT, // cookie-army boost ceiling; overridden by server config on checkin
     refBoostTau: REF_BOOST_TAU_DEFAULT, // cookie-army boost growth constant; overridden by server config on checkin
     offlineBaseHours: OFFLINE_BASE_HOURS_DEFAULT, // Layer 2 offline-cap knobs; overridden by server config on checkin
@@ -325,6 +347,12 @@
           saveState();
           refreshAll();
         }
+        // Peak army size drives referral titles; monotonic on the server.
+        if (data && typeof data.maxActiveFriendsEver === 'number' && data.maxActiveFriendsEver !== (state.maxActiveFriendsEver || 0)) {
+          state.maxActiveFriendsEver = data.maxActiveFriendsEver;
+          saveState();
+          refreshAll();
+        }
         // Cookie-army boost knobs (MAX/TAU) are tuned server-side and pushed
         // down here, so the curve changes without a frontend release.
         if (data && data.refConfig) {
@@ -371,6 +399,11 @@
     return tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
   }
 
+  function ownDisplayName() {
+    const u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+    return (u && (u.first_name || u.username)) || 'Игрок';
+  }
+
   function inviteFriend() {
     const myId = ownTelegramUserId();
     if (!myId || !tg || !tg.openTelegramLink) { showToast('Доступно только в Telegram'); return; }
@@ -394,16 +427,19 @@
         }
         const myId = ownTelegramUserId();
         const medals = ['🥇', '🥈', '🥉'];
-        el.leaderboardList.innerHTML = data.entries.map((entry, i) => `
+        el.leaderboardList.innerHTML = data.entries.map((entry, i) => {
+          const t = titleFor(entry.maxActiveFriendsEver);
+          const titleHtml = t ? `<span class="lb-title">${t.icon} ${escapeHtml(t.name)}</span>` : '';
+          return `
           <div class="leaderboard-row${myId && entry.userId === myId ? ' me' : ''}">
             <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
             <div class="leaderboard-info">
-              <div class="leaderboard-name">${escapeHtml(entry.name)}</div>
+              <div class="leaderboard-name">${escapeHtml(entry.name)}${titleHtml}</div>
               <div class="leaderboard-total">${formatNum(entry.totalBaked)} 🍪 всего</div>
             </div>
             <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">печ/сек</span></div>
-          </div>
-        `).join('');
+          </div>`;
+        }).join('');
       })
       .catch(() => {
         el.leaderboardList.innerHTML = '<div class="empty-hint">Не удалось загрузить лидерборд. Попробуйте позже.</div>';
@@ -661,6 +697,9 @@
     armyCount: document.getElementById('armyCount'),
     armyBoost: document.getElementById('armyBoost'),
     armyOfflineCap: document.getElementById('armyOfflineCap'),
+    playerProfile: document.getElementById('playerProfile'),
+    titleTrack: document.getElementById('titleTrack'),
+    titleNext: document.getElementById('titleNext'),
     rewardBurst: document.getElementById('rewardBurst'),
     rewardBurstAmount: document.getElementById('rewardBurstAmount'),
   };
@@ -801,7 +840,49 @@
     const capTotalMin = Math.round(getOfflineCapHours(army) * 60);
     el.armyOfflineCap.textContent = `${Math.floor(capTotalMin / 60)}ч ${capTotalMin % 60}мин`;
 
+    renderTitles();
     el.syncStatus.textContent = cloudStorageStatusText();
+  }
+
+  // Russian count agreement for "друг": 1 друг, 2 друга, 5 друзей.
+  function friendWord(n) {
+    const a = Math.abs(n) % 100, b = a % 10;
+    if (a >= 11 && a <= 14) return 'друзей';
+    if (b === 1) return 'друг';
+    if (b >= 2 && b <= 4) return 'друга';
+    return 'друзей';
+  }
+
+  // Referral-title profile badge + threshold progress track. Everything keys
+  // off the peak army size (maxActiveFriendsEver), so a title/track position
+  // never regresses when a friend goes inactive.
+  function renderTitles() {
+    if (!el.titleTrack) return;
+    const peak = state.maxActiveFriendsEver || 0;
+    const cur = titleFor(peak);
+    const nt = nextTitle(peak);
+    const lastTh = TITLES[TITLES.length - 1].threshold;
+
+    const badge = cur
+      ? `<span class="title-badge">${cur.icon} ${cur.name}</span>`
+      : `<span class="title-badge title-badge-none">Пока без титула</span>`;
+    el.playerProfile.innerHTML = `<span class="pp-name">👤 ${escapeHtml(ownDisplayName())}</span>${badge}`;
+
+    const fillPct = Math.min(100, peak / lastTh * 100);
+    el.titleTrack.innerHTML =
+      `<div class="track-rail"><div class="track-fill" style="width:${fillPct}%"></div>` +
+      TITLES.map(t => {
+        const on = peak >= t.threshold;
+        const isNext = nt && nt.threshold === t.threshold;
+        return `<div class="track-node${on ? ' on' : ''}${isNext ? ' next' : ''}" style="left:${t.threshold / lastTh * 100}%">` +
+          `<span class="track-dot">${on ? t.icon : '🔒'}</span>` +
+          `<span class="track-cap">${t.threshold}</span></div>`;
+      }).join('') +
+      `</div>`;
+
+    el.titleNext.textContent = nt
+      ? `Ещё ${nt.threshold - peak} ${friendWord(nt.threshold - peak)} до «${nt.name}»`
+      : 'Все титулы открыты! 👑';
   }
 
   function refreshAll() {

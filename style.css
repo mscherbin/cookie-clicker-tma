@@ -525,9 +525,132 @@ html, body {
   font-weight: 700;
 }
 
+/* --- Player profile line (name + current referral title) --- */
+.player-profile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.pp-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.title-badge {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent-text);
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.title-badge-none {
+  background: var(--bg-secondary);
+  color: var(--hint);
+  font-weight: 600;
+}
+
+/* --- Referral title progress track --- */
+.title-track-wrap {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--card-border);
+}
+
+.title-track-head {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.title-track {
+  padding: 0 26px;
+}
+
+.track-rail {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--disabled);
+  margin: 28px 4px 24px;
+}
+
+.track-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--accent));
+}
+
+.track-node {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.track-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--disabled);
+}
+
+.track-node.on .track-dot {
+  background: #3a2c17;
+  border-color: var(--gold);
+}
+
+.track-node.next .track-dot {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(232, 163, 61, 0.22);
+}
+
+.track-cap {
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hint);
+}
+
+.track-node.on .track-cap {
+  color: var(--gold);
+}
+
+.title-next {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+/* Referral title next to a leaderboard name */
+.lb-title {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
 .invite-btn {
   width: 100%;
-  margin-top: 10px;
+  margin-top: 12px;
   padding: 12px;
   background: linear-gradient(135deg, var(--gold), var(--accent));
   color: var(--accent-text);

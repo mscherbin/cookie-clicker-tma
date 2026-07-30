@@ -371,30 +371,13 @@ async function handleCheckin(request, env) {
   const key = `user:${user.id}`;
   const now = Date.now();
   const displayName = (user.first_name || user.username || 'Игрок').slice(0, 40);
-  const data = {
-    chatId: user.id,
-    lastActiveTs: now,
-    pushStage: 0,
-    lastDailyClaim: Number(body.lastDailyClaim) || 0,
-    cps: Number(body.cps) || 0,
-    totalBaked: Number(body.totalBaked) || 0,
-    displayName,
-  };
-  // Mirroring `data` into KV metadata lets list-all operations (leaderboard,
-  // the push cron, broadcasts) read every user's fields straight off list()
-  // results — no per-key get() needed. That matters a lot: Workers caps the
-  // number of subrequests per invocation (50 on the free plan, 1000 on
-  // paid), and a get()-per-user loop would blow through that once there are
-  // more than a few dozen/thousand registered users, regardless of how many
-  // are actually active. list() only costs one subrequest per 1000 keys.
-  await env.USERS.put(key, JSON.stringify(data), { metadata: data });
-
   // Claim-on-checkin: reads whatever referral reward has accumulated for
   // this user since their last checkin and zeroes it out, decrementing by
   // exactly the amount just read (not resetting to 0) so a reward granted
   // concurrently by someone else's ref_active isn't clobbered mid-request.
   let pendingReward = 0;
   let activeReferrals = 0;
+  let maxActiveFriendsEver = 0;
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -413,8 +396,35 @@ async function handleCheckin(request, env) {
         "SELECT COUNT(*) AS n FROM users u WHERE u.referrer_id = ? AND EXISTS (SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.event = 'ref_active')"
       ).bind(user.id).first();
       activeReferrals = (armyRow && armyRow.n) || 0;
+      // Peak army size, monotonic. Referral titles read off this, not the live
+      // count, so a title never regresses if a friend goes inactive. Fall back
+      // to the live count if the column read fails (e.g. before migration).
+      maxActiveFriendsEver = activeReferrals;
+      await env.DB.prepare('UPDATE users SET max_active_friends_ever = MAX(max_active_friends_ever, ?) WHERE user_id = ?')
+        .bind(activeReferrals, user.id).run();
+      const maxRow = await env.DB.prepare('SELECT max_active_friends_ever AS m FROM users WHERE user_id = ?').bind(user.id).first();
+      if (maxRow && Number.isFinite(maxRow.m)) maxActiveFriendsEver = maxRow.m;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
+
+  const data = {
+    chatId: user.id,
+    lastActiveTs: now,
+    pushStage: 0,
+    lastDailyClaim: Number(body.lastDailyClaim) || 0,
+    cps: Number(body.cps) || 0,
+    totalBaked: Number(body.totalBaked) || 0,
+    displayName,
+    maxActiveFriendsEver,
+  };
+  // Mirroring `data` into KV metadata lets list-all operations (leaderboard,
+  // the push cron, broadcasts) read every user's fields straight off list()
+  // results — no per-key get() needed. That matters a lot: Workers caps the
+  // number of subrequests per invocation (50 on the free plan, 1000 on
+  // paid), and a get()-per-user loop would blow through that once there are
+  // more than a few dozen/thousand registered users, regardless of how many
+  // are actually active. list() only costs one subrequest per 1000 keys.
+  await env.USERS.put(key, JSON.stringify(data), { metadata: data });
 
   // Tunable boost curve knobs, so the client's referralBoost() can be
   // retuned server-side without a frontend release.
@@ -422,7 +432,7 @@ async function handleCheckin(request, env) {
   const refConfig = { max: cfg.refBoostMax, tau: cfg.refBoostTau };
   const offlineConfig = { base: cfg.offlineBaseHours, maxExtra: cfg.offlineMaxExtra, tau: cfg.offlineTau };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, refConfig, offlineConfig });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig });
 }
 
 async function handleLeaderboard(env) {
@@ -438,6 +448,7 @@ async function handleLeaderboard(env) {
         name: data.displayName || 'Игрок',
         cps: data.cps || 0,
         totalBaked: data.totalBaked || 0,
+        maxActiveFriendsEver: data.maxActiveFriendsEver || 0, // client derives the referral title from this
       });
     }
     if (list.list_complete || !list.cursor) break;
