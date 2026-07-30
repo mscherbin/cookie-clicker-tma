@@ -3,9 +3,12 @@
 Cloudflare Worker that sends retention push notifications for the Cookie
 Clicker mini app:
 
-- Per-user inactivity nudges: "cookies piling up" ~5h after the player was
-  last active, and "daily reward is waiting" at 24h. Never sends more than
-  one push per inactivity cycle — checking in (opening the app) resets it.
+- Per-user inactivity nudges, three stages: "cookies about to slow down"
+  ~15min before the 2h full-rate offline window runs out (motivation peaks
+  right before the slowdown, not after), "cookies piling up" ~5h after the
+  player was last active, and "daily reward is waiting" at 24h. Never sends
+  more than one push per inactivity cycle — checking in (opening the app)
+  resets it.
 - Broadcast event announcements: when Happy Hour or the Weekend event starts
   (schedule defined in `game.js` and duplicated here), every known user gets
   a one-time "event started" push — regardless of their own activity.
@@ -60,11 +63,14 @@ The check-in endpoint is `<that URL>/checkin` — put it into `game.js` as
   user id. `pushStage: 0` means "no nag sent yet this cycle."
 - `scheduled()` — runs every 15 minutes (see `crons` in `wrangler.toml`). For
   every stored user, checks elapsed time since `lastActiveTs`:
-  - `>= 5h` and `pushStage < 1` → sends the "cookies piling up" message,
-    stamps `pushStage = 1`.
-  - `>= 24h` and `pushStage < 2` → sends the "daily reward is waiting"
-    message, stamps `pushStage = 2`.
-  - Neither fires again until the player reopens the app (which resets
+  - `>= 1h45m` and `pushStage < 1` → sends the "cookies about to slow down"
+    message (15min before the 2h full-rate offline window in game.js runs
+    out), stamps `pushStage = 1`.
+  - `>= 5h` and `pushStage < 2` → sends the "cookies piling up" message,
+    stamps `pushStage = 2`.
+  - `>= 24h` and `pushStage < 3` → sends the "daily reward is waiting"
+    message, stamps `pushStage = 3`.
+  - None of these fire again until the player reopens the app (which resets
     `pushStage` back to 0 via `/checkin`).
 
 ## Scaling notes

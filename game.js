@@ -66,7 +66,15 @@
 
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
   const BACKUP_KEY = SAVE_KEY + '_backup';
-  const OFFLINE_RATE = 0.1; // production while the mini app is closed, as a fraction of normal cps
+  const OFFLINE_FULL_RATE_SECONDS = 2 * 3600; // first 2h offline accrue at 100%
+  const OFFLINE_RATE = 0.1; // after that, production drops to this fraction until the player returns
+
+  // Same two-stage math duplicated in push/src/index.js's stage1Text — keep
+  // both in sync if this schedule ever changes.
+  function computeOfflineGain(elapsedSeconds, cps) {
+    if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
+    return OFFLINE_FULL_RATE_SECONDS * cps + (elapsedSeconds - OFFLINE_FULL_RATE_SECONDS) * cps * OFFLINE_RATE;
+  }
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
@@ -114,10 +122,11 @@
       state.buildingMult = Object.assign(defaultState().buildingMult, loaded.buildingMult || {});
       state.upgrades = loaded.upgrades || {};
       if (opts.grantOfflineProgress !== false) {
-        // offline progress: 10% of normal rate, uncapped duration — cookies
-        // keep baking while the app is closed, but much slower than active play
+        // offline progress: full speed for the first 2h, then 10% of normal
+        // rate — uncapped duration, cookies always keep baking, just much
+        // slower once you've been away a while
         const elapsed = Math.max(0, (Date.now() - (loaded.lastTs || Date.now())) / 1000);
-        const offlineGain = elapsed * getCps() * OFFLINE_RATE;
+        const offlineGain = computeOfflineGain(elapsed, getCps());
         if (offlineGain > 1) {
           state.cookies += offlineGain;
           state.totalBaked += offlineGain;

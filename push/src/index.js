@@ -12,9 +12,21 @@
 //        per occurrence, tracked via an eventflag:* KV marker.
 
 const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/';
-const STAGE1_MS = 5 * 3600 * 1000; // ~5h: "cookies piling up"
-const STAGE2_MS = 24 * 3600 * 1000; // 24h: "daily reward + cookies waiting"
-const OFFLINE_RATE = 0.1; // must match game.js's OFFLINE_RATE — production while closed
+// Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
+const OFFLINE_FULL_RATE_SECONDS = 2 * 3600;
+const OFFLINE_RATE = 0.1;
+
+// Fires ~15min before the full-rate offline window runs out — motivation to
+// come back peaks right before the slowdown, while it's still avoidable,
+// not after the player has already been earning at 10% for hours.
+const STAGE_EARLY_MS = OFFLINE_FULL_RATE_SECONDS * 1000 - 15 * 60 * 1000;
+const STAGE_PILING_MS = 5 * 3600 * 1000; // ~5h: "cookies piling up"
+const STAGE_REWARD_MS = 24 * 3600 * 1000; // 24h: "daily reward + cookies waiting"
+
+function computeOfflineGain(elapsedSeconds, cps) {
+  if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
+  return OFFLINE_FULL_RATE_SECONDS * cps + (elapsedSeconds - OFFLINE_FULL_RATE_SECONDS) * cps * OFFLINE_RATE;
+}
 
 // Same schedule as game.js's Happy Hour / Weekend event math — keep these two
 // in sync if the schedule ever changes.
@@ -179,13 +191,17 @@ async function handleLeaderboard(env) {
   return jsonResponse({ ok: true, entries: entries.slice(0, 50) });
 }
 
-function stage1Text(data) {
-  const approxCookies = Math.round((data.cps || 0) * (STAGE1_MS / 1000) * OFFLINE_RATE);
+function stageEarlyText() {
+  return '⏰ Печеньки скоро замедлятся! Ещё 15 минут — и офлайн-скорость выпечки упадёт в 10 раз. Успей зайти, пока печём на полной ставке.';
+}
+
+function stagePilingText(data) {
+  const approxCookies = Math.round(computeOfflineGain(STAGE_PILING_MS / 1000, data.cps || 0));
   const cookiesLine = approxCookies > 0 ? ` Уже накопилось ~${approxCookies} 🍪.` : '';
   return `🍪 Твои печеньки скучают без присмотра!${cookiesLine} Заходи, пока курсоры не разбежались.`;
 }
 
-function stage2Text() {
+function stageRewardText() {
   return '🎁 Ежедневная награда уже ждёт тебя в игре — а печеньки всё это время копились. Не заставляй бабушку печь зря!';
 }
 
@@ -212,13 +228,17 @@ async function runPushCycle(env) {
       if (!data) continue; // older record written before metadata was added; heals on next checkin
       const elapsed = Date.now() - data.lastActiveTs;
 
-      if (data.pushStage < 1 && elapsed >= STAGE1_MS) {
-        await sendPush(env, data.chatId, stage1Text(data));
+      if (data.pushStage < 1 && elapsed >= STAGE_EARLY_MS) {
+        await sendPush(env, data.chatId, stageEarlyText());
         data.pushStage = 1;
         await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
-      } else if (data.pushStage < 2 && elapsed >= STAGE2_MS) {
-        await sendPush(env, data.chatId, stage2Text());
+      } else if (data.pushStage < 2 && elapsed >= STAGE_PILING_MS) {
+        await sendPush(env, data.chatId, stagePilingText(data));
         data.pushStage = 2;
+        await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
+      } else if (data.pushStage < 3 && elapsed >= STAGE_REWARD_MS) {
+        await sendPush(env, data.chatId, stageRewardText());
+        data.pushStage = 3;
         await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
       }
     }
