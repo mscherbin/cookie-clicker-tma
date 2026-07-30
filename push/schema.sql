@@ -23,3 +23,15 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
+
+-- Tunable economy knobs, editable without a code release. Read by the worker
+-- (short-lived in-memory cache) and handed to clients on /checkin. Seed the
+-- cookie-army boost curve; missing rows fall back to worker/client defaults.
+CREATE TABLE IF NOT EXISTS config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO config (key, value) VALUES
+  ('ref_boost_max', '1.0'),
+  ('ref_boost_tau', '25');

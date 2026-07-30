@@ -140,6 +140,38 @@ const REFEREE_WELCOME_BONUS = 300; // flat starter gift for whoever clicked the 
 const REFERRER_BONUS_SECONDS = 600; // 10 min of the referrer's own cps
 const REFERRER_BONUS_MIN = 200; // floor, for referrers with ~0 cps so far
 
+// Cookie-army boost curve knobs, read from the D1 `config` table so they can
+// be retuned by editing a row instead of shipping a release. These are only
+// the fallback if the table/rows are missing or unreadable; the client keeps
+// its own matching fallback for the offline / pre-checkin case.
+const REF_BOOST_MAX_DEFAULT = 1.0; // ceiling: +100% production
+const REF_BOOST_TAU_DEFAULT = 25;  // growth constant: ~63% of MAX at 25 friends
+
+// The config rarely changes, but /checkin runs constantly, so cache it in
+// isolate memory for a short TTL rather than hitting D1 on every request.
+// A tuning edit propagates within CONFIG_TTL_MS across all isolates.
+const CONFIG_TTL_MS = 60 * 1000;
+let _configCache = null;
+let _configCacheTs = 0;
+
+async function getEconomyConfig(env) {
+  const now = Date.now();
+  if (_configCache && now - _configCacheTs < CONFIG_TTL_MS) return _configCache;
+  const cfg = { refBoostMax: REF_BOOST_MAX_DEFAULT, refBoostTau: REF_BOOST_TAU_DEFAULT };
+  if (env.DB) {
+    try {
+      const rows = await env.DB.prepare("SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau')").all();
+      const map = {};
+      for (const r of (rows.results || [])) map[r.key] = Number(r.value);
+      if (Number.isFinite(map.ref_boost_max)) cfg.refBoostMax = map.ref_boost_max;
+      if (Number.isFinite(map.ref_boost_tau) && map.ref_boost_tau > 0) cfg.refBoostTau = map.ref_boost_tau;
+    } catch (e) { /* table may not exist yet — fall back to defaults */ }
+  }
+  _configCache = cfg;
+  _configCacheTs = now;
+  return cfg;
+}
+
 // Every user who ever triggers any event gets a `users` row (idempotent —
 // ON CONFLICT DO NOTHING). This is what referrer-id validation checks
 // against: a referral only counts if the referrer id has itself shown up
@@ -368,7 +400,12 @@ async function handleCheckin(request, env) {
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals });
+  // Tunable boost curve knobs, so the client's referralBoost() can be
+  // retuned server-side without a frontend release.
+  const cfg = await getEconomyConfig(env);
+  const refConfig = { max: cfg.refBoostMax, tau: cfg.refBoostTau };
+
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, refConfig });
 }
 
 async function handleLeaderboard(env) {

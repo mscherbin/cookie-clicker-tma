@@ -70,19 +70,20 @@
   const OFFLINE_RATE = 0.1; // after that, production drops to this fraction until the player returns
 
   // "Cookie army": every friend you invite who becomes active (ref_active,
-  // validated server-side) permanently boosts production. Full REF_BOOST_PER
-  // each up to REF_BOOST_KNEE friends, then a damped tail (REF_BOOST_TAIL of
-  // the rate) so top referrers keep growing without breaking the economy.
-  // The count itself is authoritative on the server, refreshed every checkin.
-  const REF_BOOST_PER = 0.015; // +1.5% production per active friend
-  const REF_BOOST_KNEE = 35;   // full rate up to this many friends
-  const REF_BOOST_TAIL = 0.25; // friends beyond the knee count at 25% rate
+  // validated server-side) permanently boosts production. Saturating
+  // exponential — one continuous curve, no segments or kinks: fast growth
+  // early, smoothly easing toward a ceiling of +MAX. MAX and TAU are economy
+  // knobs tuned server-side (D1 `config` table) and delivered on every
+  // /checkin, so they can change without a frontend release; the constants
+  // below are only the offline / first-load fallback. The friend count is
+  // likewise server-authoritative, refreshed every checkin.
+  const REF_BOOST_MAX_DEFAULT = 1.0; // ceiling: +100% (×2) production for top referrers
+  const REF_BOOST_TAU_DEFAULT = 25;  // growth constant: ~63% of MAX at 25 friends
 
   function referralBoost(n) {
-    if (!n || n <= 0) return 0;
-    const full = Math.min(n, REF_BOOST_KNEE);
-    const tail = Math.max(0, n - REF_BOOST_KNEE) * REF_BOOST_TAIL;
-    return (full + tail) * REF_BOOST_PER;
+    const max = Number.isFinite(state.refBoostMax) ? state.refBoostMax : REF_BOOST_MAX_DEFAULT;
+    const tau = state.refBoostTau > 0 ? state.refBoostTau : REF_BOOST_TAU_DEFAULT;
+    return max * (1 - Math.exp(-(n || 0) / tau));
   }
 
   function referralMultiplier() {
@@ -117,6 +118,8 @@
     totalCrumbs: 0,
     ascensionCount: 0,
     activeReferrals: 0, // active friends invited; server-authoritative, refreshed each checkin
+    refBoostMax: REF_BOOST_MAX_DEFAULT, // cookie-army boost ceiling; overridden by server config on checkin
+    refBoostTau: REF_BOOST_TAU_DEFAULT, // cookie-army boost growth constant; overridden by server config on checkin
   });
 
   let state = defaultState();
@@ -276,6 +279,18 @@
           state.activeReferrals = data.activeReferrals;
           saveState();
           refreshAll();
+        }
+        // Cookie-army boost knobs (MAX/TAU) are tuned server-side and pushed
+        // down here, so the curve changes without a frontend release.
+        if (data && data.refConfig) {
+          const m = Number(data.refConfig.max);
+          const t = Number(data.refConfig.tau);
+          if (Number.isFinite(m) && Number.isFinite(t) && t > 0 && (m !== state.refBoostMax || t !== state.refBoostTau)) {
+            state.refBoostMax = m;
+            state.refBoostTau = t;
+            saveState();
+            refreshAll();
+          }
         }
       })
       .catch(() => {});
