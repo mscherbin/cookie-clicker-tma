@@ -1006,7 +1006,9 @@ html, body {
   opacity: 0;
   pointer-events: none;
   transition: all 0.25s ease;
-  white-space: nowrap;
+  white-space: normal;
+  max-width: calc(100vw - 32px);
+  text-align: center;
   z-index: 100;
 }
 

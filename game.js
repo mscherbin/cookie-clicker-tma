@@ -1211,13 +1211,23 @@
   function buyUpgrade(u) {
     if (state.upgrades[u.id]) return;
     if (state.cookies < u.cost) { haptic('light'); return; }
-    if (Object.keys(state.upgrades).length === 0) sendAnalyticsEvent('first_upgrade');
+    const isFirstUpgrade = Object.keys(state.upgrades).length === 0;
+    if (isFirstUpgrade) sendAnalyticsEvent('first_upgrade');
     state.cookies -= u.cost;
     state.upgrades[u.id] = true;
     u.effect(state);
     haptic('rigid');
     showToast(`Куплено: ${u.name}`);
     refreshAll();
+    // Tutorial step 2: the one and only offline-mechanic nudge, right after the
+    // first upgrade. Cap/timer details are self-explained by the offline UI, so
+    // keep it to a single line. Delayed so it follows the "bought" toast.
+    const t = tut();
+    if (isFirstUpgrade && !t.offlineHintDone) {
+      t.offlineHintDone = true;
+      saveState();
+      setTimeout(() => showToast('🍪 Печеньки копятся, даже когда ты вышел — загляни попозже за добычей', 5000), 1500);
+    }
   }
 
   function clickCookie(x, y) {
@@ -1250,11 +1260,11 @@
   }
 
   let toastTimer = null;
-  function showToast(msg) {
+  function showToast(msg, duration = 2200) {
     el.toast.textContent = msg;
     el.toast.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2200);
+    toastTimer = setTimeout(() => el.toast.classList.remove('show'), duration);
   }
 
   let rewardBurstTimer = null;
