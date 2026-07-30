@@ -12,4 +12,4 @@ id = "198ea5dd232e422ba569ab6a3ff05993"
 [[d1_databases]]
 binding = "DB"
 database_name = "cookie-clicker-analytics"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "0d3bf956-efce-4132-967b-44c62833fcca"
