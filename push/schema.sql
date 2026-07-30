@@ -19,23 +19,35 @@ CREATE INDEX IF NOT EXISTS idx_events_user_event ON events(user_id, event);
 -- updated as MAX(old, current) on every /checkin. Referral titles are derived
 -- from this high-water mark, not the live count — so a title never regresses
 -- if an invited friend later goes inactive.
+-- weekly_baseline / weekly_week_id: snapshot for the weekly referral
+-- leaderboard. At the first checkin of a new ISO-week (Monday-anchored, UTC),
+-- weekly_baseline is rebased to the user's current max_active_friends_ever and
+-- weekly_week_id set to that week. Weekly score = max_active_friends_ever −
+-- weekly_baseline (friends recruited THIS week). This is the "snapshot" that
+-- makes weekly reset correctly without a cron.
 CREATE TABLE IF NOT EXISTS users (
   user_id INTEGER PRIMARY KEY,
   referrer_id INTEGER,
   first_seen_ts INTEGER NOT NULL,
   pending_reward REAL NOT NULL DEFAULT 0,
-  max_active_friends_ever INTEGER NOT NULL DEFAULT 0
+  max_active_friends_ever INTEGER NOT NULL DEFAULT 0,
+  weekly_baseline INTEGER NOT NULL DEFAULT 0,
+  weekly_week_id INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
 
 -- NOTE for an ALREADY-DEPLOYED database: CREATE TABLE IF NOT EXISTS above will
--- NOT add the new column to a users table that already exists. Run this ONCE
--- against prod (it is NOT idempotent — errors with "duplicate column" if the
--- column is already there, which is a safe signal it's done):
+-- NOT add new columns to a users table that already exists. Run these ONCE
+-- against prod (NOT idempotent — a "duplicate column" error just means it's
+-- already applied). The worker degrades gracefully until then (all the reads
+-- are in a try/catch).
 --   wrangler d1 execute cookie-clicker-analytics --remote \
 --     --command "ALTER TABLE users ADD COLUMN max_active_friends_ever INTEGER NOT NULL DEFAULT 0"
--- The worker degrades gracefully until then (the title read is in a try/catch).
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE users ADD COLUMN weekly_baseline INTEGER NOT NULL DEFAULT 0"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE users ADD COLUMN weekly_week_id INTEGER NOT NULL DEFAULT 0"
 
 -- Tunable economy knobs, editable without a code release. Read by the worker
 -- (short-lived in-memory cache) and handed to clients on /checkin. Seed the

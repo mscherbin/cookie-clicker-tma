@@ -167,6 +167,7 @@
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
+  const REFERRAL_LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/referral-leaderboard';
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
   const BOT_USERNAME = 'bestcookieclickerbot';
 
@@ -453,6 +454,57 @@
       });
   }
 
+  // ---------- Referral leaderboard (weekly / all-time) ----------
+  let refPeriod = 'weekly';          // which slice is shown
+  let refData = null;                // { weekly:[], allTime:[] } from the server
+
+  function loadReferralLeaderboard() {
+    el.referralLeaderboardList.innerHTML = '<div class="empty-hint">Загрузка…</div>';
+    if (!REFERRAL_LEADERBOARD_URL) return;
+    fetch(REFERRAL_LEADERBOARD_URL)
+      .then(r => r.json())
+      .then(data => {
+        refData = (data && data.ok) ? data : { weekly: [], allTime: [] };
+        renderReferralLeaderboard();
+      })
+      .catch(() => {
+        el.referralLeaderboardList.innerHTML = '<div class="empty-hint">Не удалось загрузить. Попробуйте позже.</div>';
+      });
+  }
+
+  function renderReferralLeaderboard() {
+    if (!el.referralLeaderboardList) return;
+    const entries = refData ? (refPeriod === 'weekly' ? refData.weekly : refData.allTime) : [];
+    if (!entries || entries.length === 0) {
+      el.referralLeaderboardList.innerHTML = refPeriod === 'weekly'
+        ? '<div class="empty-hint">На этой неделе ещё никто не звал друзей — будь первым! 🤝</div>'
+        : '<div class="empty-hint">Пока никто не привёл друзей — стань первым! 🤝</div>';
+      return;
+    }
+    const myId = ownTelegramUserId();
+    const medals = ['🥇', '🥈', '🥉'];
+    el.referralLeaderboardList.innerHTML = entries.map((entry, i) => {
+      const n = entry.score || 0;
+      return `
+        <div class="leaderboard-row${myId && entry.userId === myId ? ' me' : ''}">
+          <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
+          <div class="leaderboard-info">
+            <div class="leaderboard-name">${escapeHtml(entry.name)}</div>
+            <div class="leaderboard-total">🤝 активных друзей</div>
+          </div>
+          <div class="leaderboard-score">${formatNum(n)}<span class="leaderboard-score-unit">${friendWord(n)}</span></div>
+        </div>`;
+    }).join('');
+  }
+
+  function setRefPeriod(period) {
+    if (period !== 'weekly' && period !== 'alltime') return;
+    refPeriod = period;
+    el.refToggleWeekly.classList.toggle('active', period === 'weekly');
+    el.refToggleAll.classList.toggle('active', period === 'alltime');
+    renderReferralLeaderboard();
+  }
+
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
@@ -705,6 +757,9 @@
     eventBanner: document.getElementById('eventBanner'),
     eventBannerText: document.getElementById('eventBannerText'),
     leaderboardList: document.getElementById('leaderboardList'),
+    referralLeaderboardList: document.getElementById('referralLeaderboardList'),
+    refToggleWeekly: document.getElementById('refToggleWeekly'),
+    refToggleAll: document.getElementById('refToggleAll'),
     ascendCrumbs: document.getElementById('ascendCrumbs'),
     ascendBonus: document.getElementById('ascendBonus'),
     ascendPreview: document.getElementById('ascendPreview'),
@@ -1184,8 +1239,12 @@
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
       if (btn.dataset.tab === 'leaderboard') { sendCheckin(); loadLeaderboard(); }
+      if (btn.dataset.tab === 'friends') { sendCheckin(); loadReferralLeaderboard(); }
     });
   });
+
+  el.refToggleWeekly.addEventListener('click', () => setRefPeriod('weekly'));
+  el.refToggleAll.addEventListener('click', () => setRefPeriod('alltime'));
 
   // ---------- Passive income loop ----------
   let lastTick = Date.now();

@@ -41,6 +41,13 @@ function dateKey(d) {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
 
+// Monday-anchored week number (UTC). 1970-01-01 was a Thursday; the +3 shifts
+// the boundary so each week starts Monday 00:00 UTC. Used to reset the weekly
+// referral leaderboard.
+function weekId(ts) {
+  return Math.floor((Math.floor(ts / 86400000) + 3) / 7);
+}
+
 function getHappyHourWindows(d) {
   return HAPPY_HOUR_START_HOURS_UTC.map(h => ({
     start: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h)),
@@ -378,6 +385,8 @@ async function handleCheckin(request, env) {
   let pendingReward = 0;
   let activeReferrals = 0;
   let maxActiveFriendsEver = 0;
+  const curWeek = weekId(now);
+  let weeklyReferrals = 0;
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -404,6 +413,20 @@ async function handleCheckin(request, env) {
         .bind(activeReferrals, user.id).run();
       const maxRow = await env.DB.prepare('SELECT max_active_friends_ever AS m FROM users WHERE user_id = ?').bind(user.id).first();
       if (maxRow && Number.isFinite(maxRow.m)) maxActiveFriendsEver = maxRow.m;
+
+      // Weekly snapshot: on the first checkin of a new week, rebase the
+      // baseline to the current peak so this week's score starts at 0. Weekly
+      // score = friends recruited since that rebase. This is what lets the
+      // weekly leaderboard reset without a cron.
+      const wkRow = await env.DB.prepare('SELECT weekly_baseline AS b, weekly_week_id AS w FROM users WHERE user_id = ?').bind(user.id).first();
+      let baseline = wkRow && Number.isFinite(wkRow.b) ? wkRow.b : 0;
+      const storedWeek = wkRow && Number.isFinite(wkRow.w) ? wkRow.w : 0;
+      if (storedWeek !== curWeek) {
+        baseline = maxActiveFriendsEver;
+        await env.DB.prepare('UPDATE users SET weekly_baseline = ?, weekly_week_id = ? WHERE user_id = ?')
+          .bind(baseline, curWeek, user.id).run();
+      }
+      weeklyReferrals = Math.max(0, maxActiveFriendsEver - baseline);
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -416,6 +439,8 @@ async function handleCheckin(request, env) {
     totalBaked: Number(body.totalBaked) || 0,
     displayName,
     maxActiveFriendsEver,
+    weeklyReferrals,      // friends recruited this week (for the weekly board)
+    weeklyWeekId: curWeek, // which week weeklyReferrals belongs to (stale => 0 on the board)
   };
   // Mirroring `data` into KV metadata lets list-all operations (leaderboard,
   // the push cron, broadcasts) read every user's fields straight off list()
@@ -456,6 +481,41 @@ async function handleLeaderboard(env) {
   }
   entries.sort((a, b) => b.cps - a.cps);
   return jsonResponse({ ok: true, entries: entries.slice(0, 50) });
+}
+
+// Referral leaderboard: top referrers by all-time peak army size, plus a
+// weekly board of friends recruited during the current week. Both are built
+// straight from KV metadata (one list() sweep, no per-user reads). Weekly
+// entries whose stored week != the current week are treated as 0 — that's how
+// the weekly board resets on the Monday boundary without any cron.
+const REFERRAL_TOP_N = 50;
+
+async function handleReferralLeaderboard(env) {
+  const curWeek = weekId(Date.now());
+  const allTime = [];
+  const weekly = [];
+  let cursor;
+  for (;;) {
+    const list = await env.USERS.list({ prefix: 'user:', cursor });
+    for (const k of list.keys) {
+      const data = k.metadata;
+      if (!data) continue;
+      const name = data.displayName || 'Игрок';
+      const peak = data.maxActiveFriendsEver || 0;
+      if (peak > 0) allTime.push({ userId: data.chatId, name, score: peak });
+      const wk = (data.weeklyWeekId === curWeek) ? (data.weeklyReferrals || 0) : 0;
+      if (wk > 0) weekly.push({ userId: data.chatId, name, score: wk });
+    }
+    if (list.list_complete || !list.cursor) break;
+    cursor = list.cursor;
+  }
+  allTime.sort((a, b) => b.score - a.score);
+  weekly.sort((a, b) => b.score - a.score);
+  return jsonResponse({
+    ok: true,
+    allTime: allTime.slice(0, REFERRAL_TOP_N),
+    weekly: weekly.slice(0, REFERRAL_TOP_N),
+  });
 }
 
 function stageEarlyText() {
@@ -554,6 +614,10 @@ export default {
 
     if (url.pathname === '/leaderboard' && request.method === 'GET') {
       return handleLeaderboard(env);
+    }
+
+    if (url.pathname === '/referral-leaderboard' && request.method === 'GET') {
+      return handleReferralLeaderboard(env);
     }
 
     if (url.pathname === '/event' && request.method === 'POST') {
