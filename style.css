@@ -163,8 +163,8 @@ html, body {
 .big-cookie {
   background: none;
   border: none;
-  width: min(46vw, 220px);
-  height: min(46vw, 220px);
+  width: min(52vw, 250px);
+  height: min(52vw, 250px);
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -251,11 +251,8 @@ html, body {
 /* Persistent reward teaser pinned above the cookie — advertises the
    referral-unlocked building and its progress, tappable to invite / place. */
 .reward-teaser {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  z-index: 5;
+  flex-shrink: 0;
+  margin: 10px 12px 2px;
   display: flex;
   align-items: center;
   gap: 11px;
