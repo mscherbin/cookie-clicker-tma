@@ -449,6 +449,34 @@ async function handleOnline(request, env) {
   return jsonResponse({ ok: true, online, day, total });
 }
 
+// GET /webhook-info?key=<ADMIN_KEY> — proxies getWebhookInfo so we can check
+// allowed_updates (must include pre_checkout_query for Stars) without exposing
+// the bot token.
+async function handleWebhookInfo(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) {
+    return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  }
+  const res = await tgCall(env, 'getWebhookInfo', {});
+  return jsonResponse(res);
+}
+
+// POST /fix-webhook?key=<ADMIN_KEY> — re-registers the webhook with the update
+// types the payment flow needs (message + pre_checkout_query), keeping the
+// same URL and secret token.
+async function handleFixWebhook(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) {
+    return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  }
+  const res = await tgCall(env, 'setWebhook', {
+    url: 'https://cookie-clicker-tma-push.mscherbin.workers.dev/telegram-webhook',
+    secret_token: env.WEBHOOK_SECRET,
+    allowed_updates: ['message', 'pre_checkout_query'],
+  });
+  return jsonResponse(res);
+}
+
 // POST /create-offline-invoice { initData, amount } — the client taps "claim
 // x2 for Stars". We FREEZE `amount` (the offline earnings at this moment) into
 // a pending star_invoices row and return a Telegram Stars invoice link. The
@@ -831,6 +859,14 @@ export default {
 
     if (url.pathname === '/create-offline-invoice' && request.method === 'POST') {
       return handleCreateOfflineInvoice(request, env);
+    }
+
+    if (url.pathname === '/webhook-info' && request.method === 'GET') {
+      return handleWebhookInfo(request, env);
+    }
+
+    if (url.pathname === '/fix-webhook' && request.method === 'POST') {
+      return handleFixWebhook(request, env);
     }
 
     return jsonResponse({ ok: false, error: 'not_found' }, 404);

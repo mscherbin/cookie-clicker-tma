@@ -1204,8 +1204,11 @@
 
     const activeTab = document.querySelector('.tab-btn.active');
     const onUpgrades = activeTab && activeTab.dataset.tab === 'upgrades';
-    // Only nudge toward the FIRST upgrade (none bought yet) — excludes veterans.
+    // Only nudge toward the FIRST upgrade of a genuinely new player: none bought
+    // yet AND never ascended (ascension resets upgrades to {} but keeps tutorial
+    // flags, which otherwise re-triggers this pulse for veterans).
     const showUpgrade = t.clicked && !t.upgradeHintDone &&
+      (state.ascensionCount || 0) === 0 &&
       Object.keys(state.upgrades).length === 0 &&
       state.totalClicks >= 5 && !onUpgrades && hasAffordableUpgrade();
     el.upgradeHint.hidden = !showUpgrade;
@@ -1222,15 +1225,21 @@
   }
 
   let upgradeDismissArmed = false;
+  let upgradeDismissTimer = null;
   function onUpgradeDismiss() { markUpgradeHintSeen(); }
   function armUpgradeDismiss() {
     if (upgradeDismissArmed) return;
     upgradeDismissArmed = true;
     document.addEventListener('pointerdown', onUpgradeDismiss, { capture: true, once: true });
+    // Also auto-dismiss after a short window so the pulse can never flash
+    // indefinitely if the player just ignores it.
+    clearTimeout(upgradeDismissTimer);
+    upgradeDismissTimer = setTimeout(markUpgradeHintSeen, 8000);
   }
   function disarmUpgradeDismiss() {
     if (!upgradeDismissArmed) return;
     upgradeDismissArmed = false;
+    clearTimeout(upgradeDismissTimer);
     document.removeEventListener('pointerdown', onUpgradeDismiss, { capture: true });
   }
   function markUpgradeHintSeen() {
