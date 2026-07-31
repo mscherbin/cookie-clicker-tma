@@ -781,6 +781,14 @@ html, body {
 
 .nocap-btn:disabled { opacity: 0.5; pointer-events: none; }
 
+/* "Куплено" state for the one-time permanent boost — owned, not dimmed */
+.nocap-btn.owned {
+  opacity: 1;
+  color: var(--accent-text);
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  border-color: var(--gold);
+}
+
 /* --- Player profile line (name + current referral title) --- */
 .player-profile {
   display: flex;

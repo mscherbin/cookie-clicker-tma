@@ -171,6 +171,10 @@ const NOCAP_BOOST_DURATION_MS = 24 * 3600 * 1000; // 24h window per purchase
 const PROD2X_BOOST_STARS = 10;              // price in Stars
 const PROD2X_BOOST_DURATION_MS = 3600 * 1000; // 1h window per purchase
 
+// Paid one-time "+10% production forever" boost. The +10% itself is applied
+// client-side; the server just owns the has_permanent_production_boost flag.
+const PERM_PROD_STARS = 200; // price in Stars (one-time)
+
 // Generic Telegram Bot API call. Returns the parsed JSON ({ ok, result, ... }).
 async function tgCall(env, method, payload) {
   try {
@@ -583,6 +587,45 @@ async function handleCreateBoost2xInvoice(request, env) {
   return jsonResponse({ ok: true, link: res.result });
 }
 
+// POST /create-perm-invoice { initData } — one-time "+10% forever" boost.
+// CRITICAL: refuse BEFORE creating the invoice if the user already owns it, so
+// they can never be charged a second, real payment for something they have.
+// (charge_id idempotency wouldn't help here — a second purchase is a separate
+// genuine payment.)
+async function handleCreatePermInvoice(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    const owned = await env.DB.prepare('SELECT has_permanent_production_boost AS h FROM users WHERE user_id = ?').bind(userId).first();
+    if (owned && owned.h) return jsonResponse({ ok: false, error: 'already_owned' }, 409);
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const invoiceId = crypto.randomUUID();
+  try {
+    await env.DB.prepare('INSERT INTO star_invoices (invoice_id, user_id, amount, status, created_ts, kind) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(invoiceId, userId, 0, 'pending', now, 'perm_prod').run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const res = await tgCall(env, 'createInvoiceLink', {
+    title: '+10% к производству навсегда',
+    description: 'Разовая покупка: +10% к выпечке печенья без срока действия.',
+    payload: invoiceId,
+    currency: 'XTR',
+    prices: [{ label: '+10% навсегда', amount: PERM_PROD_STARS }],
+  });
+  if (!res || !res.ok || !res.result) {
+    return jsonResponse({ ok: false, error: 'invoice_failed' }, 502);
+  }
+  return jsonResponse({ ok: true, link: res.result });
+}
+
 // successful_payment webhook. Idempotent via a conditional status flip: the
 // UPDATE only takes effect the first time (pending -> paid), so a retried or
 // duplicate webhook for the same invoice/charge never credits twice. Credits
@@ -611,6 +654,11 @@ async function handleSuccessfulPayment(env, msg) {
       const base = Math.max((row && Number.isFinite(row.e) ? row.e : 0), Date.now());
       await env.DB.prepare(`UPDATE users SET ${col} = ? WHERE user_id = ?`)
         .bind(base + dur, userId).run();
+    } else if (inv.kind === 'perm_prod') {
+      // One-time permanent +10% flag. Idempotent (the conditional invoice flip
+      // guarantees this runs once; setting to 1 is idempotent regardless).
+      await env.DB.prepare('UPDATE users SET has_permanent_production_boost = 1 WHERE user_id = ?')
+        .bind(userId).run();
     } else {
       // offline_2x (default): credit the frozen amount x2.
       const credit = (inv.amount || 0) * OFFLINE_BOOST_MULT;
@@ -664,6 +712,7 @@ async function handleCheckin(request, env) {
   let paidOfflineCredit = 0;
   let boostExpiresAt = 0;
   let boost2xExpiresAt = 0;
+  let hasPermProdBoost = false;
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -714,11 +763,12 @@ async function handleCheckin(request, env) {
         await env.DB.prepare('UPDATE users SET pending_paid_cookies = pending_paid_cookies - ? WHERE user_id = ?')
           .bind(paidOfflineCredit, user.id).run();
       }
-      // Boost windows (server-authoritative); client uses them for the offline
-      // split calc, online x2, and the timer UI.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2 FROM users WHERE user_id = ?').bind(user.id).first();
+      // Boost windows + permanent flag (server-authoritative); client uses them
+      // for the offline split calc, online x2, the permanent +10%, and timers.
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
+      if (boostRow && boostRow.perm) hasPermProdBoost = true;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -752,7 +802,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost });
 }
 
 async function handleLeaderboard(env) {
@@ -957,6 +1007,10 @@ export default {
 
     if (url.pathname === '/create-boost2x-invoice' && request.method === 'POST') {
       return handleCreateBoost2xInvoice(request, env);
+    }
+
+    if (url.pathname === '/create-perm-invoice' && request.method === 'POST') {
+      return handleCreatePermInvoice(request, env);
     }
 
     if (url.pathname === '/webhook-info' && request.method === 'GET') {

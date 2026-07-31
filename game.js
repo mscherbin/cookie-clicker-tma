@@ -200,6 +200,9 @@
   const NOCAP_BOOST_STARS = 30; // must match NOCAP_BOOST_STARS in push/src/index.js
   const CREATE_BOOST2X_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-boost2x-invoice';
   const PROD2X_BOOST_STARS = 10; // must match PROD2X_BOOST_STARS in push/src/index.js
+  const CREATE_PERM_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-perm-invoice';
+  const PERM_PROD_STARS = 200; // must match PERM_PROD_STARS in push/src/index.js
+  const PERM_PROD_MULT = 1.1;  // +10% permanent production
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
 
   // Offline claim: below this, offline income auto-applies silently (as before);
@@ -236,6 +239,7 @@
     offlinePending: 0, // offline income awaiting a claim (free x1 or paid x2); survives reopen
     boostExpiresAt: 0, // ms epoch of the paid "no offline cap" boost; server-authoritative
     boost2xExpiresAt: 0, // ms epoch of the paid "x2 production 1h" boost; server-authoritative
+    hasPermProdBoost: false, // one-time paid "+10% forever"; server-authoritative
   });
 
   let state = defaultState();
@@ -473,6 +477,14 @@
           saveState();
           refreshAll();
           if (!wasActive && data.boost2xExpiresAt > Date.now()) showToast('⚡ ×2 производство активно на 1 час!', 4000);
+        }
+        // Permanent +10% flag (server-authoritative, one-time).
+        if (data && typeof data.hasPermProdBoost === 'boolean' && data.hasPermProdBoost !== !!state.hasPermProdBoost) {
+          const wasOwned = !!state.hasPermProdBoost;
+          state.hasPermProdBoost = data.hasPermProdBoost;
+          saveState();
+          refreshAll();
+          if (!wasOwned && data.hasPermProdBoost) showToast('🌟 +10% к производству навсегда!', 4000);
         }
       })
       .catch(() => {});
@@ -727,14 +739,21 @@
     return b.baseCps * mult;
   }
 
+  // Permanent paid +10% — a standing production multiplier (like the referral
+  // bonus), so it belongs inside getCps/getClickPower: it must count in the
+  // leaderboard and offline income too. Independent multiplicative factor.
+  function permProdMultiplier() {
+    return state.hasPermProdBoost ? PERM_PROD_MULT : 1;
+  }
+
   function getCps() {
     let total = 0;
     for (const b of BUILDINGS) total += buildingCps(b) * state.buildings[b.id];
-    return total * state.globalMult * eventMultiplier() * prestigeMultiplier() * referralMultiplier();
+    return total * state.globalMult * eventMultiplier() * prestigeMultiplier() * referralMultiplier() * permProdMultiplier();
   }
 
   function getClickPower() {
-    return (1 + state.buildings.cursor * 0.1) * state.clickMult * state.globalMult * eventMultiplier() * prestigeMultiplier() * referralMultiplier();
+    return (1 + state.buildings.cursor * 0.1) * state.clickMult * state.globalMult * eventMultiplier() * prestigeMultiplier() * referralMultiplier() * permProdMultiplier();
   }
 
   // Temporary paid "x2 production" boost — applied as a FINAL multiplier at the
@@ -971,6 +990,42 @@
     }
   }
 
+  // Paid one-time "+10% forever". The server refuses if already owned; on
+  // success the flag arrives via checkin and getCps/getClickPower pick up +10%.
+  async function buyPermProd() {
+    if (state.hasPermProdBoost) { showToast('Уже куплено ✓'); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (el.permProdBtn) el.permProdBtn.disabled = true;
+    try {
+      const resp = await fetch(CREATE_PERM_INVOICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
+      const data = await resp.json();
+      if (data && data.error === 'already_owned') {
+        state.hasPermProdBoost = true; saveState(); refreshAll();
+        showToast('Уже куплено ✓');
+        return;
+      }
+      if (!data || !data.ok || !data.link) throw new Error('no_link');
+      tg.openInvoice(data.link, (status) => {
+        if (status === 'paid') {
+          // Keep the button disabled — the flag lands via checkin and flips the
+          // button to "Куплено", preventing a rapid second (real) purchase.
+          showToast('Оплата принята — активируем +10%…', 4000);
+          pollPaidCredit();
+        } else {
+          if (el.permProdBtn) el.permProdBtn.disabled = false;
+          if (status === 'failed') showToast('Оплата не прошла — попробуй ещё раз');
+        }
+      });
+    } catch (e) {
+      if (el.permProdBtn) el.permProdBtn.disabled = false;
+      showToast('Не удалось создать счёт — попробуй позже');
+    }
+  }
+
   // ---------- Rendering ----------
   const el = {
     cookieCount: document.getElementById('cookieCount'),
@@ -1032,6 +1087,7 @@
     armyOfflineLabel: document.getElementById('armyOfflineLabel'),
     nocapBtn: document.getElementById('nocapBtn'),
     boost2xBtn: document.getElementById('boost2xBtn'),
+    permProdBtn: document.getElementById('permProdBtn'),
     playerProfile: document.getElementById('playerProfile'),
     titleTrack: document.getElementById('titleTrack'),
     titleNext: document.getElementById('titleNext'),
@@ -1289,6 +1345,17 @@
     if (el.boost2xBtn) el.boost2xBtn.textContent = (state.boost2xExpiresAt || 0) > Date.now()
       ? `Продлить ×2 ещё на 1ч · ${PROD2X_BOOST_STARS} ⭐`
       : `⚡ ×2 производство на 1ч · ${PROD2X_BOOST_STARS} ⭐`;
+    if (el.permProdBtn) {
+      if (state.hasPermProdBoost) {
+        el.permProdBtn.textContent = '🌟 +10% навсегда · Куплено ✓';
+        el.permProdBtn.disabled = true;
+        el.permProdBtn.classList.add('owned');
+      } else {
+        el.permProdBtn.textContent = `🌟 +10% к производству навсегда · ${PERM_PROD_STARS} ⭐`;
+        el.permProdBtn.disabled = false;
+        el.permProdBtn.classList.remove('owned');
+      }
+    }
 
     renderTitles();
     el.syncStatus.textContent = cloudStorageStatusText();
@@ -1706,6 +1773,7 @@
   el.offlineX2Btn.addEventListener('click', claimOfflinePaid);
   if (el.nocapBtn) el.nocapBtn.addEventListener('click', buyNocapBoost);
   if (el.boost2xBtn) el.boost2xBtn.addEventListener('click', buyBoost2x);
+  if (el.permProdBtn) el.permProdBtn.addEventListener('click', buyPermProd);
   // Tapping the backdrop = free claim (never lose offline income); ignored while
   // a payment is processing.
   el.offlineModal.addEventListener('click', (e) => {
