@@ -37,7 +37,11 @@ CREATE TABLE IF NOT EXISTS users (
   max_active_friends_ever INTEGER NOT NULL DEFAULT 0,
   weekly_baseline INTEGER NOT NULL DEFAULT 0,
   weekly_week_id INTEGER NOT NULL DEFAULT 0,
-  pending_paid_cookies REAL NOT NULL DEFAULT 0
+  pending_paid_cookies REAL NOT NULL DEFAULT 0,
+  -- boost_expires_at: ms epoch until which the paid "no offline cap" boost is
+  -- active. Set/extended only by the successful_payment webhook; the client
+  -- reads it (via /checkin) to compute offline income and show the timer.
+  boost_expires_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
@@ -47,6 +51,8 @@ CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
 -- earnings FROZEN at that moment. On successful_payment it flips to 'paid' and
 -- credits amount*2. charge_id (telegram_payment_charge_id) is the idempotency
 -- key: a repeated webhook for the same charge_id is ignored.
+-- kind: which boost this invoice buys — 'offline_2x' (credits amount*2 cookies)
+-- or 'nocap_24h' (extends users.boost_expires_at by 24h; amount is unused/0).
 CREATE TABLE IF NOT EXISTS star_invoices (
   invoice_id TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
@@ -54,7 +60,8 @@ CREATE TABLE IF NOT EXISTS star_invoices (
   status TEXT NOT NULL DEFAULT 'pending',
   charge_id TEXT,
   created_ts INTEGER NOT NULL,
-  paid_ts INTEGER
+  paid_ts INTEGER,
+  kind TEXT NOT NULL DEFAULT 'offline_2x'
 );
 CREATE INDEX IF NOT EXISTS idx_star_invoices_charge ON star_invoices(charge_id);
 
@@ -81,6 +88,10 @@ CREATE TABLE IF NOT EXISTS refunds (
 --     --command "ALTER TABLE users ADD COLUMN weekly_week_id INTEGER NOT NULL DEFAULT 0"
 --   wrangler d1 execute cookie-clicker-analytics --remote \
 --     --command "ALTER TABLE users ADD COLUMN pending_paid_cookies REAL NOT NULL DEFAULT 0"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE users ADD COLUMN boost_expires_at INTEGER NOT NULL DEFAULT 0"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE star_invoices ADD COLUMN kind TEXT NOT NULL DEFAULT 'offline_2x'"
 -- (The star_invoices / refunds tables are created by re-running schema.sql —
 --  CREATE TABLE IF NOT EXISTS is idempotent, no ALTER needed for those.)
 

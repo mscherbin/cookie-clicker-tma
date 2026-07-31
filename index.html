@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=39" />
+<link rel="stylesheet" href="style.css?v=40" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -157,7 +157,8 @@
         <div class="invite-desc">Каждый друг, который начнёт активно играть, навсегда ускоряет твоё производство. Чем больше армия, тем сильнее буст — вплоть до ×2 у самых активных. Зови всех — армия печёт вместе с тобой!</div>
         <div class="army-row"><span>Друзей в строю</span><span id="armyCount">0</span></div>
         <div class="army-row"><span>Бонус к производству</span><span id="armyBoost">+0%</span></div>
-        <div class="army-row"><span>Офлайн на полной скорости</span><span id="armyOfflineCap">2ч 0мин</span></div>
+        <div class="army-row"><span id="armyOfflineLabel">Офлайн на полной скорости</span><span id="armyOfflineCap">2ч 0мин</span></div>
+        <button id="nocapBtn" class="nocap-btn">🚀 Снять кап офлайна на 24ч · 30 ⭐</button>
         <div class="title-track-wrap">
           <div class="title-track-head">🏅 Титулы за друзей</div>
           <div id="titleTrack" class="title-track"></div>
@@ -246,6 +247,6 @@
   </div>
 </div>
 
-<script src="game.js?v=39"></script>
+<script src="game.js?v=40"></script>
 </body>
 </html>

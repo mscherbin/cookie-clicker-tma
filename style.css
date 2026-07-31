@@ -739,6 +739,22 @@ html, body {
   font-weight: 700;
 }
 
+/* Paid "remove offline cap 24h" boost button (in the army/offline card) */
+.nocap-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px;
+  background: rgba(255, 209, 102, 0.12);
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.nocap-btn:disabled { opacity: 0.5; pointer-events: none; }
+
 /* --- Player profile line (name + current referral title) --- */
 .player-profile {
   display: flex;

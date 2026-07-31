@@ -163,6 +163,10 @@ const OFFLINE_TAU_DEFAULT = 35;
 const OFFLINE_BOOST_STARS = 15; // price in Stars
 const OFFLINE_BOOST_MULT = 2;   // multiplier applied to the frozen offline amount
 
+// Paid "remove offline cap for 24h" boost.
+const NOCAP_BOOST_STARS = 30;                 // price in Stars
+const NOCAP_BOOST_DURATION_MS = 24 * 3600 * 1000; // 24h window per purchase
+
 // Generic Telegram Bot API call. Returns the parsed JSON ({ ok, result, ... }).
 async function tgCall(env, method, payload) {
   try {
@@ -512,6 +516,38 @@ async function handleCreateOfflineInvoice(request, env) {
   return jsonResponse({ ok: true, link: res.result });
 }
 
+// POST /create-nocap-invoice { initData } — the "remove offline cap for 24h"
+// boost. No client value to freeze: the effect is a pure time window the server
+// owns. On payment the webhook extends boost_expires_at by 24h.
+async function handleCreateNocapInvoice(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const invoiceId = crypto.randomUUID();
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    await env.DB.prepare('INSERT INTO star_invoices (invoice_id, user_id, amount, status, created_ts, kind) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(invoiceId, userId, 0, 'pending', now, 'nocap_24h').run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const res = await tgCall(env, 'createInvoiceLink', {
+    title: 'Снять кап офлайна на 24 часа',
+    description: 'Офлайн-доход на 100% без замедления целые сутки.',
+    payload: invoiceId,
+    currency: 'XTR',
+    prices: [{ label: 'Без ограничений 24ч', amount: NOCAP_BOOST_STARS }],
+  });
+  if (!res || !res.ok || !res.result) {
+    return jsonResponse({ ok: false, error: 'invoice_failed' }, 502);
+  }
+  return jsonResponse({ ok: true, link: res.result });
+}
+
 // successful_payment webhook. Idempotent via a conditional status flip: the
 // UPDATE only takes effect the first time (pending -> paid), so a retried or
 // duplicate webhook for the same invoice/charge never credits twice. Credits
@@ -524,16 +560,26 @@ async function handleSuccessfulPayment(env, msg) {
   const userId = msg.from && msg.from.id;
   if (!chargeId || !invoiceId || !userId) return;
   try {
-    const inv = await env.DB.prepare('SELECT amount FROM star_invoices WHERE invoice_id = ? AND status = ?')
+    const inv = await env.DB.prepare('SELECT amount, kind FROM star_invoices WHERE invoice_id = ? AND status = ?')
       .bind(invoiceId, 'pending').first();
     if (!inv) return; // unknown invoice, or already processed
     const upd = await env.DB.prepare("UPDATE star_invoices SET status = 'paid', charge_id = ?, paid_ts = ? WHERE invoice_id = ? AND status = 'pending'")
       .bind(chargeId, Date.now(), invoiceId).run();
-    if (!upd.meta || upd.meta.changes === 0) return; // lost the race — already credited
-    const credit = (inv.amount || 0) * OFFLINE_BOOST_MULT;
+    if (!upd.meta || upd.meta.changes === 0) return; // lost the race — already processed
     await ensureUser(env, userId, Date.now());
-    await env.DB.prepare('UPDATE users SET pending_paid_cookies = pending_paid_cookies + ? WHERE user_id = ?')
-      .bind(credit, userId).run();
+    if (inv.kind === 'nocap_24h') {
+      // Extend from the later of (current expiry, now) so buying while a boost
+      // is still active adds a full 24h instead of overwriting/losing the tail.
+      const row = await env.DB.prepare('SELECT boost_expires_at AS e FROM users WHERE user_id = ?').bind(userId).first();
+      const base = Math.max((row && Number.isFinite(row.e) ? row.e : 0), Date.now());
+      await env.DB.prepare('UPDATE users SET boost_expires_at = ? WHERE user_id = ?')
+        .bind(base + NOCAP_BOOST_DURATION_MS, userId).run();
+    } else {
+      // offline_2x (default): credit the frozen amount x2.
+      const credit = (inv.amount || 0) * OFFLINE_BOOST_MULT;
+      await env.DB.prepare('UPDATE users SET pending_paid_cookies = pending_paid_cookies + ? WHERE user_id = ?')
+        .bind(credit, userId).run();
+    }
   } catch (e) { console.log('successful_payment error', e); }
 }
 
@@ -579,6 +625,7 @@ async function handleCheckin(request, env) {
   const curWeek = weekId(now);
   let weeklyReferrals = 0;
   let paidOfflineCredit = 0;
+  let boostExpiresAt = 0;
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -629,6 +676,10 @@ async function handleCheckin(request, env) {
         await env.DB.prepare('UPDATE users SET pending_paid_cookies = pending_paid_cookies - ? WHERE user_id = ?')
           .bind(paidOfflineCredit, user.id).run();
       }
+      // No-cap boost window (server-authoritative); client uses it for the
+      // offline split calc + the timer UI.
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e FROM users WHERE user_id = ?').bind(user.id).first();
+      if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -662,7 +713,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt });
 }
 
 async function handleLeaderboard(env) {
@@ -859,6 +910,10 @@ export default {
 
     if (url.pathname === '/create-offline-invoice' && request.method === 'POST') {
       return handleCreateOfflineInvoice(request, env);
+    }
+
+    if (url.pathname === '/create-nocap-invoice' && request.method === 'POST') {
+      return handleCreateNocapInvoice(request, env);
     }
 
     if (url.pathname === '/webhook-info' && request.method === 'GET') {

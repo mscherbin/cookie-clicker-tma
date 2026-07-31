@@ -159,16 +159,32 @@
   // Full-rate window is per-player now (extended by active friends, see
   // getOfflineCapHours). The worker keeps its own base-2h copy for push-text
   // estimates — that's intentionally friend-agnostic, see push/src/index.js.
-  function computeOfflineGain(elapsedSeconds, cps) {
+  function computeOfflineGainNormal(elapsedSeconds, cps) {
     const fullRate = offlineFullRateSeconds();
     if (elapsedSeconds <= fullRate) return elapsedSeconds * cps;
     return fullRate * cps + (elapsedSeconds - fullRate) * cps * OFFLINE_RATE;
+  }
+
+  // With the paid "no offline cap" boost active, the part of the away period
+  // that fell inside the boost window [.., boostExpiresAt] earns 100% (no
+  // taper); the part after the boost expired uses the normal cap+taper formula.
+  // Splitting (rather than all-or-nothing) means no jump at the boost boundary.
+  function computeOfflineGain(elapsedSeconds, cps) {
+    const now = Date.now();
+    const awayStartMs = now - elapsedSeconds * 1000;
+    const boostEnd = state.boostExpiresAt || 0;
+    const boostedMs = Math.max(0, Math.min(now, boostEnd) - awayStartMs);
+    const boostedSec = Math.min(elapsedSeconds, boostedMs / 1000);
+    const normalSec = Math.max(0, elapsedSeconds - boostedSec);
+    return boostedSec * cps + computeOfflineGainNormal(normalSec, cps);
   }
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
   const REFERRAL_LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/referral-leaderboard';
   const CREATE_OFFLINE_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-offline-invoice';
+  const CREATE_NOCAP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-nocap-invoice';
+  const NOCAP_BOOST_STARS = 30; // must match NOCAP_BOOST_STARS in push/src/index.js
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
 
   // Offline claim: below this, offline income auto-applies silently (as before);
@@ -203,6 +219,7 @@
     offlineTau: OFFLINE_TAU_DEFAULT,
     tutorial: {}, // completed onboarding hints, keyed by step id (e.g. { clicked: true })
     offlinePending: 0, // offline income awaiting a claim (free x1 or paid x2); survives reopen
+    boostExpiresAt: 0, // ms epoch of the paid "no offline cap" boost; server-authoritative
   });
 
   let state = defaultState();
@@ -423,6 +440,15 @@
           showToast(`🍪 ×2 офлайн-доход начислен: +${formatNum(credit)}`, 4000);
           saveState();
           refreshAll();
+        }
+        // No-cap boost window is server-authoritative — mirror it locally so the
+        // offline calc and the timer UI stay in sync.
+        if (data && typeof data.boostExpiresAt === 'number' && data.boostExpiresAt !== (state.boostExpiresAt || 0)) {
+          const wasActive = (state.boostExpiresAt || 0) > Date.now();
+          state.boostExpiresAt = data.boostExpiresAt;
+          saveState();
+          refreshAll();
+          if (!wasActive && data.boostExpiresAt > Date.now()) showToast('🚀 Кап офлайна снят на 24 часа!', 4000);
         }
       })
       .catch(() => {});
@@ -856,6 +882,34 @@
     }
   }
 
+  // Paid "remove offline cap for 24h" boost. No amount to freeze — the effect
+  // is a server-owned time window; boostExpiresAt arrives back on checkin.
+  async function buyNocapBoost() {
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (el.nocapBtn) el.nocapBtn.disabled = true;
+    try {
+      const resp = await fetch(CREATE_NOCAP_INVOICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
+      const data = await resp.json();
+      if (!data || !data.ok || !data.link) throw new Error('no_link');
+      tg.openInvoice(data.link, (status) => {
+        if (el.nocapBtn) el.nocapBtn.disabled = false;
+        if (status === 'paid') {
+          showToast('Оплата принята — снимаем кап…', 4000);
+          pollPaidCredit(); // nudges checkins; boostExpiresAt lands via checkin
+        } else if (status === 'failed') {
+          showToast('Оплата не прошла — попробуй ещё раз');
+        }
+      });
+    } catch (e) {
+      if (el.nocapBtn) el.nocapBtn.disabled = false;
+      showToast('Не удалось создать счёт — попробуй позже');
+    }
+  }
+
   // ---------- Rendering ----------
   const el = {
     cookieCount: document.getElementById('cookieCount'),
@@ -912,6 +966,8 @@
     armyCount: document.getElementById('armyCount'),
     armyBoost: document.getElementById('armyBoost'),
     armyOfflineCap: document.getElementById('armyOfflineCap'),
+    armyOfflineLabel: document.getElementById('armyOfflineLabel'),
+    nocapBtn: document.getElementById('nocapBtn'),
     playerProfile: document.getElementById('playerProfile'),
     titleTrack: document.getElementById('titleTrack'),
     titleNext: document.getElementById('titleNext'),
@@ -1121,11 +1177,28 @@
     const army = state.activeReferrals || 0;
     el.armyCount.textContent = formatNum(army);
     el.armyBoost.textContent = `+${(referralBoost(army) * 100).toFixed(1).replace(/\.0$/, '')}%`;
-    const capTotalMin = Math.round(getOfflineCapHours(army) * 60);
-    el.armyOfflineCap.textContent = `${Math.floor(capTotalMin / 60)}ч ${capTotalMin % 60}мин`;
+    // Offline row is boost-aware: while the paid no-cap boost is live, show its
+    // countdown here (the transparency slot); otherwise the normal full-rate cap.
+    const boostLeft = (state.boostExpiresAt || 0) - Date.now();
+    if (boostLeft > 0) {
+      if (el.armyOfflineLabel) el.armyOfflineLabel.textContent = '🚀 Офлайн без ограничений';
+      el.armyOfflineCap.textContent = `ещё ${fmtHM(boostLeft)}`;
+    } else {
+      if (el.armyOfflineLabel) el.armyOfflineLabel.textContent = 'Офлайн на полной скорости';
+      const capTotalMin = Math.round(getOfflineCapHours(army) * 60);
+      el.armyOfflineCap.textContent = `${Math.floor(capTotalMin / 60)}ч ${capTotalMin % 60}мин`;
+    }
+    if (el.nocapBtn) el.nocapBtn.textContent = boostLeft > 0
+      ? `Продлить ещё на 24ч · ${NOCAP_BOOST_STARS} ⭐`
+      : `🚀 Снять кап офлайна на 24ч · ${NOCAP_BOOST_STARS} ⭐`;
 
     renderTitles();
     el.syncStatus.textContent = cloudStorageStatusText();
+  }
+
+  function fmtHM(ms) {
+    const totalMin = Math.max(0, Math.round(ms / 60000));
+    return `${Math.floor(totalMin / 60)}ч ${totalMin % 60}мин`;
   }
 
   // Russian count agreement for "друг": 1 друг, 2 друга, 5 друзей.
@@ -1524,6 +1597,7 @@
   el.dailyInviteBtn.addEventListener('click', inviteFriend);
   el.offlineClaimBtn.addEventListener('click', claimOfflineFree);
   el.offlineX2Btn.addEventListener('click', claimOfflinePaid);
+  if (el.nocapBtn) el.nocapBtn.addEventListener('click', buyNocapBoost);
   // Tapping the backdrop = free claim (never lose offline income); ignored while
   // a payment is processing.
   el.offlineModal.addEventListener('click', (e) => {
