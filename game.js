@@ -168,7 +168,14 @@
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
   const REFERRAL_LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/referral-leaderboard';
+  const CREATE_OFFLINE_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-offline-invoice';
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
+
+  // Offline claim: below this, offline income auto-applies silently (as before);
+  // at/above it we show the claim card with the free x1 / paid x2 choice.
+  const OFFLINE_CLAIM_THRESHOLD_SECONDS = 300; // ~5 min of current production
+  const OFFLINE_CLAIM_MIN = 100;               // absolute floor, so low-cps players aren't prompted for crumbs
+  const OFFLINE_BOOST_STARS = 15;              // must match OFFLINE_BOOST_STARS in push/src/index.js
   const BOT_USERNAME = 'bestcookieclickerbot';
 
   const defaultState = () => ({
@@ -195,6 +202,7 @@
     offlineMaxExtra: OFFLINE_MAX_EXTRA_DEFAULT,
     offlineTau: OFFLINE_TAU_DEFAULT,
     tutorial: {}, // completed onboarding hints, keyed by step id (e.g. { clicked: true })
+    offlinePending: 0, // offline income awaiting a claim (free x1 or paid x2); survives reopen
   });
 
   let state = defaultState();
@@ -225,13 +233,20 @@
       if (opts.grantOfflineProgress !== false) {
         // offline progress: full speed for the first 2h, then 10% of normal
         // rate — uncapped duration, cookies always keep baking, just much
-        // slower once you've been away a while
+        // slower once you've been away a while. Accrue into offlinePending and
+        // consume the offline window (reset lastTs) so nothing double-counts on
+        // reopen. Small amounts auto-apply silently; big ones wait for a claim
+        // card (free x1 / paid x2), shown from afterLoad.
         const elapsed = Math.max(0, (Date.now() - (loaded.lastTs || Date.now())) / 1000);
         const offlineGain = computeOfflineGain(elapsed, getCps());
-        if (offlineGain > 1) {
-          state.cookies += offlineGain;
-          state.totalBaked += offlineGain;
-          showToast(`Пока вас не было, испечено ${formatNum(offlineGain)} 🍪`);
+        state.offlinePending = (state.offlinePending || 0) + Math.max(0, offlineGain);
+        state.lastTs = Date.now();
+        const threshold = Math.max(OFFLINE_CLAIM_MIN, getCps() * OFFLINE_CLAIM_THRESHOLD_SECONDS);
+        if (state.offlinePending > 0 && state.offlinePending < threshold) {
+          if (state.offlinePending > 1) showToast(`Пока вас не было, испечено ${formatNum(state.offlinePending)} 🍪`);
+          state.cookies += state.offlinePending;
+          state.totalBaked += state.offlinePending;
+          state.offlinePending = 0;
         }
       }
     } catch (e) { return false; }
@@ -394,6 +409,21 @@
           refEventInfo = data.refEvent.active ? data.refEvent : null;
           updateRefEventBanner();
         }
+        // Paid "2x offline" boost credited by the successful_payment webhook.
+        // Server is the source of truth that payment happened; we apply here.
+        // credit = frozen amount x2, so credit/2 is the quote to remove from
+        // the pending bucket (any residual offline stays claimable).
+        if (data && data.paidOfflineCredit > 0) {
+          const credit = data.paidOfflineCredit;
+          state.cookies += credit;
+          state.totalBaked += credit;
+          state.offlinePending = Math.max(0, (state.offlinePending || 0) - credit / 2);
+          hideOfflineModal();
+          haptic('heavy');
+          showToast(`🍪 ×2 офлайн-доход начислен: +${formatNum(credit)}`, 4000);
+          saveState();
+          refreshAll();
+        }
       })
       .catch(() => {});
   }
@@ -523,7 +553,12 @@
 
     const afterLoad = () => {
       sendCheckin();
-      setTimeout(() => { if (dailyRewardAvailable()) showDailyModal(); }, 900);
+      // Offline claim card first (if there's a meaningful amount waiting), then
+      // the daily reward — resolveOfflineThenDaily chains the daily after it.
+      setTimeout(() => {
+        if (state.offlinePending > 0) showOfflineModal();
+        else if (dailyRewardAvailable()) showDailyModal();
+      }, 900);
     };
 
     const loadFromLocal = () => {
@@ -743,6 +778,84 @@
     refreshAll();
   }
 
+  // ---------- Offline claim (free x1 / paid x2 via Telegram Stars) ----------
+  function showOfflineModal() {
+    if (!el.offlineModal || !(state.offlinePending > 0)) return;
+    el.offlineAmount.textContent = formatNum(state.offlinePending);
+    el.offlineX2Amount.textContent = formatNum(state.offlinePending * 2);
+    setOfflineModalProcessing(false);
+    el.offlineModal.classList.add('show');
+  }
+
+  function hideOfflineModal() {
+    if (el.offlineModal) el.offlineModal.classList.remove('show');
+  }
+
+  // After the offline card is resolved (claimed free, or paid flow launched),
+  // chain the daily reward modal if it's due — same slot it used to own.
+  function resolveOfflineThenDaily() {
+    hideOfflineModal();
+    if (dailyRewardAvailable()) setTimeout(showDailyModal, 250);
+  }
+
+  function claimOfflineFree() {
+    const n = state.offlinePending || 0;
+    if (n > 0) {
+      state.cookies += n;
+      state.totalBaked += n;
+      state.offlinePending = 0;
+      haptic('medium');
+      showToast(`Забрано ${formatNum(n)} 🍪`);
+      saveState();
+      refreshAll();
+    }
+    resolveOfflineThenDaily();
+  }
+
+  function setOfflineModalProcessing(on) {
+    if (!el.offlineModal) return;
+    el.offlineModal.classList.toggle('processing', !!on);
+    if (el.offlineClaimBtn) el.offlineClaimBtn.disabled = !!on;
+    if (el.offlineX2Btn) el.offlineX2Btn.disabled = !!on;
+  }
+
+  // Nudge a few checkins so the paid credit (set by the successful_payment
+  // webhook) lands fast, without waiting for the 2-min periodic checkin.
+  function pollPaidCredit() {
+    [800, 2500, 5000, 10000].forEach(ms => setTimeout(sendCheckin, ms));
+  }
+
+  async function claimOfflinePaid() {
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    const quote = state.offlinePending || 0;
+    if (!(quote > 0)) return;
+    setOfflineModalProcessing(true);
+    try {
+      const resp = await fetch(CREATE_OFFLINE_INVOICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData, amount: quote }),
+      });
+      const data = await resp.json();
+      if (!data || !data.ok || !data.link) throw new Error('no_link');
+      tg.openInvoice(data.link, (status) => {
+        if (status === 'paid') {
+          // Server credits via webhook; the credit is applied on checkin.
+          showToast('Оплата принята — начисляем ×2…', 4000);
+          pollPaidCredit();
+          resolveOfflineThenDaily();
+        } else {
+          // cancelled / failed / pending — balance untouched, allow retry.
+          setOfflineModalProcessing(false);
+          if (status === 'failed') showToast('Оплата не прошла — попробуй ещё раз');
+        }
+      });
+    } catch (e) {
+      setOfflineModalProcessing(false);
+      showToast('Не удалось создать счёт — попробуй позже');
+    }
+  }
+
   // ---------- Rendering ----------
   const el = {
     cookieCount: document.getElementById('cookieCount'),
@@ -764,6 +877,11 @@
     dailyClaimBtn: document.getElementById('dailyClaimBtn'),
     dailyReferral: document.getElementById('dailyReferral'),
     dailyInviteBtn: document.getElementById('dailyInviteBtn'),
+    offlineModal: document.getElementById('offlineModal'),
+    offlineAmount: document.getElementById('offlineAmount'),
+    offlineX2Amount: document.getElementById('offlineX2Amount'),
+    offlineClaimBtn: document.getElementById('offlineClaimBtn'),
+    offlineX2Btn: document.getElementById('offlineX2Btn'),
     unlockModal: document.getElementById('unlockModal'),
     unlockIcon: document.getElementById('unlockIcon'),
     unlockName: document.getElementById('unlockName'),
@@ -1395,6 +1513,13 @@
   el.dailyBadge.addEventListener('click', showDailyModal);
   el.dailyClaimBtn.addEventListener('click', claimDailyReward);
   el.dailyInviteBtn.addEventListener('click', inviteFriend);
+  el.offlineClaimBtn.addEventListener('click', claimOfflineFree);
+  el.offlineX2Btn.addEventListener('click', claimOfflinePaid);
+  // Tapping the backdrop = free claim (never lose offline income); ignored while
+  // a payment is processing.
+  el.offlineModal.addEventListener('click', (e) => {
+    if (e.target === el.offlineModal && !el.offlineModal.classList.contains('processing')) claimOfflineFree();
+  });
   el.unlockPlaceBtn.addEventListener('click', () => {
     const b = pendingUnlockBuilding;
     hideUnlockModal();

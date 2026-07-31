@@ -159,6 +159,24 @@ const OFFLINE_BASE_HOURS_DEFAULT = 2;
 const OFFLINE_MAX_EXTRA_DEFAULT = 8;
 const OFFLINE_TAU_DEFAULT = 35;
 
+// Paid "2x offline income" boost via Telegram Stars (currency XTR).
+const OFFLINE_BOOST_STARS = 15; // price in Stars
+const OFFLINE_BOOST_MULT = 2;   // multiplier applied to the frozen offline amount
+
+// Generic Telegram Bot API call. Returns the parsed JSON ({ ok, result, ... }).
+async function tgCall(env, method, payload) {
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 // The config rarely changes, but /checkin runs constantly, so cache it in
 // isolate memory for a short TTL rather than hitting D1 on every request.
 // A tuning edit propagates within CONFIG_TTL_MS across all isolates.
@@ -354,7 +372,23 @@ async function handleTelegramWebhook(request, env) {
     return jsonResponse({ ok: true }); // don't make Telegram retry on a malformed body
   }
 
+  // Telegram Stars payment flow. pre_checkout_query MUST be answered within
+  // 10s or Telegram auto-cancels the payment — answer immediately.
+  if (update.pre_checkout_query) {
+    await tgCall(env, 'answerPreCheckoutQuery', { pre_checkout_query_id: update.pre_checkout_query.id, ok: true });
+    return jsonResponse({ ok: true });
+  }
+
   const msg = update.message;
+  if (msg && msg.successful_payment) {
+    await handleSuccessfulPayment(env, msg);
+    return jsonResponse({ ok: true });
+  }
+  if (msg && msg.refunded_payment) {
+    await handleRefundedPayment(env, msg);
+    return jsonResponse({ ok: true });
+  }
+
   if (msg && msg.text && msg.text.startsWith('/start') && msg.from) {
     const userId = msg.from.id;
     await logEvent(env, userId, 'bot_start');
@@ -385,6 +419,111 @@ async function handleFunnel(request, env) {
   return jsonResponse({ ok: true, stages: stages.results });
 }
 
+// GET /online?key=<ADMIN_KEY> — live activity snapshot from KV metadata (no
+// per-user reads). "online" = pinged /checkin in the last 5 min (checkin fires
+// every ~2 min while playing, so 5 min ≈ "in the app right now"); "day" = DAU
+// (last 24h); "total" = everyone ever registered.
+async function handleOnline(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) {
+    return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  }
+  const now = Date.now();
+  const FIVE_MIN = 5 * 60 * 1000;
+  const DAY = 24 * 3600 * 1000;
+  let total = 0, online = 0, day = 0;
+  let cursor;
+  for (;;) {
+    const list = await env.USERS.list({ prefix: 'user:', cursor });
+    for (const k of list.keys) {
+      const data = k.metadata;
+      if (!data || !data.chatId) continue;
+      total++;
+      const ago = now - (data.lastActiveTs || 0);
+      if (ago <= FIVE_MIN) online++;
+      if (ago <= DAY) day++;
+    }
+    if (list.list_complete || !list.cursor) break;
+    cursor = list.cursor;
+  }
+  return jsonResponse({ ok: true, online, day, total });
+}
+
+// POST /create-offline-invoice { initData, amount } — the client taps "claim
+// x2 for Stars". We FREEZE `amount` (the offline earnings at this moment) into
+// a pending star_invoices row and return a Telegram Stars invoice link. The
+// credit (amount*2) is granted only later, by the successful_payment webhook.
+async function handleCreateOfflineInvoice(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return jsonResponse({ ok: false, error: 'bad_amount' }, 400);
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const invoiceId = crypto.randomUUID();
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    await env.DB.prepare('INSERT INTO star_invoices (invoice_id, user_id, amount, status, created_ts) VALUES (?, ?, ?, ?, ?)')
+      .bind(invoiceId, userId, amount, 'pending', now).run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const res = await tgCall(env, 'createInvoiceLink', {
+    title: 'Удвоить офлайн-доход',
+    description: 'Забери 2× накопленных офлайн-печенек мгновенно, без рекламы.',
+    payload: invoiceId, // echoed back verbatim in successful_payment.invoice_payload
+    currency: 'XTR',
+    prices: [{ label: '×2 офлайн-доход', amount: OFFLINE_BOOST_STARS }],
+  });
+  if (!res || !res.ok || !res.result) {
+    return jsonResponse({ ok: false, error: 'invoice_failed' }, 502);
+  }
+  return jsonResponse({ ok: true, link: res.result });
+}
+
+// successful_payment webhook. Idempotent via a conditional status flip: the
+// UPDATE only takes effect the first time (pending -> paid), so a retried or
+// duplicate webhook for the same invoice/charge never credits twice. Credits
+// the FROZEN amount*2 (not a recomputed value) into pending_paid_cookies.
+async function handleSuccessfulPayment(env, msg) {
+  if (!env.DB) return;
+  const sp = msg.successful_payment;
+  const chargeId = sp && sp.telegram_payment_charge_id;
+  const invoiceId = sp && sp.invoice_payload;
+  const userId = msg.from && msg.from.id;
+  if (!chargeId || !invoiceId || !userId) return;
+  try {
+    const inv = await env.DB.prepare('SELECT amount FROM star_invoices WHERE invoice_id = ? AND status = ?')
+      .bind(invoiceId, 'pending').first();
+    if (!inv) return; // unknown invoice, or already processed
+    const upd = await env.DB.prepare("UPDATE star_invoices SET status = 'paid', charge_id = ?, paid_ts = ? WHERE invoice_id = ? AND status = 'pending'")
+      .bind(chargeId, Date.now(), invoiceId).run();
+    if (!upd.meta || upd.meta.changes === 0) return; // lost the race — already credited
+    const credit = (inv.amount || 0) * OFFLINE_BOOST_MULT;
+    await ensureUser(env, userId, Date.now());
+    await env.DB.prepare('UPDATE users SET pending_paid_cookies = pending_paid_cookies + ? WHERE user_id = ?')
+      .bind(credit, userId).run();
+  } catch (e) { console.log('successful_payment error', e); }
+}
+
+// refunded_payment webhook. Log only — we never claw back cookies (they may be
+// spent already; retroactive rollback is unreliable). Manual review handles abuse.
+async function handleRefundedPayment(env, msg) {
+  if (!env.DB) return;
+  const rp = msg.refunded_payment;
+  const chargeId = rp && rp.telegram_payment_charge_id;
+  const userId = msg.from && msg.from.id;
+  if (!chargeId) return;
+  try {
+    await env.DB.prepare('INSERT OR IGNORE INTO refunds (charge_id, user_id, amount, ts) VALUES (?, ?, ?, ?)')
+      .bind(chargeId, userId || null, rp.total_amount || 0, Date.now()).run();
+    await env.DB.prepare("UPDATE star_invoices SET status = 'refunded' WHERE charge_id = ?").bind(chargeId).run();
+  } catch (e) { console.log('refund error', e); }
+}
+
 async function handleCheckin(request, env) {
   let body;
   try {
@@ -411,6 +550,7 @@ async function handleCheckin(request, env) {
   let maxActiveFriendsEver = 0;
   const curWeek = weekId(now);
   let weeklyReferrals = 0;
+  let paidOfflineCredit = 0;
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -451,6 +591,16 @@ async function handleCheckin(request, env) {
           .bind(baseline, curWeek, user.id).run();
       }
       weeklyReferrals = Math.max(0, maxActiveFriendsEver - baseline);
+
+      // Deliver cookies bought with Stars (2x offline boost), same claim-on-
+      // checkin channel as pending_reward. Kept last in the block so a missing
+      // column (pre-migration) doesn't abort the reads above.
+      const paidRow = await env.DB.prepare('SELECT pending_paid_cookies FROM users WHERE user_id = ?').bind(user.id).first();
+      if (paidRow && paidRow.pending_paid_cookies > 0) {
+        paidOfflineCredit = paidRow.pending_paid_cookies;
+        await env.DB.prepare('UPDATE users SET pending_paid_cookies = pending_paid_cookies - ? WHERE user_id = ?')
+          .bind(paidOfflineCredit, user.id).run();
+      }
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -484,7 +634,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit });
 }
 
 async function handleLeaderboard(env) {
@@ -673,6 +823,14 @@ export default {
 
     if (url.pathname === '/funnel' && request.method === 'GET') {
       return handleFunnel(request, env);
+    }
+
+    if (url.pathname === '/online' && request.method === 'GET') {
+      return handleOnline(request, env);
+    }
+
+    if (url.pathname === '/create-offline-invoice' && request.method === 'POST') {
+      return handleCreateOfflineInvoice(request, env);
     }
 
     return jsonResponse({ ok: false, error: 'not_found' }, 404);

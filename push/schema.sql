@@ -25,6 +25,10 @@ CREATE INDEX IF NOT EXISTS idx_events_user_event ON events(user_id, event);
 -- weekly_week_id set to that week. Weekly score = max_active_friends_ever −
 -- weekly_baseline (friends recruited THIS week). This is the "snapshot" that
 -- makes weekly reset correctly without a cron.
+-- pending_paid_cookies: cookies bought with Telegram Stars (the "2x offline"
+-- boost), credited by the successful_payment webhook and delivered — then
+-- zeroed — on the user's next /checkin, same claim-on-checkin channel as
+-- pending_reward.
 CREATE TABLE IF NOT EXISTS users (
   user_id INTEGER PRIMARY KEY,
   referrer_id INTEGER,
@@ -32,10 +36,37 @@ CREATE TABLE IF NOT EXISTS users (
   pending_reward REAL NOT NULL DEFAULT 0,
   max_active_friends_ever INTEGER NOT NULL DEFAULT 0,
   weekly_baseline INTEGER NOT NULL DEFAULT 0,
-  weekly_week_id INTEGER NOT NULL DEFAULT 0
+  weekly_week_id INTEGER NOT NULL DEFAULT 0,
+  pending_paid_cookies REAL NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
+
+-- Telegram Stars invoices for the "2x offline income" boost. Created (status
+-- 'pending') when the client taps the paid button, with `amount` = the offline
+-- earnings FROZEN at that moment. On successful_payment it flips to 'paid' and
+-- credits amount*2. charge_id (telegram_payment_charge_id) is the idempotency
+-- key: a repeated webhook for the same charge_id is ignored.
+CREATE TABLE IF NOT EXISTS star_invoices (
+  invoice_id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  charge_id TEXT,
+  created_ts INTEGER NOT NULL,
+  paid_ts INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_star_invoices_charge ON star_invoices(charge_id);
+
+-- Refund events, logged for manual review only. We deliberately do NOT claw
+-- back cookies (the game currency may already be spent, and rolling it back
+-- retroactively is unreliable) — repeated abuse is handled by manual ban.
+CREATE TABLE IF NOT EXISTS refunds (
+  charge_id TEXT PRIMARY KEY,
+  user_id INTEGER,
+  amount REAL,
+  ts INTEGER NOT NULL
+);
 
 -- NOTE for an ALREADY-DEPLOYED database: CREATE TABLE IF NOT EXISTS above will
 -- NOT add new columns to a users table that already exists. Run these ONCE
@@ -48,6 +79,10 @@ CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
 --     --command "ALTER TABLE users ADD COLUMN weekly_baseline INTEGER NOT NULL DEFAULT 0"
 --   wrangler d1 execute cookie-clicker-analytics --remote \
 --     --command "ALTER TABLE users ADD COLUMN weekly_week_id INTEGER NOT NULL DEFAULT 0"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE users ADD COLUMN pending_paid_cookies REAL NOT NULL DEFAULT 0"
+-- (The star_invoices / refunds tables are created by re-running schema.sql —
+--  CREATE TABLE IF NOT EXISTS is idempotent, no ALTER needed for those.)
 
 -- Tunable economy knobs, editable without a code release. Read by the worker
 -- (short-lived in-memory cache) and handed to clients on /checkin. Seed the

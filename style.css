@@ -1118,3 +1118,39 @@ html, body {
   font-weight: 800;
   cursor: pointer;
 }
+
+/* Paid "2x offline" button in the offline claim modal */
+.offline-x2-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px;
+  background: rgba(255, 209, 102, 0.12);
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.offline-x2-main { font-size: 14px; font-weight: 800; }
+.offline-x2-sub { font-size: 11px; font-weight: 600; opacity: 0.85; }
+
+.offline-processing-note {
+  display: none;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--hint);
+}
+
+.daily-modal.processing .offline-processing-note { display: block; }
+
+.daily-modal.processing .daily-claim-btn,
+.daily-modal.processing .offline-x2-btn,
+.daily-claim-btn:disabled,
+.offline-x2-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}

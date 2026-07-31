@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=37" />
+<link rel="stylesheet" href="style.css?v=38" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -220,6 +220,21 @@
     </div>
   </div>
 
+  <div id="offlineModal" class="daily-modal">
+    <div class="daily-modal-card">
+      <div class="daily-gift-icon">💤</div>
+      <div class="daily-title">С возвращением!</div>
+      <div class="daily-streak">Пока тебя не было, напеклось:</div>
+      <div class="daily-reward-amount"><span id="offlineAmount">0</span> 🍪</div>
+      <button id="offlineClaimBtn" class="daily-claim-btn">Забрать</button>
+      <button id="offlineX2Btn" class="offline-x2-btn">
+        <span class="offline-x2-main">Забрать ×2 за 15 ⭐</span>
+        <span class="offline-x2-sub">получишь <span id="offlineX2Amount">0</span> 🍪</span>
+      </button>
+      <div class="offline-processing-note">Ожидаем подтверждение оплаты…</div>
+    </div>
+  </div>
+
   <div id="unlockModal" class="daily-modal">
     <div class="daily-modal-card">
       <div class="daily-gift-icon" id="unlockIcon">🫶</div>
@@ -231,6 +246,6 @@
   </div>
 </div>
 
-<script src="game.js?v=37"></script>
+<script src="game.js?v=38"></script>
 </body>
 </html>
