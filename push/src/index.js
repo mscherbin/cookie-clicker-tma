@@ -167,6 +167,10 @@ const OFFLINE_BOOST_MULT = 2;   // multiplier applied to the frozen offline amou
 const NOCAP_BOOST_STARS = 30;                 // price in Stars
 const NOCAP_BOOST_DURATION_MS = 24 * 3600 * 1000; // 24h window per purchase
 
+// Paid "x2 production for 1h" boost.
+const PROD2X_BOOST_STARS = 10;              // price in Stars
+const PROD2X_BOOST_DURATION_MS = 3600 * 1000; // 1h window per purchase
+
 // Generic Telegram Bot API call. Returns the parsed JSON ({ ok, result, ... }).
 async function tgCall(env, method, payload) {
   try {
@@ -548,6 +552,37 @@ async function handleCreateNocapInvoice(request, env) {
   return jsonResponse({ ok: true, link: res.result });
 }
 
+// POST /create-boost2x-invoice { initData } — the "x2 production for 1h" boost.
+// Like nocap, a pure server-owned time window (boost2x_expires_at).
+async function handleCreateBoost2xInvoice(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const invoiceId = crypto.randomUUID();
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    await env.DB.prepare('INSERT INTO star_invoices (invoice_id, user_id, amount, status, created_ts, kind) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(invoiceId, userId, 0, 'pending', now, 'prod2x_1h').run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const res = await tgCall(env, 'createInvoiceLink', {
+    title: '×2 производство на 1 час',
+    description: 'Удвой выпечку печенья на целый час.',
+    payload: invoiceId,
+    currency: 'XTR',
+    prices: [{ label: '×2 производство 1ч', amount: PROD2X_BOOST_STARS }],
+  });
+  if (!res || !res.ok || !res.result) {
+    return jsonResponse({ ok: false, error: 'invoice_failed' }, 502);
+  }
+  return jsonResponse({ ok: true, link: res.result });
+}
+
 // successful_payment webhook. Idempotent via a conditional status flip: the
 // UPDATE only takes effect the first time (pending -> paid), so a retried or
 // duplicate webhook for the same invoice/charge never credits twice. Credits
@@ -567,13 +602,15 @@ async function handleSuccessfulPayment(env, msg) {
       .bind(chargeId, Date.now(), invoiceId).run();
     if (!upd.meta || upd.meta.changes === 0) return; // lost the race — already processed
     await ensureUser(env, userId, Date.now());
-    if (inv.kind === 'nocap_24h') {
-      // Extend from the later of (current expiry, now) so buying while a boost
-      // is still active adds a full 24h instead of overwriting/losing the tail.
-      const row = await env.DB.prepare('SELECT boost_expires_at AS e FROM users WHERE user_id = ?').bind(userId).first();
+    if (inv.kind === 'nocap_24h' || inv.kind === 'prod2x_1h') {
+      // Time-window boosts: extend from the later of (current expiry, now) so
+      // buying while active adds a full window instead of overwriting the tail.
+      const col = inv.kind === 'nocap_24h' ? 'boost_expires_at' : 'boost2x_expires_at';
+      const dur = inv.kind === 'nocap_24h' ? NOCAP_BOOST_DURATION_MS : PROD2X_BOOST_DURATION_MS;
+      const row = await env.DB.prepare(`SELECT ${col} AS e FROM users WHERE user_id = ?`).bind(userId).first();
       const base = Math.max((row && Number.isFinite(row.e) ? row.e : 0), Date.now());
-      await env.DB.prepare('UPDATE users SET boost_expires_at = ? WHERE user_id = ?')
-        .bind(base + NOCAP_BOOST_DURATION_MS, userId).run();
+      await env.DB.prepare(`UPDATE users SET ${col} = ? WHERE user_id = ?`)
+        .bind(base + dur, userId).run();
     } else {
       // offline_2x (default): credit the frozen amount x2.
       const credit = (inv.amount || 0) * OFFLINE_BOOST_MULT;
@@ -626,6 +663,7 @@ async function handleCheckin(request, env) {
   let weeklyReferrals = 0;
   let paidOfflineCredit = 0;
   let boostExpiresAt = 0;
+  let boost2xExpiresAt = 0;
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -676,10 +714,11 @@ async function handleCheckin(request, env) {
         await env.DB.prepare('UPDATE users SET pending_paid_cookies = pending_paid_cookies - ? WHERE user_id = ?')
           .bind(paidOfflineCredit, user.id).run();
       }
-      // No-cap boost window (server-authoritative); client uses it for the
-      // offline split calc + the timer UI.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e FROM users WHERE user_id = ?').bind(user.id).first();
+      // Boost windows (server-authoritative); client uses them for the offline
+      // split calc, online x2, and the timer UI.
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2 FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
+      if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -713,7 +752,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt });
 }
 
 async function handleLeaderboard(env) {
@@ -914,6 +953,10 @@ export default {
 
     if (url.pathname === '/create-nocap-invoice' && request.method === 'POST') {
       return handleCreateNocapInvoice(request, env);
+    }
+
+    if (url.pathname === '/create-boost2x-invoice' && request.method === 'POST') {
+      return handleCreateBoost2xInvoice(request, env);
     }
 
     if (url.pathname === '/webhook-info' && request.method === 'GET') {

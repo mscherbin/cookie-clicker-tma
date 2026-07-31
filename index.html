@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=41" />
+<link rel="stylesheet" href="style.css?v=42" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -15,6 +15,7 @@
       <div id="cookieCount" class="cookie-count">0</div>
       <div class="cookie-label">печенек</div>
       <div id="cps" class="cps">0 печенек/сек</div>
+      <div id="boost2xLine" class="boost2x-line" hidden>⚡ ×2 производство · ещё 1ч</div>
       <div id="clickPowerLine" class="click-power">Сила клика: 1 &middot; апгрейдов клика: 0/0</div>
       <div id="offlineInfoLine" class="offline-info">💤 Офлайн 100%: 2ч 0мин</div>
     </div>
@@ -160,6 +161,7 @@
         <div class="army-row"><span>Бонус к производству</span><span id="armyBoost">+0%</span></div>
         <div class="army-row"><span id="armyOfflineLabel">Офлайн на полной скорости</span><span id="armyOfflineCap">2ч 0мин</span></div>
         <button id="nocapBtn" class="nocap-btn">🚀 Снять кап офлайна на 24ч · 30 ⭐</button>
+        <button id="boost2xBtn" class="nocap-btn">⚡ ×2 производство на 1ч · 10 ⭐</button>
         <div class="title-track-wrap">
           <div class="title-track-head">🏅 Титулы за друзей</div>
           <div id="titleTrack" class="title-track"></div>
@@ -248,6 +250,6 @@
   </div>
 </div>
 
-<script src="game.js?v=41"></script>
+<script src="game.js?v=42"></script>
 </body>
 </html>

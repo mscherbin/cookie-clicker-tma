@@ -165,18 +165,31 @@
     return fullRate * cps + (elapsedSeconds - fullRate) * cps * OFFLINE_RATE;
   }
 
-  // With the paid "no offline cap" boost active, the part of the away period
-  // that fell inside the boost window [.., boostExpiresAt] earns 100% (no
-  // taper); the part after the boost expired uses the normal cap+taper formula.
-  // Splitting (rather than all-or-nothing) means no jump at the boost boundary.
+  // Income for the first `prefixSec` seconds of the away period, no-cap-aware:
+  // the part inside the no-cap window earns 100%, the rest uses the normal
+  // cap+taper formula. (nocapSec = seconds of the away period the no-cap boost
+  // covered, always from the start.)
+  function offlineIncomeForPrefix(prefixSec, cps, nocapSec) {
+    const nocapPart = Math.min(prefixSec, nocapSec);
+    const normalPart = Math.max(0, prefixSec - nocapSec);
+    return nocapPart * cps + computeOfflineGainNormal(normalPart, cps);
+  }
+
+  // Offline income with the two time-window boosts applied independently:
+  //  - no-cap boost: its window earns 100% (no taper) — the `base` split.
+  //  - x2 boost: doubles income earned within its window — add another copy of
+  //    that window's (no-cap-aware) income. On subperiods where both are active
+  //    they compose (full rate AND x2), which is the v1 "multiply independently
+  //    on the overlap" behaviour. No jump at either boundary.
   function computeOfflineGain(elapsedSeconds, cps) {
     const now = Date.now();
     const awayStartMs = now - elapsedSeconds * 1000;
-    const boostEnd = state.boostExpiresAt || 0;
-    const boostedMs = Math.max(0, Math.min(now, boostEnd) - awayStartMs);
-    const boostedSec = Math.min(elapsedSeconds, boostedMs / 1000);
-    const normalSec = Math.max(0, elapsedSeconds - boostedSec);
-    return boostedSec * cps + computeOfflineGainNormal(normalSec, cps);
+    const secInWindow = (endMs) => Math.max(0, Math.min(elapsedSeconds, (Math.min(now, endMs || 0) - awayStartMs) / 1000));
+    const nocapSec = secInWindow(state.boostExpiresAt);
+    const x2Sec = secInWindow(state.boost2xExpiresAt);
+    const base = offlineIncomeForPrefix(elapsedSeconds, cps, nocapSec);
+    const x2Bonus = offlineIncomeForPrefix(x2Sec, cps, nocapSec);
+    return base + x2Bonus;
   }
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
@@ -185,6 +198,8 @@
   const CREATE_OFFLINE_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-offline-invoice';
   const CREATE_NOCAP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-nocap-invoice';
   const NOCAP_BOOST_STARS = 30; // must match NOCAP_BOOST_STARS in push/src/index.js
+  const CREATE_BOOST2X_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-boost2x-invoice';
+  const PROD2X_BOOST_STARS = 10; // must match PROD2X_BOOST_STARS in push/src/index.js
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
 
   // Offline claim: below this, offline income auto-applies silently (as before);
@@ -220,6 +235,7 @@
     tutorial: {}, // completed onboarding hints, keyed by step id (e.g. { clicked: true })
     offlinePending: 0, // offline income awaiting a claim (free x1 or paid x2); survives reopen
     boostExpiresAt: 0, // ms epoch of the paid "no offline cap" boost; server-authoritative
+    boost2xExpiresAt: 0, // ms epoch of the paid "x2 production 1h" boost; server-authoritative
   });
 
   let state = defaultState();
@@ -449,6 +465,14 @@
           saveState();
           refreshAll();
           if (!wasActive && data.boostExpiresAt > Date.now()) showToast('🚀 Кап офлайна снят на 24 часа!', 4000);
+        }
+        // x2-production boost window (server-authoritative).
+        if (data && typeof data.boost2xExpiresAt === 'number' && data.boost2xExpiresAt !== (state.boost2xExpiresAt || 0)) {
+          const wasActive = (state.boost2xExpiresAt || 0) > Date.now();
+          state.boost2xExpiresAt = data.boost2xExpiresAt;
+          saveState();
+          refreshAll();
+          if (!wasActive && data.boost2xExpiresAt > Date.now()) showToast('⚡ ×2 производство активно на 1 час!', 4000);
         }
       })
       .catch(() => {});
@@ -713,6 +737,15 @@
     return (1 + state.buildings.cursor * 0.1) * state.clickMult * state.globalMult * eventMultiplier() * prestigeMultiplier() * referralMultiplier();
   }
 
+  // Temporary paid "x2 production" boost — applied as a FINAL multiplier at the
+  // points where CPS is consumed (online tick + display), NOT baked into
+  // getCps(): that keeps it off the base rate used for the leaderboard, daily
+  // reward, and the offline calc (which applies x2 itself via its window split,
+  // so baking it into getCps would double-count).
+  function prod2xMultiplier() {
+    return (state.boost2xExpiresAt || 0) > Date.now() ? 2 : 1;
+  }
+
   function formatNum(n) {
     if (n < 1000) return n < 100 ? (Math.floor(n * 10) / 10).toString() : Math.floor(n).toString();
     const units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
@@ -910,12 +943,41 @@
     }
   }
 
+  // Paid "x2 production for 1h" boost. Server-owned window; boost2xExpiresAt
+  // lands on checkin, then online x2 + timer kick in.
+  async function buyBoost2x() {
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (el.boost2xBtn) el.boost2xBtn.disabled = true;
+    try {
+      const resp = await fetch(CREATE_BOOST2X_INVOICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
+      const data = await resp.json();
+      if (!data || !data.ok || !data.link) throw new Error('no_link');
+      tg.openInvoice(data.link, (status) => {
+        if (el.boost2xBtn) el.boost2xBtn.disabled = false;
+        if (status === 'paid') {
+          showToast('Оплата принята — включаем ×2…', 4000);
+          pollPaidCredit(); // nudges checkins; boost2xExpiresAt lands via checkin
+        } else if (status === 'failed') {
+          showToast('Оплата не прошла — попробуй ещё раз');
+        }
+      });
+    } catch (e) {
+      if (el.boost2xBtn) el.boost2xBtn.disabled = false;
+      showToast('Не удалось создать счёт — попробуй позже');
+    }
+  }
+
   // ---------- Rendering ----------
   const el = {
     cookieCount: document.getElementById('cookieCount'),
     cps: document.getElementById('cps'),
     clickPowerLine: document.getElementById('clickPowerLine'),
     offlineInfoLine: document.getElementById('offlineInfoLine'),
+    boost2xLine: document.getElementById('boost2xLine'),
     bigCookie: document.getElementById('bigCookie'),
     clickHint: document.getElementById('clickHint'),
     upgradeHint: document.getElementById('upgradeHint'),
@@ -969,6 +1031,7 @@
     armyOfflineCap: document.getElementById('armyOfflineCap'),
     armyOfflineLabel: document.getElementById('armyOfflineLabel'),
     nocapBtn: document.getElementById('nocapBtn'),
+    boost2xBtn: document.getElementById('boost2xBtn'),
     playerProfile: document.getElementById('playerProfile'),
     titleTrack: document.getElementById('titleTrack'),
     titleNext: document.getElementById('titleNext'),
@@ -982,10 +1045,25 @@
 
   function renderTopbar() {
     el.cookieCount.textContent = formatNum(state.cookies);
-    el.cps.textContent = `${formatNum(getCps())} печенек/сек`;
+    const p2 = prod2xMultiplier();
+    el.cps.textContent = `${formatNum(getCps() * p2)} печенек/сек${p2 > 1 ? ' ⚡×2' : ''}`;
+    el.cps.classList.toggle('boosted', p2 > 1);
     const clickUpgradesOwned = countBoughtUpgrades('click');
     el.clickPowerLine.textContent = `Сила клика: ${formatNum(getClickPower())} · апгрейдов клика: ${clickUpgradesOwned}/${CLICK_UPGRADES_TOTAL}`;
     renderOfflineInfo();
+    renderBoost2xInfo();
+  }
+
+  // x2-production boost timer, shown next to the CPS indicator only while active.
+  function renderBoost2xInfo() {
+    if (!el.boost2xLine) return;
+    const left = (state.boost2xExpiresAt || 0) - Date.now();
+    if (left > 0) {
+      el.boost2xLine.hidden = false;
+      el.boost2xLine.textContent = `⚡ ×2 производство · ещё ${fmtDur(left)}`;
+    } else {
+      el.boost2xLine.hidden = true;
+    }
   }
 
   // Offline status in the topbar (always visible): the paid no-cap boost
@@ -1208,6 +1286,9 @@
     if (el.nocapBtn) el.nocapBtn.textContent = boostLeft > 0
       ? `Продлить ещё на 24ч · ${NOCAP_BOOST_STARS} ⭐`
       : `🚀 Снять кап офлайна на 24ч · ${NOCAP_BOOST_STARS} ⭐`;
+    if (el.boost2xBtn) el.boost2xBtn.textContent = (state.boost2xExpiresAt || 0) > Date.now()
+      ? `Продлить ×2 ещё на 1ч · ${PROD2X_BOOST_STARS} ⭐`
+      : `⚡ ×2 производство на 1ч · ${PROD2X_BOOST_STARS} ⭐`;
 
     renderTitles();
     el.syncStatus.textContent = cloudStorageStatusText();
@@ -1216,6 +1297,15 @@
   function fmtHM(ms) {
     const totalMin = Math.max(0, Math.round(ms / 60000));
     return `${Math.floor(totalMin / 60)}ч ${totalMin % 60}мин`;
+  }
+
+  // Compact duration: drops the hours part when zero (good for the ≤1h x2 boost).
+  function fmtDur(ms) {
+    const t = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    if (h > 0) return `${h}ч ${m}мин`;
+    if (m > 0) return `${m} мин`;
+    return `${s} сек`;
   }
 
   // Russian count agreement for "друг": 1 друг, 2 друга, 5 друзей.
@@ -1589,7 +1679,7 @@
     const dt = (now - lastTick) / 1000;
     lastTick = now;
     const frenzyMult = now < frenzyUntil ? 7 : 1;
-    const gain = getCps() * frenzyMult * dt;
+    const gain = getCps() * prod2xMultiplier() * frenzyMult * dt;
     if (gain > 0) {
       state.cookies += gain;
       state.totalBaked += gain;
@@ -1615,6 +1705,7 @@
   el.offlineClaimBtn.addEventListener('click', claimOfflineFree);
   el.offlineX2Btn.addEventListener('click', claimOfflinePaid);
   if (el.nocapBtn) el.nocapBtn.addEventListener('click', buyNocapBoost);
+  if (el.boost2xBtn) el.boost2xBtn.addEventListener('click', buyBoost2x);
   // Tapping the backdrop = free claim (never lose offline income); ignored while
   // a payment is processing.
   el.offlineModal.addEventListener('click', (e) => {
@@ -1642,6 +1733,7 @@
   setInterval(updateEventBanner, 1000);
   setInterval(updateRefEventBanner, 1000);
   setInterval(renderOfflineInfo, 1000);
+  setInterval(renderBoost2xInfo, 1000);
   scheduleGolden();
 
   window.addEventListener('beforeunload', () => { state.lastTs = Date.now(); saveState(); });

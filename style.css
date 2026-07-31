@@ -149,6 +149,20 @@ html, body {
   font-weight: 800;
 }
 
+.cps.boosted {
+  color: var(--gold);
+  font-weight: 800;
+}
+
+.boost2x-line {
+  font-size: 12px;
+  color: var(--gold);
+  font-weight: 800;
+  margin-top: 2px;
+}
+
+.boost2x-line[hidden] { display: none; }
+
 .section-header {
   font-size: 12px;
   font-weight: 700;
