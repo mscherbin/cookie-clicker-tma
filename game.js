@@ -792,7 +792,7 @@
       const b = BUILDINGS.find(x => x.id === u.buildingId);
       return `🔒 Откроется: купите ${b.icon} ${b.name}`;
     }
-    if (u.reqType === 'clicks') return `🔒 Откроется: ${formatNum(u.reqValue)} кликов`;
+    if (u.reqType === 'clicks') return `🔒 Откроется: ${formatNum(u.reqValue)} кликов (сделано ${formatNum(state.totalClicks)})`;
     return `🔒 Откроется: испечено ${formatNum(u.reqValue)} печенек`;
   }
 
@@ -1278,9 +1278,13 @@
         const isTeaser = teaserIds.has(u.id);
         const unlocked = u.req(state.buildings, state);
         const affordable = state.cookies >= u.cost;
+        // "Locked" = requirement not met yet (teaser preview, or affordable but
+        // gated by clicks/buildings/baked). Both show WHY they're locked instead
+        // of a misleading buyable-looking card with a cost.
+        const showLocked = !bought && (isTeaser || !unlocked);
         const card = document.createElement('button');
-        card.className = 'upgrade-card' + (bought ? ' bought' : isTeaser ? ' teaser' : unlocked ? (affordable ? '' : ' disabled') : ' locked');
-        card.innerHTML = isTeaser ? `
+        card.className = 'upgrade-card' + (bought ? ' bought' : showLocked ? ' locked' : (affordable ? '' : ' disabled'));
+        card.innerHTML = showLocked ? `
           <div class="upgrade-icon">🔒</div>
           <div class="item-info">
             <div class="upgrade-name">${u.name}</div>
