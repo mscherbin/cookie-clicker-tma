@@ -915,6 +915,7 @@
     cookieCount: document.getElementById('cookieCount'),
     cps: document.getElementById('cps'),
     clickPowerLine: document.getElementById('clickPowerLine'),
+    offlineInfoLine: document.getElementById('offlineInfoLine'),
     bigCookie: document.getElementById('bigCookie'),
     clickHint: document.getElementById('clickHint'),
     upgradeHint: document.getElementById('upgradeHint'),
@@ -984,6 +985,22 @@
     el.cps.textContent = `${formatNum(getCps())} печенек/сек`;
     const clickUpgradesOwned = countBoughtUpgrades('click');
     el.clickPowerLine.textContent = `Сила клика: ${formatNum(getClickPower())} · апгрейдов клика: ${clickUpgradesOwned}/${CLICK_UPGRADES_TOTAL}`;
+    renderOfflineInfo();
+  }
+
+  // Offline status in the topbar (always visible): the paid no-cap boost
+  // countdown when active, otherwise the current full-rate window.
+  function renderOfflineInfo() {
+    if (!el.offlineInfoLine) return;
+    const boostLeft = (state.boostExpiresAt || 0) - Date.now();
+    if (boostLeft > 0) {
+      el.offlineInfoLine.textContent = `🚀 Офлайн без ограничений · ещё ${fmtHM(boostLeft)}`;
+      el.offlineInfoLine.classList.add('boost');
+    } else {
+      const capMin = Math.round(getOfflineCapHours(state.activeReferrals || 0) * 60);
+      el.offlineInfoLine.textContent = `💤 Офлайн 100%: ${Math.floor(capMin / 60)}ч ${capMin % 60}мин`;
+      el.offlineInfoLine.classList.remove('boost');
+    }
   }
 
   function updateEventBanner() {
@@ -1624,6 +1641,7 @@
   updateEventBanner();
   setInterval(updateEventBanner, 1000);
   setInterval(updateRefEventBanner, 1000);
+  setInterval(renderOfflineInfo, 1000);
   scheduleGolden();
 
   window.addEventListener('beforeunload', () => { state.lastTs = Date.now(); saveState(); });
