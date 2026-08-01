@@ -426,6 +426,54 @@ html, body {
   border-radius: 999px;
 }
 
+/* Prestige-invitation banner: appears when every current-tier upgrade is bought
+   (the "nothing left to buy" endgame signal). Persistent — the sole path of
+   progress at this stage, so it stays until the player ascends. Takes the same
+   slot as the referral teaser and outranks it (see renderRewardTeaser). */
+.prestige-banner {
+  flex-shrink: 0;
+  margin: 10px 12px 2px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 14px;
+  border-radius: 15px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.28), rgba(232, 163, 61, 0.12), var(--card));
+  border: 1px solid var(--gold);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  animation: teaserIn 0.35s ease-out, prestigeGlow 2s ease-in-out infinite;
+}
+.prestige-banner[hidden] { display: none; }
+.prestige-banner-icon { font-size: 30px; flex-shrink: 0; }
+.prestige-banner-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.prestige-banner-title { font-size: 14px; font-weight: 800; color: var(--gold); }
+.prestige-banner-sub { font-size: 11px; color: var(--text); opacity: 0.85; line-height: 1.35; }
+.prestige-banner-cta {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent-text);
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  padding: 8px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+@keyframes prestigeGlow {
+  0%, 100% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+  50% { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(255, 209, 102, 0.55); }
+}
+
+/* Brief attention flash on the ascend card when reached via the banner CTA. */
+.ascend-card.flash { animation: ascendFlash 1.1s ease; }
+@keyframes ascendFlash {
+  0%, 100% { box-shadow: none; }
+  25% { box-shadow: 0 0 0 2px var(--gold), 0 0 22px rgba(255, 209, 102, 0.55); }
+}
+
 .float-num {
   position: absolute;
   font-weight: 700;

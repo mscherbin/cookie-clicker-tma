@@ -1108,6 +1108,7 @@
     unlockName: document.getElementById('unlockName'),
     unlockDesc: document.getElementById('unlockDesc'),
     unlockPlaceBtn: document.getElementById('unlockPlaceBtn'),
+    prestigeBanner: document.getElementById('prestigeBanner'),
     rewardTeaser: document.getElementById('rewardTeaser'),
     rewardTeaserTitle: document.getElementById('rewardTeaserTitle'),
     rewardTeaserSub: document.getElementById('rewardTeaserSub'),
@@ -1640,6 +1641,7 @@
     renderBuildings();
     renderUpgrades();
     renderStats();
+    renderPrestigeBanner();
     renderRewardTeaser();
     updateTutorial();
     updateDailyBadge();
@@ -1789,8 +1791,39 @@
   // or a "поставить" CTA once unlocked. Hides itself once the building is
   // placed (or if there are no referral buildings left to earn).
   let teaserBuilding = null;
+  // Prestige-invitation banner. Fires once the player has bought every upgrade
+  // currently reachable (all tier-unlocked ones) — the "nothing left to buy"
+  // signal — and ascending is actually worthwhile (crumbs > 0, so the CTA never
+  // dead-ends on the "too early" guard in ascend()).
+  function allCurrentTierUpgradesBought() {
+    return UPGRADES.every(u => !tierUnlocked(u) || state.upgrades[u.id]);
+  }
+  function prestigeBannerActive() {
+    return allCurrentTierUpgradesBought() && potentialCrumbs() > 0;
+  }
+  function renderPrestigeBanner() {
+    if (!el.prestigeBanner) return;
+    el.prestigeBanner.hidden = !prestigeBannerActive();
+  }
+
+  function onPrestigeBannerClick() {
+    // Lead to the confirmation screen (ascend card on the Stats tab) rather than
+    // ascending straight away — a first-time player should see what they'll get.
+    const stats = document.querySelector('.tab-btn[data-tab="stats"]');
+    if (stats) stats.click();
+    const card = el.ascendBtn && el.ascendBtn.closest('.ascend-card');
+    if (card) {
+      card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+    }
+    haptic('medium');
+  }
+
   function renderRewardTeaser() {
     if (!el.rewardTeaser) return;
+    // Prestige banner outranks the referral teaser for the shared slot: at the
+    // "all upgrades bought" endgame, ascending is the primary call to action.
+    if (prestigeBannerActive()) { el.rewardTeaser.hidden = true; return; }
     const b = BUILDINGS.find(x => x.referralLocked && !state.buildings[x.id]);
     teaserBuilding = b || null;
     if (!b) { el.rewardTeaser.hidden = true; return; }
@@ -2026,10 +2059,11 @@
   });
   el.unlockModal.addEventListener('click', (e) => { if (e.target === el.unlockModal) hideUnlockModal(); });
   el.rewardTeaser.addEventListener('click', onRewardTeaserClick);
+  if (el.prestigeBanner) el.prestigeBanner.addEventListener('click', onPrestigeBannerClick);
 
   loadState();
   requestAnimationFrame(tick);
-  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); renderRewardTeaser(); updateTutorial(); updateDailyBadge(); maybeOfferReferralBuildings(); }, 3000);
+  setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); renderPrestigeBanner(); renderRewardTeaser(); updateTutorial(); updateDailyBadge(); maybeOfferReferralBuildings(); }, 3000);
   setInterval(() => { state.lastTs = Date.now(); saveState(); }, 10000);
   // Keep the leaderboard/push-worker record fresh during a long play session
   // instead of only ever reflecting the moment the app was opened.
