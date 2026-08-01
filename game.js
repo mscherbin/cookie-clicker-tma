@@ -834,10 +834,10 @@
     }
     const crumbsEarned = potentialCrumbs();
     if (crumbsEarned <= 0) {
-      showToast('Пока рано — испеките больше печенек, чтобы получить крошки');
+      showToast('Пока рано — испеките больше печенек, чтобы бонус вырос');
       return;
     }
-    if (!confirm(`Вознестись? Прогресс обнулится, но вы получите ${formatNum(crumbsEarned)} 👼 небесных крошек (+${crumbsEarned}% к производству навсегда).`)) return;
+    if (!confirm(`Вознестись? Прогресс обнулится, но вы навсегда получите +${formatNum(crumbsEarned)}% к производству.`)) return;
 
     // Server owns prestige_count (the leaderboard's rank key). Confirm BEFORE
     // resetting, so an anti-farm 'too_soon' reject blocks cleanly without
@@ -883,7 +883,7 @@
     state.paidUnlockedUpgrades = keepPaidUnlocks;
 
     haptic('heavy');
-    showToast(`👼 Вознесение! +${formatNum(crumbsEarned)} крошек · бонус теперь +${keepTotalCrumbs}%`);
+    showToast(`⭐ Вознесение! Постоянный бонус теперь +${keepTotalCrumbs}% к производству`);
     saveState();
     refreshAll();
   }
@@ -1340,7 +1340,6 @@
     referralLeaderboardList: document.getElementById('referralLeaderboardList'),
     refToggleWeekly: document.getElementById('refToggleWeekly'),
     refToggleAll: document.getElementById('refToggleAll'),
-    ascendCrumbs: document.getElementById('ascendCrumbs'),
     ascendBonus: document.getElementById('ascendBonus'),
     ascendPreview: document.getElementById('ascendPreview'),
     ascendPreviewLabel: document.getElementById('ascendPreviewLabel'),
@@ -1783,18 +1782,17 @@
     ];
     el.statsList.innerHTML = rows.map(([k, v]) => `<div class="stat-row"><span>${k}</span><span>${v}</span></div>`).join('');
 
-    // Ascension card: the "получишь при вознесении" number is the hero (the one
-    // motivating figure). Before the first ascension the "crumbs now / permanent
-    // bonus" rows are all zeros (reads as a broken UI), so hide them and show a
-    // one-liner instead; switch to the full three-figure view once ascended.
+    // Ascension card: показываем сразу итоговый % (1 крошка = 1%, промежуточную
+    // "валюту" не выводим). Число — hero. До первого вознесения строка
+    // "Постоянный бонус" = +0% (бессмысленна), поэтому её скрываем и показываем
+    // однострочник; после — показываем текущий бонус.
     const ascended = (state.ascensionCount || 0) >= 1;
-    el.ascendPreview.textContent = `+${formatNum(potentialCrumbs())} 👼`;
+    el.ascendPreview.textContent = `+${formatNum(potentialCrumbs())}%`;
     if (el.ascendPreviewLabel) el.ascendPreviewLabel.textContent = ascended
-      ? 'получишь при следующем вознесении'
-      : 'получишь при первом вознесении';
+      ? 'к производству навсегда — при следующем вознесении'
+      : 'к производству навсегда — при первом вознесении';
     if (el.ascendFirstTime) el.ascendFirstTime.hidden = ascended;
     if (el.ascendRows) el.ascendRows.hidden = !ascended;
-    el.ascendCrumbs.textContent = formatNum(state.totalCrumbs || 0);
     el.ascendBonus.textContent = `+${state.totalCrumbs || 0}%`;
 
     // Ascension is gated on buying everything: disable the button (with the
@@ -2140,7 +2138,7 @@
     el.prestigeBanner.classList.toggle('soon', st === 'soon');
     if (st === 'available') {
       el.prestigeBannerTitle.textContent = 'Всё куплено! 🎉';
-      el.prestigeBannerSub.textContent = 'Пора переродиться — постоянный буст и новый уровень зданий';
+      el.prestigeBannerSub.textContent = `Пора переродиться — +${formatNum(potentialCrumbs())}% к производству навсегда`;
       el.prestigeBannerCta.hidden = false;
     } else {
       el.prestigeBannerTitle.textContent = 'Почти всё куплено! 🎉';

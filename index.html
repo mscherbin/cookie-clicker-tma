@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=58" />
+<link rel="stylesheet" href="style.css?v=59" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -32,7 +32,7 @@
 
   <main class="main">
     <button id="prestigeBanner" class="prestige-banner" hidden>
-      <span class="prestige-banner-icon">👼</span>
+      <span class="prestige-banner-icon">⭐</span>
       <span class="prestige-banner-body">
         <span class="prestige-banner-title" id="prestigeBannerTitle">Всё куплено! 🎉</span>
         <span class="prestige-banner-sub" id="prestigeBannerSub">Пора переродиться — получи постоянный буст и открой новый уровень зданий</span>
@@ -181,15 +181,14 @@
       </div>
 
       <div class="ascend-card">
-        <div class="ascend-title">👼 Вознесение</div>
-        <div class="ascend-desc">Сбрасывает прогресс, но даёт небесные крошки — каждая навсегда +1% к производству.</div>
+        <div class="ascend-title">⭐ Вознесение</div>
+        <div class="ascend-desc">Сбрасывает прогресс, но даёт постоянный бонус к производству — с каждым разом бонус растёт.</div>
         <div class="ascend-hero">
-          <div class="ascend-hero-num" id="ascendPreview">+0 👼</div>
-          <div class="ascend-hero-label" id="ascendPreviewLabel">получишь при вознесении</div>
+          <div class="ascend-hero-num" id="ascendPreview">+0%</div>
+          <div class="ascend-hero-label" id="ascendPreviewLabel">к производству навсегда — при первом вознесении</div>
         </div>
         <div class="ascend-firsttime" id="ascendFirstTime">✨ Это будет твоё первое вознесение</div>
         <div class="ascend-rows" id="ascendRows" hidden>
-          <div class="ascend-row"><span>Крошек сейчас</span><span id="ascendCrumbs">0</span></div>
           <div class="ascend-row"><span>Постоянный бонус</span><span id="ascendBonus">+0%</span></div>
         </div>
         <button id="ascendBtn" class="ascend-btn">Вознестись</button>
@@ -266,6 +265,6 @@
   </div>
 </div>
 
-<script src="game.js?v=58"></script>
+<script src="game.js?v=59"></script>
 </body>
 </html>
