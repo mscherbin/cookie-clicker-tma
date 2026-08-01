@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=62" />
+<link rel="stylesheet" href="style.css?v=63" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -50,92 +50,7 @@
     </button>
     <section class="clicker-zone">
       <button id="bigCookie" class="big-cookie" aria-label="Кликнуть печеньку">
-        <svg class="cookie-svg" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <filter id="roughEdge" x="-30%" y="-30%" width="160%" height="160%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.025" numOctaves="2" seed="7" result="noise" />
-              <feDisplacementMap in="SourceGraphic" in2="noise" scale="10" xChannelSelector="R" yChannelSelector="G" />
-            </filter>
-            <filter id="grainNoise" x="-30%" y="-30%" width="160%" height="160%">
-              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" result="grain" />
-              <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.9 0 0 0 0" result="grainAlpha" />
-              <!-- Clip the grain to the cookie shape (SourceGraphic) so it never
-                   fills the square filter region — otherwise the golden-theme
-                   chocolate filter lifts that square/box into view. -->
-              <feComposite in="grainAlpha" in2="SourceGraphic" operator="in" />
-            </filter>
-            <radialGradient id="doughGrad" cx="35%" cy="28%" r="80%">
-              <stop offset="0%" stop-color="#f6d492" />
-              <stop offset="45%" stop-color="#e3ae5c" />
-              <stop offset="80%" stop-color="#c98d3f" />
-              <stop offset="100%" stop-color="#a86e2c" />
-            </radialGradient>
-            <radialGradient id="chipGrad" cx="32%" cy="28%" r="80%">
-              <stop offset="0%" stop-color="#7a4a2c" />
-              <stop offset="55%" stop-color="#4a2712" />
-              <stop offset="100%" stop-color="#2c1508" />
-            </radialGradient>
-            <radialGradient id="shadowGrad" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="#000000" stop-opacity="0.45" />
-              <stop offset="100%" stop-color="#000000" stop-opacity="0" />
-            </radialGradient>
-          </defs>
-
-          <ellipse cx="120" cy="207" rx="85" ry="16" fill="url(#shadowGrad)" />
-
-          <g filter="url(#roughEdge)">
-            <circle cx="120" cy="118" r="98" fill="url(#doughGrad)" />
-            <circle cx="70" cy="80" r="30" fill="#c07d33" opacity="0.25" />
-            <circle cx="165" cy="150" r="35" fill="#b06e29" opacity="0.2" />
-            <circle cx="150" cy="60" r="22" fill="#f0c274" opacity="0.3" />
-            <circle cx="80" cy="165" r="26" fill="#ad6c28" opacity="0.22" />
-          </g>
-
-          <g style="mix-blend-mode:multiply" opacity="0.12">
-            <circle cx="120" cy="118" r="96" fill="#5c3410" filter="url(#grainNoise)" />
-          </g>
-
-          <g>
-            <g transform="translate(95 75) rotate(20)">
-              <ellipse rx="14" ry="12" fill="url(#chipGrad)" />
-              <ellipse cx="-4.2" cy="-3.6" rx="4.9" ry="3.6" fill="#ffffff" opacity="0.22" />
-            </g>
-            <g transform="translate(150 90) rotate(-15)">
-              <ellipse rx="11" ry="10" fill="url(#chipGrad)" />
-              <ellipse cx="-3.3" cy="-3" rx="3.85" ry="3" fill="#ffffff" opacity="0.22" />
-            </g>
-            <g transform="translate(120 120) rotate(8)">
-              <ellipse rx="16" ry="14" fill="url(#chipGrad)" />
-              <ellipse cx="-4.8" cy="-4.2" rx="5.6" ry="4.2" fill="#ffffff" opacity="0.22" />
-            </g>
-            <g transform="translate(80 140) rotate(-25)">
-              <ellipse rx="12" ry="11" fill="url(#chipGrad)" />
-              <ellipse cx="-3.6" cy="-3.3" rx="4.2" ry="3.3" fill="#ffffff" opacity="0.22" />
-            </g>
-            <g transform="translate(160 150) rotate(30)">
-              <ellipse rx="13" ry="12" fill="url(#chipGrad)" />
-              <ellipse cx="-3.9" cy="-3.6" rx="4.55" ry="3.6" fill="#ffffff" opacity="0.22" />
-            </g>
-            <g transform="translate(130 170) rotate(-5)">
-              <ellipse rx="10" ry="9" fill="url(#chipGrad)" />
-              <ellipse cx="-3" cy="-2.7" rx="3.5" ry="2.7" fill="#ffffff" opacity="0.22" />
-            </g>
-            <g transform="translate(155 115) rotate(12)">
-              <ellipse rx="8" ry="7" fill="url(#chipGrad)" />
-              <ellipse cx="-2.4" cy="-2.1" rx="2.8" ry="2.1" fill="#ffffff" opacity="0.22" />
-            </g>
-            <g transform="translate(100 175) rotate(-10)">
-              <ellipse rx="9" ry="8" fill="url(#chipGrad)" />
-              <ellipse cx="-2.7" cy="-2.4" rx="3.15" ry="2.4" fill="#ffffff" opacity="0.22" />
-            </g>
-            <g transform="translate(65 110) rotate(18)">
-              <ellipse rx="10" ry="9" fill="url(#chipGrad)" />
-              <ellipse cx="-3" cy="-2.7" rx="3.5" ry="2.7" fill="#ffffff" opacity="0.22" />
-            </g>
-          </g>
-
-          <ellipse cx="85" cy="65" rx="45" ry="22" fill="#ffffff" opacity="0.18" transform="rotate(-18 85 65)" />
-        </svg>
+        <img class="cookie-svg" src="assets/cookie.png?v=63" alt="" draggable="false" />
       </button>
       <div id="floatLayer" class="float-layer"></div>
       <div id="rewardBurst" class="reward-burst" hidden>
@@ -269,6 +184,6 @@
   </div>
 </div>
 
-<script src="game.js?v=62"></script>
+<script src="game.js?v=63"></script>
 </body>
 </html>

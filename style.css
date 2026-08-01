@@ -197,8 +197,10 @@ html, body {
   position: relative;
   background: none;
   border: none;
-  width: min(52vw, 250px);
-  height: min(52vw, 250px);
+  /* Larger than the old SVG cookie: the PNG bakes in the golden glow, so the
+     actual cookie disc is only ~60% of the frame — size up so it reads big. */
+  width: min(66vw, 320px);
+  height: min(66vw, 320px);
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -206,18 +208,6 @@ html, body {
   justify-content: center;
   transition: transform 0.06s ease-out;
   touch-action: manipulation;
-}
-
-/* Circular warm halo behind the cookie so it stands out in the middle of the
-   (otherwise empty) clicker zone. Round on purpose — no square bounding box. */
-.big-cookie::before {
-  content: '';
-  position: absolute;
-  inset: -16%;
-  border-radius: 50%;
-  z-index: -1;
-  pointer-events: none;
-  background: radial-gradient(circle, rgba(255, 224, 130, 0.9) 0%, rgba(255, 205, 90, 0.6) 34%, rgba(255, 190, 70, 0.28) 55%, transparent 74%);
 }
 
 .big-cookie:active {
@@ -304,7 +294,9 @@ html, body {
   width: 100%;
   height: 100%;
   display: block;
+  object-fit: contain;
   pointer-events: none;
+  -webkit-user-drag: none;
 }
 
 .float-layer {
@@ -1452,13 +1444,6 @@ body.theme-golden {
 body.theme-golden .topbar {
   background: linear-gradient(180deg, rgba(90, 63, 20, 0.85), rgba(36, 26, 13, 0.6));
 }
-/* Turn the golden cookie into a rich chocolate one (dough + chips darken
-   together — reads as a double-chocolate cookie). Warm glow underneath. */
-/* Dark-chocolate recolour of the golden cookie. No drop-shadow (it amplified the
-   SVG grain's square region into a box). The square is fixed at the source —
-   #grainNoise is now clipped to the cookie shape — so no clip-path is needed
-   here (a clip-path circle left a faint hard-edged ring). The round
-   .big-cookie::before halo provides the glow. */
-body.theme-golden .cookie-svg {
-  filter: brightness(0.4) sepia(0.55) saturate(1.6) hue-rotate(-16deg) contrast(1.05);
-}
+/* The cookie is now a ready-made PNG (chocolate cookie + baked-in golden glow),
+   so no per-theme recolour filter is applied — it would double-process the
+   already-finished art. The golden theme only tints the background/topbar. */
