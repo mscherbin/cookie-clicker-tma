@@ -978,6 +978,7 @@ async function handleCheckin(request, env) {
     prestigeCount: serverPrestigeCount, // server-authoritative; leaderboard's primary rank key
     isPioneer: isPrestigePioneer,       // "prestige pioneer" title flag
     lifetimeCookies: Number(body.lifetimeCookies) || 0, // never-resetting total across runs (client-sent, like cps)
+    crumbs: Number(body.crumbs) || 0,   // permanent bonus % (client-sent, like cps); for the rank-badge tooltip
   };
   // Mirroring `data` into KV metadata lets list-all operations (leaderboard,
   // the push cron, broadcasts) read every user's fields straight off list()
@@ -1017,6 +1018,7 @@ async function handleLeaderboard(env) {
         prestigeCount: data.prestigeCount || 0, // primary rank key (server-authoritative)
         isPioneer: !!data.isPioneer,
         lifetimeCookies: data.lifetimeCookies || 0, // never-resetting total, shown as a secondary figure
+        crumbs: data.crumbs || 0, // this player's permanent bonus % (rank-badge tooltip)
       });
     }
     if (list.list_complete || !list.cursor) break;
@@ -1026,7 +1028,14 @@ async function handleLeaderboard(env) {
   // within a tier — so a just-ascended player (CPS reset to ~0) still ranks by
   // their prestige tier instead of dropping to the bottom.
   entries.sort((a, b) => (b.prestigeCount - a.prestigeCount) || (b.cps - a.cps));
-  return jsonResponse({ ok: true, entries: entries.slice(0, 50) });
+  // The real pioneer threshold (config-driven), so the client's "Пионер" tooltip
+  // states the exact number that was actually granted.
+  let pioneerLimit = 50;
+  try {
+    const row = await env.DB.prepare("SELECT value FROM config WHERE key = 'pioneer_limit'").first();
+    if (row && Number.isFinite(Number(row.value))) pioneerLimit = Number(row.value);
+  } catch (e) { /* config table may not exist yet — fall back to default */ }
+  return jsonResponse({ ok: true, entries: entries.slice(0, 50), pioneerLimit });
 }
 
 // Referral leaderboard: top referrers by all-time peak army size, plus a

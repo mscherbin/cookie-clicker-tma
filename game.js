@@ -431,6 +431,7 @@
         cps: getCps(),
         totalBaked: state.totalBaked,
         lifetimeCookies: lifetimeCookiesTotal(),
+        crumbs: state.totalCrumbs || 0, // permanent bonus % (for the rank-badge tooltip)
       }),
     })
       .then(r => r.json())
@@ -594,6 +595,19 @@
     return 'p1';
   }
 
+  // Real pioneer threshold (config-driven, arrives with the leaderboard). Used
+  // in the "Пионер" tooltip so the number matches what was actually granted.
+  let leaderboardPioneerLimit = 50;
+
+  // The current sort criterion, as one plain line. A single mode for now (Топ =
+  // prestige, then production); returned from a function so a future mode
+  // switcher (Layer 4: by friends / by production) can swap the text per mode
+  // instead of showing a static line that lies for the other modes.
+  function leaderboardCriterionText() {
+    return 'Ранг: по числу перерождений, затем по скорости производства';
+  }
+  function ascendWord(n) { return pluralRu(n, 'вознесение', 'вознесения', 'вознесений'); }
+
   function loadLeaderboard() {
     el.leaderboardList.innerHTML = '<div class="empty-hint">Загрузка…</div>';
     if (!LEADERBOARD_URL) {
@@ -603,18 +617,21 @@
     fetch(LEADERBOARD_URL)
       .then(r => r.json())
       .then(data => {
+        const explainer = `<div class="lb-explainer">🏅 ${leaderboardCriterionText()}</div>`;
         if (!data.ok || !data.entries || data.entries.length === 0) {
-          el.leaderboardList.innerHTML = '<div class="empty-hint">Пока никого нет — станьте первым!</div>';
+          el.leaderboardList.innerHTML = explainer + '<div class="empty-hint">Пока никого нет — станьте первым!</div>';
           return;
         }
+        if (Number.isFinite(data.pioneerLimit)) leaderboardPioneerLimit = data.pioneerLimit;
         const myId = ownTelegramUserId();
         const medals = ['🥇', '🥈', '🥉'];
-        el.leaderboardList.innerHTML = data.entries.map((entry, i) => {
+        const rows = data.entries.map((entry, i) => {
           const t = titleFor(entry.maxActiveFriendsEver);
           const refTitleHtml = t ? `<span class="lb-title">${t.icon} ${escapeHtml(t.name)}</span>` : '';
-          const pioneerHtml = entry.isPioneer ? '<span class="lb-title lb-pioneer">🚩 Пионер</span>' : '';
+          const pioneerHtml = entry.isPioneer ? '<span class="lb-title lb-pioneer" data-pioneer="1">🚩 Пионер</span>' : '';
           const p = entry.prestigeCount || 0;
-          const prestigeHtml = p > 0 ? `<span class="lb-prestige ${prestigeBadgeClass(p)}">⭐×${p}</span>` : '';
+          const bonus = entry.crumbs || 0; // this player's real permanent bonus %
+          const prestigeHtml = p > 0 ? `<span class="lb-prestige ${prestigeBadgeClass(p)}" data-prestige="${p}" data-bonus="${bonus}">⭐×${p}</span>` : '';
           // Lifetime (never resets) as the secondary figure — a just-ascended
           // player would otherwise show ~0 baked and look empty.
           const lifetime = entry.lifetimeCookies || entry.totalBaked || 0;
@@ -628,10 +645,27 @@
             <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">печ/сек</span></div>
           </div>`;
         }).join('');
+        el.leaderboardList.innerHTML = explainer + rows;
       })
       .catch(() => {
         el.leaderboardList.innerHTML = '<div class="empty-hint">Не удалось загрузить лидерборд. Попробуйте позже.</div>';
       });
+  }
+
+  // Tap a rank badge → explain it with this player's real numbers. Delegated on
+  // the persistent list container, so it survives every re-render.
+  function onLeaderboardBadgeTap(e) {
+    const pres = e.target.closest && e.target.closest('.lb-prestige');
+    if (pres) {
+      const n = Number(pres.dataset.prestige) || 0;
+      const x = Number(pres.dataset.bonus) || 0;
+      showToast(`${n} ${ascendWord(n)} — постоянный бонус +${x}% к производству`, 4000);
+      return;
+    }
+    const pio = e.target.closest && e.target.closest('.lb-pioneer');
+    if (pio) {
+      showToast(`Один из первых ${leaderboardPioneerLimit} игроков, кто вознёсся — эксклюзивный титул, больше не выдаётся`, 4500);
+    }
   }
 
   // ---------- Referral leaderboard (weekly / all-time) ----------
@@ -2375,6 +2409,7 @@
   });
   el.unlockModal.addEventListener('click', (e) => { if (e.target === el.unlockModal) hideUnlockModal(); });
   el.rewardTeaser.addEventListener('click', onRewardTeaserClick);
+  if (el.leaderboardList) el.leaderboardList.addEventListener('click', onLeaderboardBadgeTap);
   if (el.prestigeBanner) el.prestigeBanner.addEventListener('click', onPrestigeBannerClick);
 
   loadState();
