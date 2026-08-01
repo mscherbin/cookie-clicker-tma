@@ -294,9 +294,10 @@ html, body {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: contain;
   pointer-events: none;
-  -webkit-user-drag: none;
+  /* Base (pre-ascension) cookie art. Theme-swapped below. background-image (not
+     <img>) so the golden theme can substitute a different PNG via CSS. */
+  background: url('assets/cookie_base.png?v=64') center / contain no-repeat;
 }
 
 .float-layer {
@@ -1444,6 +1445,8 @@ body.theme-golden {
 body.theme-golden .topbar {
   background: linear-gradient(180deg, rgba(90, 63, 20, 0.85), rgba(36, 26, 13, 0.6));
 }
-/* The cookie is now a ready-made PNG (chocolate cookie + baked-in golden glow),
-   so no per-theme recolour filter is applied — it would double-process the
-   already-finished art. The golden theme only tints the background/topbar. */
+/* After the first ascension, swap the cookie art to the chocolate + golden-ring
+   PNG (the base pre-ascension cookie is the lighter one, set on .cookie-svg). */
+body.theme-golden .cookie-svg {
+  background-image: url('assets/cookie.png?v=64');
+}
