@@ -783,8 +783,7 @@
     // Full-completion gate: ascension opens only once every purchasable building
     // and reachable upgrade is bought.
     if (!allContentBought()) {
-      const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
-      showToast(`Сначала купи все здания и апгрейды — осталось ${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)}`, 3500);
+      showToast(`Сначала купи всё — осталось: ${remainingContentLabel()}`, 3500);
       haptic('light');
       return;
     }
@@ -1749,8 +1748,7 @@
       if (ready) {
         el.ascendBtn.textContent = 'Вознестись';
       } else {
-        const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
-        el.ascendBtn.textContent = `🔒 Осталось: ${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)}`;
+        el.ascendBtn.textContent = `🔒 Осталось: ${remainingContentLabel()}`;
       }
     }
 
@@ -2048,6 +2046,25 @@
     return allContentBought() && potentialCrumbs() > 0;
   }
 
+  // What's still blocking ascension. When only a few items remain, name them
+  // (so the player knows exactly what to buy — e.g. an upgrade that just
+  // unlocked by clicks but hasn't been purchased yet); otherwise fall back to
+  // counts. The upgrade card itself shows whether it's buyable or still
+  // progress-gated, so the label just names them.
+  function remainingContentItems() {
+    return [
+      ...purchasableBuildings().filter(b => (state.buildings[b.id] || 0) < 1),
+      ...UPGRADES.filter(u => tierUnlocked(u) && !state.upgrades[u.id]),
+    ];
+  }
+  function remainingContentLabel() {
+    const items = remainingContentItems();
+    if (items.length === 0) return '';
+    if (items.length <= 3) return items.map(it => it.name).join(', ');
+    const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
+    return `${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)}`;
+  }
+
   // Banner has two states: 'available' (everything bought — ascend now) and
   // 'soon' (≤2 buildings AND ≤2 upgrades left — a heads-up). null = not close.
   function prestigeBannerState() {
@@ -2068,9 +2085,8 @@
       el.prestigeBannerSub.textContent = 'Пора переродиться — постоянный буст и новый уровень зданий';
       el.prestigeBannerCta.hidden = false;
     } else {
-      const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
       el.prestigeBannerTitle.textContent = 'Почти всё куплено! 🎉';
-      el.prestigeBannerSub.textContent = `Скоро откроется вознесение — осталось ${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)}`;
+      el.prestigeBannerSub.textContent = `Скоро откроется вознесение — осталось: ${remainingContentLabel()}`;
       el.prestigeBannerCta.hidden = true;
     }
   }
@@ -2078,8 +2094,7 @@
   function onPrestigeBannerClick() {
     if (prestigeBannerState() !== 'available') {
       // 'soon' — no ascend yet; nudge toward finishing the last purchases.
-      const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
-      showToast(`Купи оставшиеся ${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)} — и откроется вознесение`, 3500);
+      showToast(`Осталось: ${remainingContentLabel()} — купи, и откроется вознесение`, 3500);
       haptic('light');
       return;
     }
