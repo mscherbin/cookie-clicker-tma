@@ -183,9 +183,15 @@
       <div class="ascend-card">
         <div class="ascend-title">👼 Вознесение</div>
         <div class="ascend-desc">Сбрасывает прогресс, но даёт небесные крошки — каждая навсегда +1% к производству.</div>
-        <div class="ascend-row"><span>Крошек сейчас</span><span id="ascendCrumbs">0</span></div>
-        <div class="ascend-row"><span>Постоянный бонус</span><span id="ascendBonus">+0%</span></div>
-        <div class="ascend-row"><span>Получите при вознесении</span><span id="ascendPreview">+0 👼</span></div>
+        <div class="ascend-hero">
+          <div class="ascend-hero-num" id="ascendPreview">+0 👼</div>
+          <div class="ascend-hero-label" id="ascendPreviewLabel">получишь при вознесении</div>
+        </div>
+        <div class="ascend-firsttime" id="ascendFirstTime">✨ Это будет твоё первое вознесение</div>
+        <div class="ascend-rows" id="ascendRows" hidden>
+          <div class="ascend-row"><span>Крошек сейчас</span><span id="ascendCrumbs">0</span></div>
+          <div class="ascend-row"><span>Постоянный бонус</span><span id="ascendBonus">+0%</span></div>
+        </div>
         <button id="ascendBtn" class="ascend-btn">Вознестись</button>
       </div>
 
@@ -260,6 +266,6 @@
   </div>
 </div>
 
-<script src="game.js?v=55"></script>
+<script src="game.js?v=56"></script>
 </body>
 </html>

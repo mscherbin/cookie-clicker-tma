@@ -1122,6 +1122,34 @@ html, body {
   line-height: 1.4;
 }
 
+/* Hero: the "получишь при вознесении" figure, promoted to the top and enlarged
+   — the single motivating number on the card. */
+.ascend-hero {
+  text-align: center;
+  margin: 6px 0 10px;
+}
+.ascend-hero-num {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--gold);
+  line-height: 1.1;
+}
+.ascend-hero-label {
+  font-size: 12px;
+  color: var(--hint);
+  margin-top: 2px;
+}
+/* Pre-first-ascension one-liner replacing the all-zero rows. */
+.ascend-firsttime {
+  text-align: center;
+  font-size: 12px;
+  color: var(--hint);
+  margin-bottom: 12px;
+}
+.ascend-firsttime[hidden],
+.ascend-rows[hidden] { display: none; }
+.ascend-rows { margin-bottom: 4px; }
+
 .ascend-row {
   display: flex;
   justify-content: space-between;

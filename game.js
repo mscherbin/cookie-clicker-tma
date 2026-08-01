@@ -1309,6 +1309,9 @@
     ascendCrumbs: document.getElementById('ascendCrumbs'),
     ascendBonus: document.getElementById('ascendBonus'),
     ascendPreview: document.getElementById('ascendPreview'),
+    ascendPreviewLabel: document.getElementById('ascendPreviewLabel'),
+    ascendFirstTime: document.getElementById('ascendFirstTime'),
+    ascendRows: document.getElementById('ascendRows'),
     ascendBtn: document.getElementById('ascendBtn'),
     syncStatus: document.getElementById('syncStatus'),
     pushCloudBtn: document.getElementById('pushCloudBtn'),
@@ -1746,9 +1749,19 @@
     ];
     el.statsList.innerHTML = rows.map(([k, v]) => `<div class="stat-row"><span>${k}</span><span>${v}</span></div>`).join('');
 
+    // Ascension card: the "получишь при вознесении" number is the hero (the one
+    // motivating figure). Before the first ascension the "crumbs now / permanent
+    // bonus" rows are all zeros (reads as a broken UI), so hide them and show a
+    // one-liner instead; switch to the full three-figure view once ascended.
+    const ascended = (state.ascensionCount || 0) >= 1;
+    el.ascendPreview.textContent = `+${formatNum(potentialCrumbs())} 👼`;
+    if (el.ascendPreviewLabel) el.ascendPreviewLabel.textContent = ascended
+      ? 'получишь при следующем вознесении'
+      : 'получишь при первом вознесении';
+    if (el.ascendFirstTime) el.ascendFirstTime.hidden = ascended;
+    if (el.ascendRows) el.ascendRows.hidden = !ascended;
     el.ascendCrumbs.textContent = formatNum(state.totalCrumbs || 0);
     el.ascendBonus.textContent = `+${state.totalCrumbs || 0}%`;
-    el.ascendPreview.textContent = `+${formatNum(potentialCrumbs())} 👼`;
 
     // Ascension is gated on buying everything: disable the button (with the
     // remaining count) until the player has completed the tier.
