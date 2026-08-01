@@ -11,7 +11,12 @@
 //        and, if so, broadcasts an announcement to every known user — once
 //        per occurrence, tracked via an eventflag:* KV marker.
 
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/';
+// The `?v=` here is a cache-buster for Telegram's Mini App cache: Telegram
+// caches the app by URL, so a fresh query string forces it to reload index.html
+// (and thus the freshly-versioned css/js). Bump this to the current frontend
+// version on every deploy that must reach players immediately. Must also be
+// updated in BotFather's Menu Button URL (that launch path bypasses the worker).
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=61';
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
 const OFFLINE_FULL_RATE_SECONDS = 2 * 3600;
 const OFFLINE_RATE = 0.1;

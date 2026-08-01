@@ -1454,9 +1454,11 @@ body.theme-golden .topbar {
 }
 /* Turn the golden cookie into a rich chocolate one (dough + chips darken
    together — reads as a double-chocolate cookie). Warm glow underneath. */
-/* Dark-chocolate recolour of the golden cookie. No drop-shadow here — a
-   drop-shadow amplified the SVG grain filter's square region into a visible box;
-   the round .big-cookie::before halo provides the glow instead. */
+/* Dark-chocolate recolour of the golden cookie. No drop-shadow (it amplified the
+   SVG grain's square region into a box). The square is fixed at the source —
+   #grainNoise is now clipped to the cookie shape — so no clip-path is needed
+   here (a clip-path circle left a faint hard-edged ring). The round
+   .big-cookie::before halo provides the glow. */
 body.theme-golden .cookie-svg {
   filter: brightness(0.4) sepia(0.55) saturate(1.6) hue-rotate(-16deg) contrast(1.05);
 }
