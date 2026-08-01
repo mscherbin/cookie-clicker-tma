@@ -872,6 +872,12 @@
     // Paid unlocks are server-owned and persist across runs — keep them so a
     // paid-skipped upgrade doesn't briefly re-lock right after ascending.
     const keepPaidUnlocks = Array.isArray(state.paidUnlockedUpgrades) ? state.paidUnlockedUpgrades.slice() : [];
+    // Referral fields are server-authoritative (refreshed each checkin) and not
+    // tied to the current run — keep them so the Friendship Bakery and referral
+    // titles don't flicker to 0 / re-lock right after ascending, before the next
+    // checkin restores them.
+    const keepActiveReferrals = state.activeReferrals || 0;
+    const keepMaxFriendsEver = state.maxActiveFriendsEver || 0;
 
     state = defaultState();
     state.dailyStreak = keepDailyStreak;
@@ -881,6 +887,8 @@
     state.tutorial = keepTutorial;
     state.lifetimeBaked = keepLifetime;
     state.paidUnlockedUpgrades = keepPaidUnlocks;
+    state.activeReferrals = keepActiveReferrals;
+    state.maxActiveFriendsEver = keepMaxFriendsEver;
 
     haptic('heavy');
     showToast(`⭐ Вознесение! Постоянный бонус теперь +${keepTotalCrumbs}% к производству`);
