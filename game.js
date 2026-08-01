@@ -771,8 +771,19 @@
   // usual idle-game answer to "I've hit the ceiling, there's nothing left to
   // do." Cube-root curve keeps early ascensions modest and later ones (with
   // a much bigger totalBaked) meaningfully more rewarding.
+  // Heavenly crumbs earned by ascending now. Logarithmic in the CURRENT run's
+  // bakes (state.totalBaked, which resets on ascend) — deliberately NOT the
+  // lifetime total, or the runaway growth this formula fixes would just come
+  // back slower. K is calibrated so a realistic first tier-1 completion
+  // (~1e18–1e19 baked in a run) yields ~40 crumbs (+~40% permanent), a bonus
+  // that feels meaningful without trivializing the game — even an extreme
+  // 1e25-baked run only gives ~57. CRUMBS_MAX is a soft safety cap that the log
+  // curve never reaches in practice.
+  const CRUMBS_K = 1;
+  const CRUMBS_MAX = 1000;
   function potentialCrumbs() {
-    return Math.floor(Math.cbrt(state.totalBaked / 1e9));
+    const crumbs = Math.floor(CRUMBS_K * Math.log((state.totalBaked || 0) + 1));
+    return Math.max(0, Math.min(CRUMBS_MAX, crumbs));
   }
 
   function prestigeMultiplier() {
