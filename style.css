@@ -213,11 +213,11 @@ html, body {
 .big-cookie::before {
   content: '';
   position: absolute;
-  inset: -8%;
+  inset: -16%;
   border-radius: 50%;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(circle, rgba(255, 209, 102, 0.38) 0%, rgba(255, 209, 102, 0.15) 40%, transparent 66%);
+  background: radial-gradient(circle, rgba(255, 224, 130, 0.9) 0%, rgba(255, 205, 90, 0.6) 34%, rgba(255, 190, 70, 0.28) 55%, transparent 74%);
 }
 
 .big-cookie:active {
