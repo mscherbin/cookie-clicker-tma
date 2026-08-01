@@ -736,6 +736,14 @@
   }
 
   function ascend() {
+    // Full-completion gate: ascension opens only once every purchasable building
+    // and reachable upgrade is bought.
+    if (!allContentBought()) {
+      const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
+      showToast(`Сначала купи все здания и апгрейды — осталось ${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)}`, 3500);
+      haptic('light');
+      return;
+    }
     const crumbsEarned = potentialCrumbs();
     if (crumbsEarned <= 0) {
       showToast('Пока рано — испеките больше печенек, чтобы получить крошки');
@@ -1109,6 +1117,9 @@
     unlockDesc: document.getElementById('unlockDesc'),
     unlockPlaceBtn: document.getElementById('unlockPlaceBtn'),
     prestigeBanner: document.getElementById('prestigeBanner'),
+    prestigeBannerTitle: document.getElementById('prestigeBannerTitle'),
+    prestigeBannerSub: document.getElementById('prestigeBannerSub'),
+    prestigeBannerCta: document.getElementById('prestigeBannerCta'),
     rewardTeaser: document.getElementById('rewardTeaser'),
     rewardTeaserTitle: document.getElementById('rewardTeaserTitle'),
     rewardTeaserSub: document.getElementById('rewardTeaserSub'),
@@ -1545,6 +1556,20 @@
     el.ascendBonus.textContent = `+${state.totalCrumbs || 0}%`;
     el.ascendPreview.textContent = `+${formatNum(potentialCrumbs())} 👼`;
 
+    // Ascension is gated on buying everything: disable the button (with the
+    // remaining count) until the player has completed the tier.
+    if (el.ascendBtn) {
+      const ready = ascensionAvailable();
+      el.ascendBtn.disabled = !ready;
+      el.ascendBtn.classList.toggle('locked', !ready);
+      if (ready) {
+        el.ascendBtn.textContent = 'Вознестись';
+      } else {
+        const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
+        el.ascendBtn.textContent = `🔒 Осталось: ${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)}`;
+      }
+    }
+
     const army = state.activeReferrals || 0;
     el.armyCount.textContent = formatNum(army);
     el.armyBoost.textContent = `+${(referralBoost(army) * 100).toFixed(1).replace(/\.0$/, '')}%`;
@@ -1603,6 +1628,17 @@
     if (b >= 2 && b <= 4) return 'друга';
     return 'друзей';
   }
+
+  // Generic Russian plural: pluralRu(1,'здание','здания','зданий') → 'здание'.
+  function pluralRu(n, one, few, many) {
+    const a = Math.abs(n) % 100, b = a % 10;
+    if (a >= 11 && a <= 14) return many;
+    if (b === 1) return one;
+    if (b >= 2 && b <= 4) return few;
+    return many;
+  }
+  function buildingWord(n) { return pluralRu(n, 'здание', 'здания', 'зданий'); }
+  function upgradeWord(n) { return pluralRu(n, 'апгрейд', 'апгрейда', 'апгрейдов'); }
 
   // Referral-title profile badge + threshold progress track. Everything keys
   // off the peak army size (maxActiveFriendsEver), so a title/track position
@@ -1795,18 +1831,63 @@
   // currently reachable (all tier-unlocked ones) — the "nothing left to buy"
   // signal — and ascending is actually worthwhile (crumbs > 0, so the CTA never
   // dead-ends on the "too early" guard in ascend()).
-  function allCurrentTierUpgradesBought() {
-    return UPGRADES.every(u => !tierUnlocked(u) || state.upgrades[u.id]);
+  // --- Прогресс к вознесению: считаем НЕкупленный контент текущего тира. ---
+  // Ascension is a full-completion gate: own every currently-purchasable
+  // building (≥1 each) and buy every reachable upgrade. The referral-only
+  // building (Пекарня дружбы) is excluded — it's gated behind friends, not
+  // cookies, so it must never block progression. Tier-locked content doesn't
+  // count until the tier it belongs to is reached.
+  function purchasableBuildings() {
+    return BUILDINGS.filter(b => !b.referralLocked && tierUnlocked(b));
   }
-  function prestigeBannerActive() {
-    return allCurrentTierUpgradesBought() && potentialCrumbs() > 0;
+  function unboughtBuildingCount() {
+    return purchasableBuildings().filter(b => (state.buildings[b.id] || 0) < 1).length;
   }
+  function unboughtUpgradeCount() {
+    return UPGRADES.filter(u => tierUnlocked(u) && !state.upgrades[u.id]).length;
+  }
+  function allContentBought() {
+    return unboughtBuildingCount() === 0 && unboughtUpgradeCount() === 0;
+  }
+  function ascensionAvailable() {
+    return allContentBought() && potentialCrumbs() > 0;
+  }
+
+  // Banner has two states: 'available' (everything bought — ascend now) and
+  // 'soon' (≤2 buildings AND ≤2 upgrades left — a heads-up). null = not close.
+  function prestigeBannerState() {
+    if (ascensionAvailable()) return 'available';
+    if (unboughtBuildingCount() <= 2 && unboughtUpgradeCount() <= 2) return 'soon';
+    return null;
+  }
+
   function renderPrestigeBanner() {
     if (!el.prestigeBanner) return;
-    el.prestigeBanner.hidden = !prestigeBannerActive();
+    const st = prestigeBannerState();
+    if (!st) { el.prestigeBanner.hidden = true; return; }
+    el.prestigeBanner.hidden = false;
+    el.prestigeBanner.classList.toggle('available', st === 'available');
+    el.prestigeBanner.classList.toggle('soon', st === 'soon');
+    if (st === 'available') {
+      el.prestigeBannerTitle.textContent = 'Всё куплено! 🎉';
+      el.prestigeBannerSub.textContent = 'Пора переродиться — постоянный буст и новый уровень зданий';
+      el.prestigeBannerCta.hidden = false;
+    } else {
+      const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
+      el.prestigeBannerTitle.textContent = 'Почти всё куплено! 🎉';
+      el.prestigeBannerSub.textContent = `Скоро откроется вознесение — осталось ${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)}`;
+      el.prestigeBannerCta.hidden = true;
+    }
   }
 
   function onPrestigeBannerClick() {
+    if (prestigeBannerState() !== 'available') {
+      // 'soon' — no ascend yet; nudge toward finishing the last purchases.
+      const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
+      showToast(`Купи оставшиеся ${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)} — и откроется вознесение`, 3500);
+      haptic('light');
+      return;
+    }
     // Lead to the confirmation screen (ascend card on the Stats tab) rather than
     // ascending straight away — a first-time player should see what they'll get.
     const stats = document.querySelector('.tab-btn[data-tab="stats"]');
@@ -1821,9 +1902,9 @@
 
   function renderRewardTeaser() {
     if (!el.rewardTeaser) return;
-    // Prestige banner outranks the referral teaser for the shared slot: at the
-    // "all upgrades bought" endgame, ascending is the primary call to action.
-    if (prestigeBannerActive()) { el.rewardTeaser.hidden = true; return; }
+    // Prestige banner outranks the referral teaser for the shared slot: nearing
+    // (or reaching) full completion, ascending is the primary call to action.
+    if (prestigeBannerState()) { el.rewardTeaser.hidden = true; return; }
     const b = BUILDINGS.find(x => x.referralLocked && !state.buildings[x.id]);
     teaserBuilding = b || null;
     if (!b) { el.rewardTeaser.hidden = true; return; }
