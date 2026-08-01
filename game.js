@@ -1347,19 +1347,31 @@
     for (const category of CATEGORY_ORDER) {
       const categoryAll = UPGRADES.filter(u => u.category === category);
       const notBought = categoryAll.filter(u => !state.upgrades[u.id]);
-      let items = notBought.filter(u => u.req(state.buildings, state) || state.cookies >= u.cost * 0.5);
 
-      // Always surface a preview of the next locked upgrade in this category
-      // (even far from unlocking it) so players know there's more coming.
+      // Prestige-tier-locked upgrades are ALWAYS surfaced as locked cards (same
+      // as tier-locked buildings in the shop), so the «Доступно после N-го
+      // вознесения» gate is visible in this tab too — not just in buildings.
+      const tierLocked = notBought.filter(u => !tierUnlocked(u)).sort((a, b) => a.cost - b.cost);
+      const reachable = notBought.filter(u => tierUnlocked(u));
+
+      let items = reachable.filter(u => u.req(state.buildings, state) || state.cookies >= u.cost * 0.5);
+
+      // Preview the next not-yet-affordable (but tier-unlocked) upgrade in this
+      // category so players know there's more coming in the current tier.
       const teaserIds = new Set();
-      if (items.length < notBought.length) {
+      if (items.length < reachable.length) {
         const shown = new Set(items.map(u => u.id));
-        const next = notBought.filter(u => !shown.has(u.id)).sort((a, b) => a.cost - b.cost)[0];
+        const next = reachable.filter(u => !shown.has(u.id)).sort((a, b) => a.cost - b.cost)[0];
         if (next) {
           items = [...items, next];
           teaserIds.add(next.id);
         }
       }
+
+      // Ascension-locked upgrades go last (they're the highest tier / most
+      // expensive anyway), after the current-tier items.
+      items = [...items, ...tierLocked];
+
       if (items.length === 0) continue;
       anyAvailable = true;
 
