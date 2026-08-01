@@ -1576,7 +1576,12 @@
       const tierLocked = notBought.filter(u => !tierUnlocked(u)).sort((a, b) => a.cost - b.cost);
       const reachable = notBought.filter(u => tierUnlocked(u));
 
-      let items = reachable.filter(u => u.req(state.buildings, state) || state.cookies >= u.cost * 0.5);
+      // Use upgradeUnlocked (not raw u.req) so paid unlocks — the click-bypass
+      // boost (v=51) and per-upgrade skips (v=53) — actually surface the card as
+      // buyable instead of leaving it hidden until cookies ≥ 50% of cost. The
+      // per-card render below already uses upgradeUnlocked; this makes list
+      // inclusion consistent with it.
+      let items = reachable.filter(u => upgradeUnlocked(u) || state.cookies >= u.cost * 0.5);
 
       // Preview the next not-yet-affordable (but tier-unlocked) upgrade in this
       // category so players know there's more coming in the current tier.

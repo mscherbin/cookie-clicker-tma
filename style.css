@@ -297,7 +297,7 @@ html, body {
   pointer-events: none;
   /* Base (pre-ascension) cookie art. Theme-swapped below. background-image (not
      <img>) so the golden theme can substitute a different PNG via CSS. */
-  background: url('assets/cookie_base.png?v=66') center / contain no-repeat;
+  background: url('assets/cookie_base.png?v=67') center / contain no-repeat;
 }
 
 .float-layer {
@@ -1448,5 +1448,5 @@ body.theme-golden .topbar {
 /* After the first ascension, swap the cookie art to the chocolate + golden-ring
    PNG (the base pre-ascension cookie is the lighter one, set on .cookie-svg). */
 body.theme-golden .cookie-svg {
-  background-image: url('assets/cookie.png?v=66');
+  background-image: url('assets/cookie.png?v=67');
 }
