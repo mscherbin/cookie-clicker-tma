@@ -1245,45 +1245,64 @@
     return card;
   }
 
+  // Collapse state for the "Выполнено" (completed) section. Kept in a module
+  // var (not persisted) so it survives the frequent full re-renders — default
+  // closed, so completed upgrades don't clutter the "what to buy next" view.
+  let completedExpanded = false;
+
   function renderUpgrades() {
     el.upgradesList.innerHTML = '';
-    let anyRendered = false;
 
+    const totalCount = UPGRADES.length;
+    const boughtAll = UPGRADES.filter(u => state.upgrades[u.id]);
+    const boughtTotal = boughtAll.length;
+
+    // Overall progress counter — pinned at the top, always visible regardless of
+    // the collapsed section or how many upgrades are still available (stays put
+    // even at 17/17 when the "Доступно" list is empty).
+    const progress = document.createElement('div');
+    progress.className = 'upgrade-progress';
+    progress.innerHTML = `🏆 Куплено апгрейдов: <b>${boughtTotal}</b> / ${totalCount}`;
+    el.upgradesList.appendChild(progress);
+
+    // --- "Доступно" — только НЕ купленные апгрейды, сгруппированы по категориям.
+    let anyAvailable = false;
     for (const category of CATEGORY_ORDER) {
       const categoryAll = UPGRADES.filter(u => u.category === category);
-      let items = categoryAll.filter(u => !state.upgrades[u.id] ? u.req(state.buildings, state) || state.cookies >= u.cost * 0.5 : true);
+      const notBought = categoryAll.filter(u => !state.upgrades[u.id]);
+      let items = notBought.filter(u => u.req(state.buildings, state) || state.cookies >= u.cost * 0.5);
 
       // Always surface a preview of the next locked upgrade in this category
       // (even far from unlocking it) so players know there's more coming.
       const teaserIds = new Set();
-      if (items.length < categoryAll.length) {
+      if (items.length < notBought.length) {
         const shown = new Set(items.map(u => u.id));
-        const next = categoryAll.filter(u => !shown.has(u.id)).sort((a, b) => a.cost - b.cost)[0];
+        const next = notBought.filter(u => !shown.has(u.id)).sort((a, b) => a.cost - b.cost)[0];
         if (next) {
           items = [...items, next];
           teaserIds.add(next.id);
         }
       }
       if (items.length === 0) continue;
-      anyRendered = true;
+      anyAvailable = true;
 
-      const boughtCount = categoryAll.filter(u => state.upgrades[u.id]).length;
+      const boughtCount = categoryAll.length - notBought.length;
       const header = document.createElement('div');
       header.className = 'section-header';
       header.textContent = `${CATEGORY_LABELS[category]} (${boughtCount}/${categoryAll.length})`;
       el.upgradesList.appendChild(header);
 
       for (const u of items) {
-        const bought = !!state.upgrades[u.id];
         const isTeaser = teaserIds.has(u.id);
         const unlocked = u.req(state.buildings, state);
         const affordable = state.cookies >= u.cost;
         // "Locked" = requirement not met yet (teaser preview, or affordable but
         // gated by clicks/buildings/baked). Both show WHY they're locked instead
         // of a misleading buyable-looking card with a cost.
-        const showLocked = !bought && (isTeaser || !unlocked);
+        const showLocked = isTeaser || !unlocked;
         const card = document.createElement('button');
-        card.className = 'upgrade-card' + (bought ? ' bought' : showLocked ? ' locked' : (affordable ? '' : ' disabled'));
+        card.className = 'upgrade-card' + (showLocked ? ' locked' : (affordable ? '' : ' disabled'));
+        card.dataset.uid = u.id;
         card.innerHTML = showLocked ? `
           <div class="upgrade-icon">🔒</div>
           <div class="item-info">
@@ -1291,24 +1310,128 @@
             <div class="upgrade-desc">${upgradeReqText(u)}</div>
           </div>
         ` : `
-          <div class="upgrade-icon">${bought ? '✅' : u.icon}</div>
+          <div class="upgrade-icon">${u.icon}</div>
           <div class="item-info">
             <div class="upgrade-name">${u.name}</div>
             <div class="upgrade-desc">${u.desc}</div>
-            ${bought ? '' : `<div class="upgrade-effect">${upgradeEffectText(u)}</div>`}
+            <div class="upgrade-effect">${upgradeEffectText(u)}</div>
           </div>
-          ${bought ? '' : `<div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>`}
+          <div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>
         `;
-        if (!bought && !isTeaser && unlocked) {
+        if (!isTeaser && unlocked) {
           card.addEventListener('click', () => buyUpgrade(u));
         }
         el.upgradesList.appendChild(card);
       }
     }
 
-    if (!anyRendered) {
-      el.upgradesList.innerHTML = '<div class="empty-hint">Апгрейды появятся по мере роста производства</div>';
+    if (!anyAvailable) {
+      const hint = document.createElement('div');
+      hint.className = 'empty-hint';
+      hint.textContent = boughtTotal === 0
+        ? 'Апгрейды появятся по мере роста производства'
+        : boughtTotal >= totalCount
+          ? '🎉 Все апгрейды куплены!'
+          : 'Пока всё доступное куплено — новое откроется по мере роста производства';
+      el.upgradesList.appendChild(hint);
     }
+
+    // --- "Выполнено (N)" — свёрнутая секция снизу со всеми купленными апгрейдами.
+    if (boughtTotal > 0) {
+      const section = document.createElement('div');
+      section.className = 'completed-section';
+
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'completed-header';
+      head.setAttribute('aria-expanded', String(completedExpanded));
+      head.innerHTML = `<span class="chevron">▸</span><span>Выполнено (${boughtTotal})</span>`;
+      section.appendChild(head);
+
+      const body = document.createElement('div');
+      body.className = 'completed-body' + (completedExpanded ? ' open' : '');
+      const inner = document.createElement('div');
+      inner.className = 'completed-inner';
+      for (const category of CATEGORY_ORDER) {
+        const boughtInCat = UPGRADES.filter(u => u.category === category && state.upgrades[u.id]);
+        if (boughtInCat.length === 0) continue;
+        const ch = document.createElement('div');
+        ch.className = 'section-header';
+        ch.textContent = CATEGORY_LABELS[category];
+        inner.appendChild(ch);
+        for (const u of boughtInCat) {
+          const card = document.createElement('div');
+          card.className = 'upgrade-card bought';
+          card.dataset.uid = u.id;
+          card.innerHTML = `
+            <div class="upgrade-icon">✅</div>
+            <div class="item-info">
+              <div class="upgrade-name">${u.name}</div>
+              <div class="upgrade-desc">${u.desc}</div>
+            </div>
+          `;
+          inner.appendChild(card);
+        }
+      }
+      body.appendChild(inner);
+      section.appendChild(body);
+
+      head.addEventListener('click', () => {
+        completedExpanded = !completedExpanded;
+        body.classList.toggle('open', completedExpanded);
+        head.setAttribute('aria-expanded', String(completedExpanded));
+        haptic('light');
+      });
+
+      el.upgradesList.appendChild(section);
+    }
+  }
+
+  // Purchase feedback: a bought upgrade shouldn't just vanish from "Доступно".
+  // Fly a clone of the card from where it was to the "Выполнено" header (which
+  // is collapsed by default), then bump that header so the eye follows it.
+  function flyUpgradeToCompleted(u, startRect) {
+    const header = el.upgradesList.querySelector('.completed-header');
+    const clone = document.createElement('div');
+    clone.className = 'upgrade-card bought upgrade-flying-clone';
+    clone.innerHTML = `
+      <div class="upgrade-icon">✅</div>
+      <div class="item-info">
+        <div class="upgrade-name">${u.name}</div>
+        <div class="upgrade-desc">${u.desc}</div>
+      </div>
+    `;
+    clone.style.left = `${startRect.left}px`;
+    clone.style.top = `${startRect.top}px`;
+    clone.style.width = `${startRect.width}px`;
+    document.body.appendChild(clone);
+
+    const end = header
+      ? header.getBoundingClientRect()
+      : { left: startRect.left, top: window.innerHeight - 40, width: startRect.width, height: 40 };
+    const dx = (end.left + end.width / 2) - (startRect.left + startRect.width / 2);
+    const dy = (end.top + end.height / 2) - (startRect.top + startRect.height / 2);
+
+    // Commit the initial state with a forced reflow, then set the target so the
+    // transition fires deterministically (doesn't depend on rAF, which browsers
+    // pause while the tab is backgrounded).
+    void clone.offsetWidth;
+    clone.style.transform = `translate(${dx}px, ${dy}px) scale(0.35)`;
+    clone.style.opacity = '0';
+
+    let done = false;
+    const cleanup = () => {
+      if (done) return;
+      done = true;
+      clone.remove();
+      if (header) {
+        header.classList.remove('bump');
+        void header.offsetWidth; // restart the animation if it's already running
+        header.classList.add('bump');
+      }
+    };
+    clone.addEventListener('transitionend', cleanup, { once: true });
+    setTimeout(cleanup, 600); // fallback if transitionend doesn't fire
   }
 
   function renderStats() {
@@ -1601,12 +1724,17 @@
     if (state.cookies < u.cost) { haptic('light'); return; }
     const isFirstUpgrade = Object.keys(state.upgrades).length === 0;
     if (isFirstUpgrade) sendAnalyticsEvent('first_upgrade');
+    // Capture where the card sits now, before the re-render moves it into the
+    // (collapsed) "Выполнено" section — so we can fly a clone from here to there.
+    const oldCard = el.upgradesList.querySelector(`.upgrade-card[data-uid="${u.id}"]`);
+    const startRect = oldCard ? oldCard.getBoundingClientRect() : null;
     state.cookies -= u.cost;
     state.upgrades[u.id] = true;
     u.effect(state);
     haptic('rigid');
     showToast(`Куплено: ${u.name}`);
     refreshAll();
+    if (startRect) flyUpgradeToCompleted(u, startRect);
     // Tutorial step 2: the one and only offline-mechanic nudge, right after the
     // first upgrade. Cap/timer details are self-explained by the offline UI, so
     // keep it to a single line. Delayed so it follows the "bought" toast.

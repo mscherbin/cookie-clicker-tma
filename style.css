@@ -615,6 +615,77 @@ html, body {
   padding: 30px 10px;
 }
 
+/* Upgrades tab: always-on progress counter + collapsible "Выполнено" section */
+.upgrade-progress {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.upgrade-progress b { color: var(--gold); }
+
+.completed-section { margin-top: 6px; }
+
+.completed-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 11px 12px;
+  color: var(--hint);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.completed-header .chevron {
+  font-size: 11px;
+  transition: transform 0.25s ease;
+}
+.completed-header[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+.completed-header.bump { animation: completedBump 0.5s ease; }
+@keyframes completedBump {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.03); border-color: var(--accent); color: var(--accent); }
+  100% { transform: scale(1); }
+}
+
+/* Grid-rows trick animates the real content height, from 0 to auto. */
+.completed-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease;
+}
+.completed-body.open { grid-template-rows: 1fr; }
+.completed-inner {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.completed-inner .section-header { margin: 6px 2px 0; }
+.completed-inner .upgrade-card { cursor: default; }
+
+.upgrade-flying-clone {
+  position: fixed;
+  z-index: 900;
+  margin: 0;
+  pointer-events: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  transition: transform 0.45s cubic-bezier(0.34, 0.8, 0.34, 1), opacity 0.45s ease-in;
+  will-change: transform, opacity;
+}
+
 /* Weekly / all-time segmented toggle on the referral leaderboard */
 .ref-toggle {
   display: flex;
