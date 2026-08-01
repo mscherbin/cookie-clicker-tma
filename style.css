@@ -1282,3 +1282,20 @@ html, body {
   opacity: 0.5;
   pointer-events: none;
 }
+
+/* ===== "Золотой век" theme — active after the 1st ascension (body.theme-golden,
+   toggled by applyPrestigeTheme). Golden background + chocolate big cookie. ===== */
+body.theme-golden {
+  background:
+    radial-gradient(130% 85% at 50% -5%, rgba(255, 209, 102, 0.28), transparent 60%),
+    linear-gradient(180deg, #5a3f14 0%, #3a2a10 42%, #241a0d 100%);
+}
+body.theme-golden .topbar {
+  background: linear-gradient(180deg, rgba(90, 63, 20, 0.85), rgba(36, 26, 13, 0.6));
+}
+/* Turn the golden cookie into a rich chocolate one (dough + chips darken
+   together — reads as a double-chocolate cookie). Warm glow underneath. */
+body.theme-golden .cookie-svg {
+  filter: brightness(0.45) sepia(0.55) saturate(1.7) hue-rotate(-20deg) contrast(1.14)
+          drop-shadow(0 6px 18px rgba(255, 190, 90, 0.4));
+}

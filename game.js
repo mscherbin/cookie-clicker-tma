@@ -39,6 +39,20 @@
     { id: 'supernova', name: 'Сверхновая',   icon: '💥', baseCost: 1900000000000000, baseCps: 17000000000 },
     { id: 'cosmicString', name: 'Космическая струна', icon: '🧵', baseCost: 18000000000000000, baseCps: 110000000000 },
     { id: 'primeMover', name: 'Первопричина', icon: '🌟', baseCost: 170000000000000000, baseCps: 700000000000 },
+    // --- Tier 2 (Золотой век): unlocked after the 1st ascension (tier: 1).
+    // New golden/chocolate-themed lineup that continues the cost×9.5 / cps×6.4
+    // progression beyond Первопричина. Balance-wise these are meant for a
+    // prestige player who already has a crumb multiplier.
+    { id: 'chocoSpring',    name: 'Шоколадный источник', icon: '🍫', baseCost: 1.6e18, baseCps: 4.5e12, tier: 1 },
+    { id: 'goldHive',       name: 'Золотой улей',        icon: '🍯', baseCost: 1.5e19, baseCps: 2.9e13, tier: 1 },
+    { id: 'royalBakery',    name: 'Королевская пекарня', icon: '👑', baseCost: 1.4e20, baseCps: 1.85e14, tier: 1 },
+    { id: 'diamondGlaze',   name: 'Алмазная глазуровка', icon: '💎', baseCost: 1.3e21, baseCps: 1.2e15, tier: 1 },
+    { id: 'solarOven',      name: 'Солнечная печь',      icon: '☀️', baseCost: 1.2e22, baseCps: 7.6e15, tier: 1 },
+    { id: 'caramelVolcano', name: 'Карамельный вулкан',  icon: '🌋', baseCost: 1.1e23, baseCps: 4.8e16, tier: 1 },
+    { id: 'ambrosiaWell',   name: 'Источник амброзии',   icon: '⚱️', baseCost: 1.0e24, baseCps: 3.1e17, tier: 1 },
+    { id: 'goldenArk',      name: 'Золотой ковчег',      icon: '⚜️', baseCost: 9.5e24, baseCps: 2.0e18, tier: 1 },
+    { id: 'cocoaTemple',    name: 'Храм какао',          icon: '🛕', baseCost: 9.0e25, baseCps: 1.3e19, tier: 1 },
+    { id: 'midasThrone',    name: 'Трон Мидаса',         icon: '🪙', baseCost: 8.5e26, baseCps: 8.0e19, tier: 1 },
     // Special building: can't be bought for cookies (referralLocked). Unlocked
     // by reaching unlockFriends peak active friends, then placed for free.
     // Its output scales with your peak army size (see buildingCps), so it
@@ -81,6 +95,26 @@
     { id: 'global_u8', name: 'Космическая закваска', desc: 'Всё производство x2', icon: '💠', cost: 1500000000000000, category: 'global', reqType: 'baked', reqValue: 340000000000000, req: (b, s) => s.totalBaked >= 340000000000000, effect: s => s.globalMult *= 2 },
     { id: 'global_u9', name: 'Пекарня богов', desc: 'Всё производство x2', icon: '🔆', cost: 20000000000000000, category: 'global', reqType: 'baked', reqValue: 4500000000000000, req: (b, s) => s.totalBaked >= 4500000000000000, effect: s => s.globalMult *= 2 },
     { id: 'global_u10', name: 'Печенька-творец', desc: 'Всё производство x2', icon: '🎆', cost: 260000000000000000, category: 'global', reqType: 'baked', reqValue: 60000000000000000, req: (b, s) => s.totalBaked >= 60000000000000000, effect: s => s.globalMult *= 2 },
+    // ===== Tier 2 (Золотой век) — unlocked after 1st ascension (tier: 1) =====
+    // Building ×2 upgrades, one per tier-2 building (cost = building base ×10).
+    { id: 'chocoSpring_u1',    name: 'Бельгийский рецепт',    desc: 'Шоколадные источники x2', icon: '🍮', cost: 1.6e19, category: 'building', buildingId: 'chocoSpring',    reqType: 'building', req: b => b.chocoSpring >= 1,    effect: s => s.buildingMult.chocoSpring *= 2, tier: 1 },
+    { id: 'goldHive_u1',       name: 'Золотые пчёлы',         desc: 'Золотые ульи x2',        icon: '🐝', cost: 1.5e20, category: 'building', buildingId: 'goldHive',       reqType: 'building', req: b => b.goldHive >= 1,       effect: s => s.buildingMult.goldHive *= 2, tier: 1 },
+    { id: 'royalBakery_u1',    name: 'Королевский патент',    desc: 'Королевские пекарни x2',  icon: '📜', cost: 1.4e21, category: 'building', buildingId: 'royalBakery',    reqType: 'building', req: b => b.royalBakery >= 1,    effect: s => s.buildingMult.royalBakery *= 2, tier: 1 },
+    { id: 'diamondGlaze_u1',   name: 'Идеальная огранка',     desc: 'Алмазная глазуровка x2',  icon: '✨', cost: 1.3e22, category: 'building', buildingId: 'diamondGlaze',   reqType: 'building', req: b => b.diamondGlaze >= 1,   effect: s => s.buildingMult.diamondGlaze *= 2, tier: 1 },
+    { id: 'solarOven_u1',      name: 'Термоядерный жар',      desc: 'Солнечные печи x2',      icon: '🔆', cost: 1.2e23, category: 'building', buildingId: 'solarOven',      reqType: 'building', req: b => b.solarOven >= 1,      effect: s => s.buildingMult.solarOven *= 2, tier: 1 },
+    { id: 'caramelVolcano_u1', name: 'Жжёный сахар',          desc: 'Карамельные вулканы x2',  icon: '🍬', cost: 1.1e24, category: 'building', buildingId: 'caramelVolcano', reqType: 'building', req: b => b.caramelVolcano >= 1, effect: s => s.buildingMult.caramelVolcano *= 2, tier: 1 },
+    { id: 'ambrosiaWell_u1',   name: 'Дар богов',             desc: 'Источники амброзии x2',  icon: '🏺', cost: 1.0e25, category: 'building', buildingId: 'ambrosiaWell',   reqType: 'building', req: b => b.ambrosiaWell >= 1,   effect: s => s.buildingMult.ambrosiaWell *= 2, tier: 1 },
+    { id: 'goldenArk_u1',      name: 'Священный ковчег',      desc: 'Золотые ковчеги x2',      icon: '📯', cost: 9.5e25, category: 'building', buildingId: 'goldenArk',      reqType: 'building', req: b => b.goldenArk >= 1,      effect: s => s.buildingMult.goldenArk *= 2, tier: 1 },
+    { id: 'cocoaTemple_u1',    name: 'Древний ритуал',        desc: 'Храмы какао x2',         icon: '🕯️', cost: 9.0e26, category: 'building', buildingId: 'cocoaTemple',    reqType: 'building', req: b => b.cocoaTemple >= 1,    effect: s => s.buildingMult.cocoaTemple *= 2, tier: 1 },
+    { id: 'midasThrone_u1',    name: 'Прикосновение Мидаса',  desc: 'Троны Мидаса x2',        icon: '🫳', cost: 8.5e27, category: 'building', buildingId: 'midasThrone',    reqType: 'building', req: b => b.midasThrone >= 1,    effect: s => s.buildingMult.midasThrone *= 2, tier: 1 },
+    // Global ×2 upgrades (all production).
+    { id: 'global_t2_1', name: 'Золотая глазурь',     desc: 'Всё производство x2', icon: '🧁', cost: 4.0e18, category: 'global', reqType: 'baked', reqValue: 8.0e17, req: (b, s) => s.totalBaked >= 8.0e17, effect: s => s.globalMult *= 2, tier: 1 },
+    { id: 'global_t2_2', name: 'Шоколадное покрытие', desc: 'Всё производство x2', icon: '🍩', cost: 3.0e20, category: 'global', reqType: 'baked', reqValue: 5.0e19, req: (b, s) => s.totalBaked >= 5.0e19, effect: s => s.globalMult *= 2, tier: 1 },
+    { id: 'global_t2_3', name: 'Пыльца фей',          desc: 'Всё производство x2', icon: '🧚', cost: 2.0e22, category: 'global', reqType: 'baked', reqValue: 3.0e21, req: (b, s) => s.totalBaked >= 3.0e21, effect: s => s.globalMult *= 2, tier: 1 },
+    { id: 'global_t2_4', name: 'Философское золото',  desc: 'Всё производство x2', icon: '🪙', cost: 1.5e24, category: 'global', reqType: 'baked', reqValue: 2.0e23, req: (b, s) => s.totalBaked >= 2.0e23, effect: s => s.globalMult *= 2, tier: 1 },
+    // Click ×2 upgrades.
+    { id: 'click_t2_1', name: 'Золотое касание',   desc: 'Сила клика x2', icon: '🫰', cost: 1.0e8,  category: 'click', reqType: 'clicks', reqValue: 50000,  req: (b, s) => s.totalClicks >= 50000,  effect: s => s.clickMult *= 2, tier: 1 },
+    { id: 'click_t2_2', name: 'Шоколадная длань',  desc: 'Сила клика x2', icon: '🖐️', cost: 1.0e10, category: 'click', reqType: 'clicks', reqValue: 100000, req: (b, s) => s.totalClicks >= 100000, effect: s => s.clickMult *= 2, tier: 1 },
   ];
 
   const CATEGORY_LABELS = {
@@ -1597,6 +1631,16 @@
     renderRewardTeaser();
     updateTutorial();
     updateDailyBadge();
+    applyPrestigeTheme();
+  }
+
+  // Prestige (ascension) unlocks the "Золотой век" look: a golden background and
+  // a chocolate cookie. Keyed off ascensionCount so it turns on the moment the
+  // player ascends (refreshAll runs right after ascend()) and persists across
+  // reloads. Idempotent — safe to call on every refresh.
+  function applyPrestigeTheme() {
+    const golden = (state.ascensionCount || 0) >= 1;
+    document.body.classList.toggle('theme-golden', golden);
   }
 
   // Onboarding.
