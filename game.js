@@ -90,7 +90,7 @@
     { id: 'primeMover_u1', name: 'Замысел творца', desc: 'Первопричины x2', icon: '🌟', cost: 1700000000000000000, category: 'building', buildingId: 'primeMover', reqType: 'building', req: b => b.primeMover >= 1, effect: s => s.buildingMult.primeMover *= 2 },
     // --- New click upgrades ---
     { id: 'click_u3', name: 'Титановые ногти', desc: 'Сила клика x2', icon: '🦾', cost: 200000, category: 'click', reqType: 'clicks', reqValue: 2000, req: (b, s) => s.totalClicks >= 2000, effect: s => s.clickMult *= 2 },
-    { id: 'click_u4', name: 'Космический щелчок', desc: 'Сила клика x2', icon: '👊', cost: 4000000, category: 'click', reqType: 'clicks', reqValue: 20000, req: (b, s) => s.totalClicks >= 20000, effect: s => s.clickMult *= 2 },
+    { id: 'click_u4', name: 'Космический щелчок', desc: 'Сила клика x2', icon: '👊', cost: 4000000, category: 'click', reqType: 'clicks', reqValue: 10000, req: (b, s) => s.totalClicks >= 10000, effect: s => s.clickMult *= 2 },
     // --- New global upgrades ---
     { id: 'global_u8', name: 'Космическая закваска', desc: 'Всё производство x2', icon: '💠', cost: 1500000000000000, category: 'global', reqType: 'baked', reqValue: 340000000000000, req: (b, s) => s.totalBaked >= 340000000000000, effect: s => s.globalMult *= 2 },
     { id: 'global_u9', name: 'Пекарня богов', desc: 'Всё производство x2', icon: '🔆', cost: 20000000000000000, category: 'global', reqType: 'baked', reqValue: 4500000000000000, req: (b, s) => s.totalBaked >= 4500000000000000, effect: s => s.globalMult *= 2 },
@@ -241,6 +241,8 @@
   const CREATE_PERM_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-perm-invoice';
   const PERM_PROD_STARS = 200; // must match PERM_PROD_STARS in push/src/index.js
   const PERM_PROD_MULT = 1.1;  // +10% permanent production
+  const CREATE_CLICKSKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-clickskip-invoice';
+  const CLICK_BYPASS_STARS = 100; // must match CLICK_BYPASS_STARS in push/src/index.js
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
 
   // Offline claim: below this, offline income auto-applies silently (as before);
@@ -278,6 +280,7 @@
     boostExpiresAt: 0, // ms epoch of the paid "no offline cap" boost; server-authoritative
     boost2xExpiresAt: 0, // ms epoch of the paid "x2 production 1h" boost; server-authoritative
     hasPermProdBoost: false, // one-time paid "+10% forever"; server-authoritative
+    hasClickBypass: false, // one-time paid "skip the click-count requirement on click upgrades"; server-authoritative
   });
 
   let state = defaultState();
@@ -523,6 +526,15 @@
           saveState();
           refreshAll();
           if (!wasOwned && data.hasPermProdBoost) showToast('🌟 +10% к производству навсегда!', 4000);
+        }
+        // Click-bypass flag (server-authoritative, one-time): skips the click-count
+        // requirement on click upgrades.
+        if (data && typeof data.hasClickBypass === 'boolean' && data.hasClickBypass !== !!state.hasClickBypass) {
+          const wasOwned = !!state.hasClickBypass;
+          state.hasClickBypass = data.hasClickBypass;
+          saveState();
+          refreshAll();
+          if (!wasOwned && data.hasClickBypass) showToast('⚡ Клик-апгрейды открыты без кликов!', 4000);
         }
       })
       .catch(() => {});
@@ -795,6 +807,14 @@
   function itemTier(item) { return item.tier || 0; }
   function tierUnlocked(item) { return (state.ascensionCount || 0) >= itemTier(item); }
   function tierLockText(tier) { return `Доступно после ${tier}-го вознесения`; }
+
+  // An upgrade's unlock requirement, honouring the paid click-bypass: the
+  // one-time "skip the clicker" purchase removes the click-count gate on click
+  // upgrades (you still pay cookies to buy them).
+  function upgradeUnlocked(u) {
+    if (u.req(state.buildings, state)) return true;
+    return u.reqType === 'clicks' && !!state.hasClickBypass;
+  }
 
   // Permanent paid +10% — a standing production multiplier (like the referral
   // bonus), so it belongs inside getCps/getClickPower: it must count in the
@@ -1083,6 +1103,41 @@
     }
   }
 
+  // Paid one-time "skip the clicker": removes the click-count requirement on
+  // click upgrades. Server owns the has_click_bypass flag (mirrors buyPermProd).
+  async function buyClickBypass() {
+    if (state.hasClickBypass) { showToast('Уже куплено ✓'); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (el.clickBypassBtn) el.clickBypassBtn.disabled = true;
+    try {
+      const resp = await fetch(CREATE_CLICKSKIP_INVOICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
+      const data = await resp.json();
+      if (data && data.error === 'already_owned') {
+        state.hasClickBypass = true; saveState(); refreshAll();
+        showToast('Уже куплено ✓');
+        return;
+      }
+      if (!data || !data.ok || !data.link) throw new Error('no_link');
+      tg.openInvoice(data.link, (status) => {
+        if (status === 'paid') {
+          // Flag lands via checkin and flips the button to "Куплено".
+          showToast('Оплата принята — открываем клик-апгрейды…', 4000);
+          pollPaidCredit();
+        } else {
+          if (el.clickBypassBtn) el.clickBypassBtn.disabled = false;
+          if (status === 'failed') showToast('Оплата не прошла — попробуй ещё раз');
+        }
+      });
+    } catch (e) {
+      if (el.clickBypassBtn) el.clickBypassBtn.disabled = false;
+      showToast('Не удалось создать счёт — попробуй позже');
+    }
+  }
+
   // ---------- Rendering ----------
   const el = {
     cookieCount: document.getElementById('cookieCount'),
@@ -1149,6 +1204,7 @@
     nocapBtn: document.getElementById('nocapBtn'),
     boost2xBtn: document.getElementById('boost2xBtn'),
     permProdBtn: document.getElementById('permProdBtn'),
+    clickBypassBtn: document.getElementById('clickBypassBtn'),
     playerProfile: document.getElementById('playerProfile'),
     titleTrack: document.getElementById('titleTrack'),
     titleNext: document.getElementById('titleNext'),
@@ -1395,7 +1451,7 @@
 
       for (const u of items) {
         const isTeaser = teaserIds.has(u.id);
-        const unlocked = u.req(state.buildings, state);
+        const unlocked = upgradeUnlocked(u);
         const tierOk = tierUnlocked(u);
         const affordable = state.cookies >= u.cost;
         // "Locked" = requirement not met yet (teaser preview, gated by
@@ -1601,6 +1657,17 @@
         el.permProdBtn.classList.remove('owned');
       }
     }
+    if (el.clickBypassBtn) {
+      if (state.hasClickBypass) {
+        el.clickBypassBtn.textContent = '⚡ Клик-апгрейды без кликов · Куплено ✓';
+        el.clickBypassBtn.disabled = true;
+        el.clickBypassBtn.classList.add('owned');
+      } else {
+        el.clickBypassBtn.textContent = `⚡ Открыть клик-апгрейды без кликов · ${CLICK_BYPASS_STARS} ⭐`;
+        el.clickBypassBtn.disabled = false;
+        el.clickBypassBtn.classList.remove('owned');
+      }
+    }
 
     renderTitles();
     el.syncStatus.textContent = cloudStorageStatusText();
@@ -1702,7 +1769,7 @@
   const upgradesTabBtn = document.querySelector('.tab-btn[data-tab="upgrades"]');
 
   function hasAffordableUpgrade() {
-    return UPGRADES.some(u => !state.upgrades[u.id] && tierUnlocked(u) && u.req(state.buildings, state) && state.cookies >= u.cost);
+    return UPGRADES.some(u => !state.upgrades[u.id] && tierUnlocked(u) && upgradeUnlocked(u) && state.cookies >= u.cost);
   }
 
   function tut() { state.tutorial = state.tutorial || {}; return state.tutorial; }
@@ -1939,7 +2006,7 @@
   function buyUpgrade(u) {
     if (state.upgrades[u.id]) return;
     if (!tierUnlocked(u)) { showToast(tierLockText(itemTier(u))); haptic('light'); return; }
-    if (!u.req(state.buildings, state)) { haptic('light'); return; }
+    if (!upgradeUnlocked(u)) { haptic('light'); return; }
     if (state.cookies < u.cost) { haptic('light'); return; }
     const isFirstUpgrade = Object.keys(state.upgrades).length === 0;
     if (isFirstUpgrade) sendAnalyticsEvent('first_upgrade');
@@ -2125,6 +2192,7 @@
   if (el.nocapBtn) el.nocapBtn.addEventListener('click', buyNocapBoost);
   if (el.boost2xBtn) el.boost2xBtn.addEventListener('click', buyBoost2x);
   if (el.permProdBtn) el.permProdBtn.addEventListener('click', buyPermProd);
+  if (el.clickBypassBtn) el.clickBypassBtn.addEventListener('click', buyClickBypass);
   // Tapping the backdrop = free claim (never lose offline income); ignored while
   // a payment is processing.
   el.offlineModal.addEventListener('click', (e) => {

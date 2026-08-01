@@ -48,7 +48,11 @@ CREATE TABLE IF NOT EXISTS users (
   -- has_permanent_production_boost: one-time paid "+10% forever". Set once by
   -- the webhook; the invoice endpoint refuses to sell it twice (checked BEFORE
   -- createInvoiceLink) so the user is never charged again for what they own.
-  has_permanent_production_boost INTEGER NOT NULL DEFAULT 0
+  has_permanent_production_boost INTEGER NOT NULL DEFAULT 0,
+  -- has_click_bypass: one-time paid "skip the clicker" — removes the click-count
+  -- requirement on click upgrades (applied client-side). Same one-time,
+  -- refuse-if-owned semantics as has_permanent_production_boost.
+  has_click_bypass INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
@@ -103,6 +107,8 @@ CREATE TABLE IF NOT EXISTS refunds (
 --     --command "ALTER TABLE users ADD COLUMN boost2x_expires_at INTEGER NOT NULL DEFAULT 0"
 --   wrangler d1 execute cookie-clicker-analytics --remote \
 --     --command "ALTER TABLE users ADD COLUMN has_permanent_production_boost INTEGER NOT NULL DEFAULT 0"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE users ADD COLUMN has_click_bypass INTEGER NOT NULL DEFAULT 0"
 -- (The star_invoices / refunds tables are created by re-running schema.sql —
 --  CREATE TABLE IF NOT EXISTS is idempotent, no ALTER needed for those.)
 

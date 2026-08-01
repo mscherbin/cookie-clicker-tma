@@ -175,6 +175,10 @@ const PROD2X_BOOST_DURATION_MS = 3600 * 1000; // 1h window per purchase
 // client-side; the server just owns the has_permanent_production_boost flag.
 const PERM_PROD_STARS = 200; // price in Stars (one-time)
 
+// Paid one-time "skip the clicker": removes the click-count requirement on
+// click upgrades (applied client-side); the server owns the has_click_bypass flag.
+const CLICK_BYPASS_STARS = 100; // price in Stars (one-time)
+
 // Generic Telegram Bot API call. Returns the parsed JSON ({ ok, result, ... }).
 async function tgCall(env, method, payload) {
   try {
@@ -626,6 +630,43 @@ async function handleCreatePermInvoice(request, env) {
   return jsonResponse({ ok: true, link: res.result });
 }
 
+// POST /create-clickskip-invoice { initData } — one-time "skip the clicker".
+// Same ownership-first guard as perm_prod: refuse before creating the invoice
+// if already owned, so a second real payment can never be taken.
+async function handleCreateClickskipInvoice(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    const owned = await env.DB.prepare('SELECT has_click_bypass AS h FROM users WHERE user_id = ?').bind(userId).first();
+    if (owned && owned.h) return jsonResponse({ ok: false, error: 'already_owned' }, 409);
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const invoiceId = crypto.randomUUID();
+  try {
+    await env.DB.prepare('INSERT INTO star_invoices (invoice_id, user_id, amount, status, created_ts, kind) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(invoiceId, userId, 0, 'pending', now, 'click_bypass').run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const res = await tgCall(env, 'createInvoiceLink', {
+    title: 'Открыть клик-апгрейды без кликов',
+    description: 'Разовая покупка: снимает требование по числу кликов у клик-апгрейдов.',
+    payload: invoiceId,
+    currency: 'XTR',
+    prices: [{ label: 'Без кликов', amount: CLICK_BYPASS_STARS }],
+  });
+  if (!res || !res.ok || !res.result) {
+    return jsonResponse({ ok: false, error: 'invoice_failed' }, 502);
+  }
+  return jsonResponse({ ok: true, link: res.result });
+}
+
 // successful_payment webhook. Idempotent via a conditional status flip: the
 // UPDATE only takes effect the first time (pending -> paid), so a retried or
 // duplicate webhook for the same invoice/charge never credits twice. Credits
@@ -658,6 +699,10 @@ async function handleSuccessfulPayment(env, msg) {
       // One-time permanent +10% flag. Idempotent (the conditional invoice flip
       // guarantees this runs once; setting to 1 is idempotent regardless).
       await env.DB.prepare('UPDATE users SET has_permanent_production_boost = 1 WHERE user_id = ?')
+        .bind(userId).run();
+    } else if (inv.kind === 'click_bypass') {
+      // One-time "skip the clicker" flag. Idempotent, same as perm_prod.
+      await env.DB.prepare('UPDATE users SET has_click_bypass = 1 WHERE user_id = ?')
         .bind(userId).run();
     } else {
       // offline_2x (default): credit the frozen amount x2.
@@ -713,6 +758,7 @@ async function handleCheckin(request, env) {
   let boostExpiresAt = 0;
   let boost2xExpiresAt = 0;
   let hasPermProdBoost = false;
+  let hasClickBypass = false;
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -765,10 +811,11 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
+      if (boostRow && boostRow.clickbypass) hasClickBypass = true;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -802,7 +849,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass });
 }
 
 async function handleLeaderboard(env) {
@@ -1011,6 +1058,10 @@ export default {
 
     if (url.pathname === '/create-perm-invoice' && request.method === 'POST') {
       return handleCreatePermInvoice(request, env);
+    }
+
+    if (url.pathname === '/create-clickskip-invoice' && request.method === 'POST') {
+      return handleCreateClickskipInvoice(request, env);
     }
 
     if (url.pathname === '/webhook-info' && request.method === 'GET') {
