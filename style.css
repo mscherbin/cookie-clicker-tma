@@ -653,6 +653,27 @@ html, body {
   cursor: default;
 }
 
+/* A locked card that offers a paid progress-skip stays readable (the greyed-out
+   0.35 would bury the buy button). */
+.upgrade-card.locked:has(.upgrade-skip-btn) { opacity: 0.75; }
+
+/* Per-upgrade "buy skip" button, sits where the price would be on a buyable card. */
+.upgrade-skip-btn {
+  flex-shrink: 0;
+  margin-left: auto;
+  align-self: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent-text);
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  border: none;
+  padding: 7px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.upgrade-skip-btn:active { transform: scale(0.96); }
+
 .upgrade-card.teaser {
   opacity: 0.5;
   cursor: default;

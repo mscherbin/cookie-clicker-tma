@@ -90,7 +90,7 @@
     { id: 'primeMover_u1', name: 'Замысел творца', desc: 'Первопричины x2', icon: '🌟', cost: 1700000000000000000, category: 'building', buildingId: 'primeMover', reqType: 'building', req: b => b.primeMover >= 1, effect: s => s.buildingMult.primeMover *= 2 },
     // --- New click upgrades ---
     { id: 'click_u3', name: 'Титановые ногти', desc: 'Сила клика x2', icon: '🦾', cost: 200000, category: 'click', reqType: 'clicks', reqValue: 2000, req: (b, s) => s.totalClicks >= 2000, effect: s => s.clickMult *= 2 },
-    { id: 'click_u4', name: 'Космический щелчок', desc: 'Сила клика x2', icon: '👊', cost: 4000000, category: 'click', reqType: 'clicks', reqValue: 10000, req: (b, s) => s.totalClicks >= 10000, effect: s => s.clickMult *= 2 },
+    { id: 'click_u4', name: 'Космический щелчок', desc: 'Сила клика x2', icon: '👊', cost: 4000000, category: 'click', reqType: 'clicks', reqValue: 10000, req: (b, s) => s.totalClicks >= 10000, effect: s => s.clickMult *= 2, skipStars: 20 },
     // --- New global upgrades ---
     { id: 'global_u8', name: 'Космическая закваска', desc: 'Всё производство x2', icon: '💠', cost: 1500000000000000, category: 'global', reqType: 'baked', reqValue: 340000000000000, req: (b, s) => s.totalBaked >= 340000000000000, effect: s => s.globalMult *= 2 },
     { id: 'global_u9', name: 'Пекарня богов', desc: 'Всё производство x2', icon: '🔆', cost: 20000000000000000, category: 'global', reqType: 'baked', reqValue: 4500000000000000, req: (b, s) => s.totalBaked >= 4500000000000000, effect: s => s.globalMult *= 2 },
@@ -113,8 +113,8 @@
     { id: 'global_t2_3', name: 'Пыльца фей',          desc: 'Всё производство x2', icon: '🧚', cost: 2.0e22, category: 'global', reqType: 'baked', reqValue: 3.0e21, req: (b, s) => s.totalBaked >= 3.0e21, effect: s => s.globalMult *= 2, tier: 1 },
     { id: 'global_t2_4', name: 'Философское золото',  desc: 'Всё производство x2', icon: '🪙', cost: 1.5e24, category: 'global', reqType: 'baked', reqValue: 2.0e23, req: (b, s) => s.totalBaked >= 2.0e23, effect: s => s.globalMult *= 2, tier: 1 },
     // Click ×2 upgrades.
-    { id: 'click_t2_1', name: 'Золотое касание',   desc: 'Сила клика x2', icon: '🫰', cost: 1.0e8,  category: 'click', reqType: 'clicks', reqValue: 50000,  req: (b, s) => s.totalClicks >= 50000,  effect: s => s.clickMult *= 2, tier: 1 },
-    { id: 'click_t2_2', name: 'Шоколадная длань',  desc: 'Сила клика x2', icon: '🖐️', cost: 1.0e10, category: 'click', reqType: 'clicks', reqValue: 100000, req: (b, s) => s.totalClicks >= 100000, effect: s => s.clickMult *= 2, tier: 1 },
+    { id: 'click_t2_1', name: 'Золотое касание',   desc: 'Сила клика x2', icon: '🫰', cost: 1.0e8,  category: 'click', reqType: 'clicks', reqValue: 50000,  req: (b, s) => s.totalClicks >= 50000,  effect: s => s.clickMult *= 2, tier: 1, skipStars: 40 },
+    { id: 'click_t2_2', name: 'Шоколадная длань',  desc: 'Сила клика x2', icon: '🖐️', cost: 1.0e10, category: 'click', reqType: 'clicks', reqValue: 100000, req: (b, s) => s.totalClicks >= 100000, effect: s => s.clickMult *= 2, tier: 1, skipStars: 60 },
   ];
 
   const CATEGORY_LABELS = {
@@ -244,6 +244,7 @@
   const PERM_PROD_MULT = 1.1;  // +10% permanent production
   const CREATE_CLICKSKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-clickskip-invoice';
   const CLICK_BYPASS_STARS = 100; // must match CLICK_BYPASS_STARS in push/src/index.js
+  const CREATE_UPGRADE_SKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-upgrade-skip-invoice';
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
 
   // Offline claim: below this, offline income auto-applies silently (as before);
@@ -283,6 +284,7 @@
     hasPermProdBoost: false, // one-time paid "+10% forever"; server-authoritative
     hasClickBypass: false, // one-time paid "skip the click-count requirement on click upgrades"; server-authoritative
     lifetimeBaked: 0, // cookies baked across ALL past runs (never reset on ascend); + current totalBaked = lifetime total
+    paidUnlockedUpgrades: [], // upgrade ids whose progress gate was skipped via a paid Stars purchase; server-authoritative
   });
 
   let state = defaultState();
@@ -538,6 +540,17 @@
           saveState();
           refreshAll();
           if (!wasOwned && data.hasClickBypass) showToast('⚡ Клик-апгрейды открыты без кликов!', 4000);
+        }
+        // Per-upgrade paid skips (server-authoritative list of upgrade ids).
+        if (data && Array.isArray(data.paidUnlockedUpgrades)) {
+          const cur = Array.isArray(state.paidUnlockedUpgrades) ? state.paidUnlockedUpgrades : [];
+          const added = data.paidUnlockedUpgrades.filter(id => !cur.includes(id));
+          if (added.length || cur.length !== data.paidUnlockedUpgrades.length) {
+            state.paidUnlockedUpgrades = data.paidUnlockedUpgrades.slice();
+            saveState();
+            refreshAll();
+            if (added.length) showToast('🔓 Апгрейд разблокирован!', 4000);
+          }
         }
       })
       .catch(() => {});
@@ -812,6 +825,9 @@
     const keepTutorial = state.tutorial || {}; // don't re-show onboarding hints to a veteran
     // Roll the finished run's bakes into the never-resetting lifetime total.
     const keepLifetime = (state.lifetimeBaked || 0) + (state.totalBaked || 0);
+    // Paid unlocks are server-owned and persist across runs — keep them so a
+    // paid-skipped upgrade doesn't briefly re-lock right after ascending.
+    const keepPaidUnlocks = Array.isArray(state.paidUnlockedUpgrades) ? state.paidUnlockedUpgrades.slice() : [];
 
     state = defaultState();
     state.dailyStreak = keepDailyStreak;
@@ -820,6 +836,7 @@
     state.ascensionCount = keepAscensionCount;
     state.tutorial = keepTutorial;
     state.lifetimeBaked = keepLifetime;
+    state.paidUnlockedUpgrades = keepPaidUnlocks;
 
     haptic('heavy');
     showToast(`👼 Вознесение! +${formatNum(crumbsEarned)} крошек · бонус теперь +${keepTotalCrumbs}%`);
@@ -858,12 +875,16 @@
   function tierUnlocked(item) { return (state.ascensionCount || 0) >= itemTier(item); }
   function tierLockText(tier) { return `Доступно после ${tier}-го вознесения`; }
 
-  // An upgrade's unlock requirement, honouring the paid click-bypass: the
-  // one-time "skip the clicker" purchase removes the click-count gate on click
-  // upgrades (you still pay cookies to buy them).
+  // An upgrade's unlock requirement, honouring the paid bypasses:
+  //  - the one-time "skip the clicker" removes the click-count gate on ALL click
+  //    upgrades;
+  //  - a per-upgrade paid skip (paidUnlockedUpgrades) removes the progress gate
+  //    on that specific upgrade.
+  // Either way you still pay cookies to actually buy the upgrade.
   function upgradeUnlocked(u) {
     if (u.req(state.buildings, state)) return true;
-    return u.reqType === 'clicks' && !!state.hasClickBypass;
+    if (u.reqType === 'clicks' && state.hasClickBypass) return true;
+    return Array.isArray(state.paidUnlockedUpgrades) && state.paidUnlockedUpgrades.includes(u.id);
   }
 
   // Permanent paid +10% — a standing production multiplier (like the referral
@@ -1184,6 +1205,43 @@
       });
     } catch (e) {
       if (el.clickBypassBtn) el.clickBypassBtn.disabled = false;
+      showToast('Не удалось создать счёт — попробуй позже');
+    }
+  }
+
+  function addPaidUnlock(id) {
+    if (!Array.isArray(state.paidUnlockedUpgrades)) state.paidUnlockedUpgrades = [];
+    if (!state.paidUnlockedUpgrades.includes(id)) state.paidUnlockedUpgrades.push(id);
+    saveState();
+    refreshAll();
+  }
+
+  // Paid per-upgrade skip: buy instant unlock of a single progress-gated upgrade
+  // (price is server-authoritative, keyed by upgrade id). Server refuses to sell
+  // one already paid-unlocked; the client also aborts if it got unlocked
+  // organically (enough clicks) between render and tap.
+  async function buyUpgradeSkip(u) {
+    if (upgradeUnlocked(u)) { showToast('Уже разблокировано ✓'); refreshAll(); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    try {
+      const resp = await fetch(CREATE_UPGRADE_SKIP_INVOICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData, upgradeId: u.id }),
+      });
+      const data = await resp.json();
+      if (data && data.error === 'already_owned') { addPaidUnlock(u.id); showToast('Уже разблокировано ✓'); return; }
+      if (!data || !data.ok || !data.link) throw new Error('no_link');
+      tg.openInvoice(data.link, (status) => {
+        if (status === 'paid') {
+          // The unlock lands via checkin (paidUnlockedUpgrades); nudge checkins.
+          showToast(`Оплата принята — открываем «${u.name}»…`, 4000);
+          pollPaidCredit();
+        } else if (status === 'failed') {
+          showToast('Оплата не прошла — попробуй ещё раз');
+        }
+      });
+    } catch (e) {
       showToast('Не удалось создать счёт — попробуй позже');
     }
   }
@@ -1510,25 +1568,45 @@
         // Prestige tier takes precedence in the reason — it's the outer gate.
         const showLocked = isTeaser || !unlocked || !tierOk;
         const lockReason = !tierOk ? tierLockText(itemTier(u)) : upgradeReqText(u);
-        const card = document.createElement('button');
-        card.className = 'upgrade-card' + (showLocked ? ' locked' : (affordable ? '' : ' disabled'));
-        card.dataset.uid = u.id;
-        card.innerHTML = showLocked ? `
-          <div class="upgrade-icon">🔒</div>
-          <div class="item-info">
-            <div class="upgrade-name">${u.name}</div>
-            <div class="upgrade-desc">${lockReason}</div>
-          </div>
-        ` : `
-          <div class="upgrade-icon">${u.icon}</div>
-          <div class="item-info">
-            <div class="upgrade-name">${u.name}</div>
-            <div class="upgrade-desc">${u.desc}</div>
-            <div class="upgrade-effect">${upgradeEffectText(u)}</div>
-          </div>
-          <div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>
-        `;
-        if (!isTeaser && unlocked && tierOk) {
+        // Paid skip is offered ONLY for progress-gated upgrades (clicks etc.,
+        // marked with skipStars in config) that aren't tier-locked. Referral
+        // content (Layer 3b) is a building, has no skipStars, and never qualifies.
+        const canSkip = tierOk && !upgradeUnlocked(u) && !!u.skipStars;
+        let card;
+        if (showLocked) {
+          // Locked cards can host an inner "buy skip" <button>, so they're a
+          // <div> (a <button> can't nest a <button>). They're non-interactive
+          // as a whole anyway.
+          card = document.createElement('div');
+          card.className = 'upgrade-card locked';
+          card.dataset.uid = u.id;
+          card.innerHTML = `
+            <div class="upgrade-icon">🔒</div>
+            <div class="item-info">
+              <div class="upgrade-name">${u.name}</div>
+              <div class="upgrade-desc">${lockReason}</div>
+            </div>
+            ${canSkip ? `<button class="upgrade-skip-btn" type="button">${u.skipStars} ⭐</button>` : ''}
+          `;
+          if (canSkip) {
+            card.querySelector('.upgrade-skip-btn').addEventListener('click', (e) => {
+              e.stopPropagation();
+              buyUpgradeSkip(u);
+            });
+          }
+        } else {
+          card = document.createElement('button');
+          card.className = 'upgrade-card' + (affordable ? '' : ' disabled');
+          card.dataset.uid = u.id;
+          card.innerHTML = `
+            <div class="upgrade-icon">${u.icon}</div>
+            <div class="item-info">
+              <div class="upgrade-name">${u.name}</div>
+              <div class="upgrade-desc">${u.desc}</div>
+              <div class="upgrade-effect">${upgradeEffectText(u)}</div>
+            </div>
+            <div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>
+          `;
           card.addEventListener('click', () => buyUpgrade(u));
         }
         el.upgradesList.appendChild(card);

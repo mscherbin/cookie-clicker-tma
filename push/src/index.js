@@ -184,6 +184,16 @@ const CLICK_BYPASS_STARS = 100; // price in Stars (one-time)
 // (you must re-buy all content), so this only ever blocks scripted hammering.
 const PRESTIGE_MIN_INTERVAL_MS = 60 * 1000;
 
+// Per-upgrade paid "skip the progress gate" prices (Stars). Server-authoritative
+// — the client sends only the upgrade id, never a price. An id absent here is
+// simply not skippable (this is also what keeps referral-locked content out:
+// it's never listed). Must mirror the `skipStars` fields in game.js UPGRADES.
+const UPGRADE_SKIP_PRICES = {
+  click_u4: 20,
+  click_t2_1: 40,
+  click_t2_2: 60,
+};
+
 // Generic Telegram Bot API call. Returns the parsed JSON ({ ok, result, ... }).
 async function tgCall(env, method, payload) {
   try {
@@ -672,6 +682,55 @@ async function handleCreateClickskipInvoice(request, env) {
   return jsonResponse({ ok: true, link: res.result });
 }
 
+// POST /create-upgrade-skip-invoice { initData, upgradeId } — buy an instant
+// unlock of a single progress-gated upgrade. Price comes from UPGRADE_SKIP_PRICES
+// (server-authoritative; the client-sent id is validated against it). Refuses if
+// already paid-unlocked, same as perm_prod — organic (click) unlock is guarded
+// client-side (the server doesn't track clicks).
+async function handleCreateUpgradeSkipInvoice(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  const upgradeId = String(body.upgradeId || '');
+  const price = UPGRADE_SKIP_PRICES[upgradeId];
+  if (!price) return jsonResponse({ ok: false, error: 'not_skippable' }, 400);
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    const row = await env.DB.prepare('SELECT paid_unlocked_upgrades AS pu FROM users WHERE user_id = ?').bind(userId).first();
+    const owned = parseIdList(row && row.pu);
+    if (owned.includes(upgradeId)) return jsonResponse({ ok: false, error: 'already_owned' }, 409);
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const invoiceId = crypto.randomUUID();
+  try {
+    await env.DB.prepare('INSERT INTO star_invoices (invoice_id, user_id, amount, status, created_ts, kind, upgrade_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(invoiceId, userId, 0, 'pending', now, 'upgrade_skip', upgradeId).run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const res = await tgCall(env, 'createInvoiceLink', {
+    title: 'Мгновенная разблокировка апгрейда',
+    description: 'Снимает прогресс-требование у выбранного апгрейда (покупка за печеньки — как обычно).',
+    payload: invoiceId,
+    currency: 'XTR',
+    prices: [{ label: 'Разблокировка', amount: price }],
+  });
+  if (!res || !res.ok || !res.result) {
+    return jsonResponse({ ok: false, error: 'invoice_failed' }, 502);
+  }
+  return jsonResponse({ ok: true, link: res.result });
+}
+
+// Parse a comma-separated id list column into a clean array.
+function parseIdList(raw) {
+  if (!raw) return [];
+  return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+}
+
 // successful_payment webhook. Idempotent via a conditional status flip: the
 // UPDATE only takes effect the first time (pending -> paid), so a retried or
 // duplicate webhook for the same invoice/charge never credits twice. Credits
@@ -684,7 +743,7 @@ async function handleSuccessfulPayment(env, msg) {
   const userId = msg.from && msg.from.id;
   if (!chargeId || !invoiceId || !userId) return;
   try {
-    const inv = await env.DB.prepare('SELECT amount, kind FROM star_invoices WHERE invoice_id = ? AND status = ?')
+    const inv = await env.DB.prepare('SELECT amount, kind, upgrade_id FROM star_invoices WHERE invoice_id = ? AND status = ?')
       .bind(invoiceId, 'pending').first();
     if (!inv) return; // unknown invoice, or already processed
     const upd = await env.DB.prepare("UPDATE star_invoices SET status = 'paid', charge_id = ?, paid_ts = ? WHERE invoice_id = ? AND status = 'pending'")
@@ -709,6 +768,15 @@ async function handleSuccessfulPayment(env, msg) {
       // One-time "skip the clicker" flag. Idempotent, same as perm_prod.
       await env.DB.prepare('UPDATE users SET has_click_bypass = 1 WHERE user_id = ?')
         .bind(userId).run();
+    } else if (inv.kind === 'upgrade_skip') {
+      // Per-upgrade paid unlock: add the upgrade id to the user's set. The
+      // conditional invoice flip above guarantees this runs once per invoice;
+      // the set add is idempotent regardless.
+      const row = await env.DB.prepare('SELECT paid_unlocked_upgrades AS pu FROM users WHERE user_id = ?').bind(userId).first();
+      const set = parseIdList(row && row.pu);
+      if (inv.upgrade_id && !set.includes(inv.upgrade_id)) set.push(inv.upgrade_id);
+      await env.DB.prepare('UPDATE users SET paid_unlocked_upgrades = ? WHERE user_id = ?')
+        .bind(set.join(','), userId).run();
     } else {
       // offline_2x (default): credit the frozen amount x2.
       const credit = (inv.amount || 0) * OFFLINE_BOOST_MULT;
@@ -832,6 +900,7 @@ async function handleCheckin(request, env) {
   let hasClickBypass = false;
   let serverPrestigeCount = 0;
   let isPrestigePioneer = false;
+  let paidUnlockedUpgrades = [];
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -884,13 +953,14 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
       if (boostRow && boostRow.clickbypass) hasClickBypass = true;
       if (boostRow && Number.isFinite(boostRow.pc)) serverPrestigeCount = boostRow.pc;
       if (boostRow && boostRow.pion) isPrestigePioneer = true;
+      if (boostRow) paidUnlockedUpgrades = parseIdList(boostRow.pu);
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -927,7 +997,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades });
 }
 
 async function handleLeaderboard(env) {
@@ -1150,6 +1220,10 @@ export default {
 
     if (url.pathname === '/prestige/confirm' && request.method === 'POST') {
       return handlePrestigeConfirm(request, env);
+    }
+
+    if (url.pathname === '/create-upgrade-skip-invoice' && request.method === 'POST') {
+      return handleCreateUpgradeSkipInvoice(request, env);
     }
 
     if (url.pathname === '/webhook-info' && request.method === 'GET') {

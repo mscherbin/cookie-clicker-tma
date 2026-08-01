@@ -63,7 +63,11 @@ CREATE TABLE IF NOT EXISTS users (
   last_prestige_at INTEGER NOT NULL DEFAULT 0,
   -- is_prestige_pioneer: 1 if this user was among the first `pioneer_limit`
   -- players to reach their 1st prestige (see config). Set once, never cleared.
-  is_prestige_pioneer INTEGER NOT NULL DEFAULT 0
+  is_prestige_pioneer INTEGER NOT NULL DEFAULT 0,
+  -- paid_unlocked_upgrades: comma-separated upgrade ids whose progress gate was
+  -- skipped via a paid Stars purchase (per-upgrade). Applied client-side; the
+  -- server owns the list. Only ids in UPGRADE_SKIP_PRICES can end up here.
+  paid_unlocked_upgrades TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
@@ -83,7 +87,9 @@ CREATE TABLE IF NOT EXISTS star_invoices (
   charge_id TEXT,
   created_ts INTEGER NOT NULL,
   paid_ts INTEGER,
-  kind TEXT NOT NULL DEFAULT 'offline_2x'
+  kind TEXT NOT NULL DEFAULT 'offline_2x',
+  -- upgrade_id: for kind='upgrade_skip', which upgrade this invoice unlocks.
+  upgrade_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_star_invoices_charge ON star_invoices(charge_id);
 
@@ -126,6 +132,10 @@ CREATE TABLE IF NOT EXISTS refunds (
 --     --command "ALTER TABLE users ADD COLUMN last_prestige_at INTEGER NOT NULL DEFAULT 0"
 --   wrangler d1 execute cookie-clicker-analytics --remote \
 --     --command "ALTER TABLE users ADD COLUMN is_prestige_pioneer INTEGER NOT NULL DEFAULT 0"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE users ADD COLUMN paid_unlocked_upgrades TEXT NOT NULL DEFAULT ''"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE star_invoices ADD COLUMN upgrade_id TEXT"
 -- And seed the pioneer config rows (idempotent):
 --   wrangler d1 execute cookie-clicker-analytics --remote \
 --     --command "INSERT OR IGNORE INTO config (key, value) VALUES ('pioneer_limit','50'),('pioneer_granted','0'),('pioneer_deadline_ts','0')"
