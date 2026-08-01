@@ -52,7 +52,18 @@ CREATE TABLE IF NOT EXISTS users (
   -- has_click_bypass: one-time paid "skip the clicker" — removes the click-count
   -- requirement on click upgrades (applied client-side). Same one-time,
   -- refuse-if-owned semantics as has_permanent_production_boost.
-  has_click_bypass INTEGER NOT NULL DEFAULT 0
+  has_click_bypass INTEGER NOT NULL DEFAULT 0,
+  -- prestige_count: server-authoritative number of prestiges (ascensions). The
+  -- ONLY way it grows is POST /prestige/confirm (never synced up from client
+  -- state), so it's trustworthy as the leaderboard's primary rank key even
+  -- though the rest of the balance is still client-side.
+  prestige_count INTEGER NOT NULL DEFAULT 0,
+  -- last_prestige_at: ms epoch of the last confirmed prestige. Anti-farm: a new
+  -- /prestige/confirm is refused if too little time / activity has passed since.
+  last_prestige_at INTEGER NOT NULL DEFAULT 0,
+  -- is_prestige_pioneer: 1 if this user was among the first `pioneer_limit`
+  -- players to reach their 1st prestige (see config). Set once, never cleared.
+  is_prestige_pioneer INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
@@ -109,6 +120,15 @@ CREATE TABLE IF NOT EXISTS refunds (
 --     --command "ALTER TABLE users ADD COLUMN has_permanent_production_boost INTEGER NOT NULL DEFAULT 0"
 --   wrangler d1 execute cookie-clicker-analytics --remote \
 --     --command "ALTER TABLE users ADD COLUMN has_click_bypass INTEGER NOT NULL DEFAULT 0"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE users ADD COLUMN prestige_count INTEGER NOT NULL DEFAULT 0"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE users ADD COLUMN last_prestige_at INTEGER NOT NULL DEFAULT 0"
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE users ADD COLUMN is_prestige_pioneer INTEGER NOT NULL DEFAULT 0"
+-- And seed the pioneer config rows (idempotent):
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "INSERT OR IGNORE INTO config (key, value) VALUES ('pioneer_limit','50'),('pioneer_granted','0'),('pioneer_deadline_ts','0')"
 -- (The star_invoices / refunds tables are created by re-running schema.sql —
 --  CREATE TABLE IF NOT EXISTS is idempotent, no ALTER needed for those.)
 
@@ -133,4 +153,11 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   ('ref_event_active', '0'),
   ('ref_event_multiplier', '1'),
   ('ref_event_start', '0'),
-  ('ref_event_end', '0');
+  ('ref_event_end', '0'),
+  -- Prestige "pioneer" title: granted to the first `pioneer_limit` players to
+  -- reach their 1st prestige. `pioneer_granted` counts how many were handed out;
+  -- `pioneer_deadline_ts` (ms epoch, 0 = no deadline) optionally closes the
+  -- window by time as well. Not re-granted once the window is closed.
+  ('pioneer_limit', '50'),
+  ('pioneer_granted', '0'),
+  ('pioneer_deadline_ts', '0');

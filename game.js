@@ -231,6 +231,7 @@
   }
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
+  const PRESTIGE_CONFIRM_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/prestige/confirm';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
   const REFERRAL_LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/referral-leaderboard';
   const CREATE_OFFLINE_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-offline-invoice';
@@ -281,6 +282,7 @@
     boost2xExpiresAt: 0, // ms epoch of the paid "x2 production 1h" boost; server-authoritative
     hasPermProdBoost: false, // one-time paid "+10% forever"; server-authoritative
     hasClickBypass: false, // one-time paid "skip the click-count requirement on click upgrades"; server-authoritative
+    lifetimeBaked: 0, // cookies baked across ALL past runs (never reset on ascend); + current totalBaked = lifetime total
   });
 
   let state = defaultState();
@@ -426,6 +428,7 @@
         lastDailyClaim: state.lastDailyClaim || 0,
         cps: getCps(),
         totalBaked: state.totalBaked,
+        lifetimeCookies: lifetimeCookiesTotal(),
       }),
     })
       .then(r => r.json())
@@ -568,6 +571,16 @@
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(shareText)}`);
   }
 
+  // Prestige tier badge intensity — the visual scales with prestige count so
+  // higher tiers read as more prestigious at a glance (stand-in for the future
+  // avatar frames/auras of Layer 3a, which don't exist yet).
+  function prestigeBadgeClass(p) {
+    if (p >= 25) return 'p4';
+    if (p >= 10) return 'p3';
+    if (p >= 5) return 'p2';
+    return 'p1';
+  }
+
   function loadLeaderboard() {
     el.leaderboardList.innerHTML = '<div class="empty-hint">Загрузка…</div>';
     if (!LEADERBOARD_URL) {
@@ -585,13 +598,19 @@
         const medals = ['🥇', '🥈', '🥉'];
         el.leaderboardList.innerHTML = data.entries.map((entry, i) => {
           const t = titleFor(entry.maxActiveFriendsEver);
-          const titleHtml = t ? `<span class="lb-title">${t.icon} ${escapeHtml(t.name)}</span>` : '';
+          const refTitleHtml = t ? `<span class="lb-title">${t.icon} ${escapeHtml(t.name)}</span>` : '';
+          const pioneerHtml = entry.isPioneer ? '<span class="lb-title lb-pioneer">🚩 Пионер</span>' : '';
+          const p = entry.prestigeCount || 0;
+          const prestigeHtml = p > 0 ? `<span class="lb-prestige ${prestigeBadgeClass(p)}">⭐×${p}</span>` : '';
+          // Lifetime (never resets) as the secondary figure — a just-ascended
+          // player would otherwise show ~0 baked and look empty.
+          const lifetime = entry.lifetimeCookies || entry.totalBaked || 0;
           return `
           <div class="leaderboard-row${myId && entry.userId === myId ? ' me' : ''}">
             <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
             <div class="leaderboard-info">
-              <div class="leaderboard-name">${escapeHtml(entry.name)}${titleHtml}</div>
-              <div class="leaderboard-total">${formatNum(entry.totalBaked)} 🍪 всего</div>
+              <div class="leaderboard-name">${prestigeHtml}${escapeHtml(entry.name)}${pioneerHtml}${refTitleHtml}</div>
+              <div class="leaderboard-total">🍪 ${formatNum(lifetime)} за всё время</div>
             </div>
             <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">печ/сек</span></div>
           </div>`;
@@ -747,7 +766,7 @@
     return 1 + (state.totalCrumbs || 0) * 0.01;
   }
 
-  function ascend() {
+  async function ascend() {
     // Full-completion gate: ascension opens only once every purchasable building
     // and reachable upgrade is bought.
     if (!allContentBought()) {
@@ -763,12 +782,36 @@
     }
     if (!confirm(`Вознестись? Прогресс обнулится, но вы получите ${formatNum(crumbsEarned)} 👼 небесных крошек (+${crumbsEarned}% к производству навсегда).`)) return;
 
+    // Server owns prestige_count (the leaderboard's rank key). Confirm BEFORE
+    // resetting, so an anti-farm 'too_soon' reject blocks cleanly without
+    // wiping progress. Use the server's returned count as the authoritative
+    // ascension number; on a network error, fall back to an optimistic local +1.
+    let serverPrestige = null;
+    if (tg && tg.initData && PRESTIGE_CONFIRM_URL) {
+      try {
+        const resp = await fetch(PRESTIGE_CONFIRM_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: tg.initData }),
+        });
+        const data = await resp.json();
+        if (data && data.ok === false && (data.error === 'too_soon' || data.error === 'no_activity')) {
+          showToast('Вознесение будет доступно чуть позже — поиграй немного между перерождениями', 4000);
+          haptic('light');
+          return; // do NOT reset
+        }
+        if (data && data.ok && Number.isFinite(data.prestigeCount)) serverPrestige = data.prestigeCount;
+      } catch (e) { /* network error — proceed locally; server count syncs on next confirm */ }
+    }
+
     backupCurrentState();
     const keepDailyStreak = state.dailyStreak;
     const keepLastDailyClaim = state.lastDailyClaim;
     const keepTotalCrumbs = (state.totalCrumbs || 0) + crumbsEarned;
-    const keepAscensionCount = (state.ascensionCount || 0) + 1;
+    const keepAscensionCount = serverPrestige != null ? serverPrestige : (state.ascensionCount || 0) + 1;
     const keepTutorial = state.tutorial || {}; // don't re-show onboarding hints to a veteran
+    // Roll the finished run's bakes into the never-resetting lifetime total.
+    const keepLifetime = (state.lifetimeBaked || 0) + (state.totalBaked || 0);
 
     state = defaultState();
     state.dailyStreak = keepDailyStreak;
@@ -776,11 +819,18 @@
     state.totalCrumbs = keepTotalCrumbs;
     state.ascensionCount = keepAscensionCount;
     state.tutorial = keepTutorial;
+    state.lifetimeBaked = keepLifetime;
 
     haptic('heavy');
     showToast(`👼 Вознесение! +${formatNum(crumbsEarned)} крошек · бонус теперь +${keepTotalCrumbs}%`);
     saveState();
     refreshAll();
+  }
+
+  // Cookies baked across every run (past runs + the current one). Never resets
+  // on ascend, so a just-reset profile still shows a meaningful figure.
+  function lifetimeCookiesTotal() {
+    return (state.lifetimeBaked || 0) + (state.totalBaked || 0);
   }
 
   // ---------- Formulas ----------

@@ -1042,6 +1042,31 @@ html, body {
   white-space: nowrap;
 }
 
+/* "Пионер перерождения" — rare, distinct pink-gold so it stands out from the
+   referral titles. */
+.lb-title.lb-pioneer { color: #ff9ec7; }
+
+/* Prestige-tier badge (⭐×N) before the name. Glow scales with tier so higher
+   prestige reads as more prestigious — a stand-in for the future avatar auras. */
+.lb-prestige {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent-text);
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.lb-prestige.p2 { box-shadow: 0 0 6px rgba(255, 209, 102, 0.5); }
+.lb-prestige.p3 { box-shadow: 0 0 10px rgba(255, 209, 102, 0.75); }
+.lb-prestige.p4 {
+  background: linear-gradient(135deg, #fff1b8, var(--gold), var(--accent));
+  box-shadow: 0 0 14px rgba(255, 209, 102, 0.9);
+}
+
 .invite-btn {
   width: 100%;
   margin-top: 12px;

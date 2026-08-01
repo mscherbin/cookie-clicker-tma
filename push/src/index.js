@@ -179,6 +179,11 @@ const PERM_PROD_STARS = 200; // price in Stars (one-time)
 // click upgrades (applied client-side); the server owns the has_click_bypass flag.
 const CLICK_BYPASS_STARS = 100; // price in Stars (one-time)
 
+// Anti-farm for /prestige/confirm: a new confirmed prestige needs at least this
+// much wall-clock time since the last one. Any legit prestige takes far longer
+// (you must re-buy all content), so this only ever blocks scripted hammering.
+const PRESTIGE_MIN_INTERVAL_MS = 60 * 1000;
+
 // Generic Telegram Bot API call. Returns the parsed JSON ({ ok, result, ... }).
 async function tgCall(env, method, payload) {
   try {
@@ -728,6 +733,72 @@ async function handleRefundedPayment(env, msg) {
   } catch (e) { console.log('refund error', e); }
 }
 
+// POST /prestige/confirm { initData } — the client calls this at the moment it
+// confirms an ascension. The server owns prestige_count (the leaderboard's
+// primary rank key), so it can never be inflated by editing client state:
+// prestige_count only ever grows here, gated by an anti-farm check.
+async function handlePrestigeConfirm(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    const row = await env.DB.prepare('SELECT prestige_count AS pc, last_prestige_at AS lpa, is_prestige_pioneer AS pion FROM users WHERE user_id = ?').bind(userId).first();
+    const prestigeCount = (row && Number.isFinite(row.pc)) ? row.pc : 0;
+    const lastAt = (row && Number.isFinite(row.lpa)) ? row.lpa : 0;
+
+    // Anti-farm: after the first prestige, require both a minimum interval AND
+    // at least one real session (app_open) since the last one. A script can't
+    // manufacture app_open rows without a valid initData checkin, and the
+    // interval caps the rate regardless.
+    if (lastAt > 0) {
+      const sinceMs = now - lastAt;
+      if (sinceMs < PRESTIGE_MIN_INTERVAL_MS) {
+        return jsonResponse({ ok: false, error: 'too_soon', retryAfterMs: PRESTIGE_MIN_INTERVAL_MS - sinceMs, prestigeCount }, 429);
+      }
+      const ev = await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE user_id = ? AND event = 'app_open' AND ts > ?").bind(userId, lastAt).first();
+      if (!ev || !(ev.n > 0)) {
+        return jsonResponse({ ok: false, error: 'no_activity', prestigeCount }, 429);
+      }
+    }
+
+    const newCount = prestigeCount + 1;
+    await env.DB.prepare('UPDATE users SET prestige_count = ?, last_prestige_at = ? WHERE user_id = ?')
+      .bind(newCount, now, userId).run();
+
+    // Pioneer title on the FIRST prestige only.
+    let isPioneer = !!(row && row.pion);
+    if (prestigeCount === 0) isPioneer = await maybeGrantPioneer(env, userId, now);
+
+    return jsonResponse({ ok: true, prestigeCount: newCount, isPioneer });
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+}
+
+// Grants the "prestige pioneer" title if a slot is still open and (optional)
+// deadline hasn't passed. The conditional config UPDATE (bump only while under
+// the limit, then check it actually changed) keeps two racing first-prestiges
+// from over-issuing the last slot.
+async function maybeGrantPioneer(env, userId, now) {
+  try {
+    const rows = await env.DB.prepare("SELECT key, value FROM config WHERE key IN ('pioneer_limit','pioneer_granted','pioneer_deadline_ts')").all();
+    const map = {}; for (const r of (rows.results || [])) map[r.key] = Number(r.value);
+    const limit = Number.isFinite(map.pioneer_limit) ? map.pioneer_limit : 50;
+    const granted = Number.isFinite(map.pioneer_granted) ? map.pioneer_granted : 0;
+    const deadline = Number.isFinite(map.pioneer_deadline_ts) ? map.pioneer_deadline_ts : 0;
+    if (granted >= limit) return false;
+    if (deadline > 0 && now > deadline) return false;
+    const upd = await env.DB.prepare("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key = 'pioneer_granted' AND CAST(value AS INTEGER) < ?").bind(limit).run();
+    if (!upd.meta || upd.meta.changes === 0) return false; // someone grabbed the last slot
+    await env.DB.prepare('UPDATE users SET is_prestige_pioneer = 1 WHERE user_id = ?').bind(userId).run();
+    return true;
+  } catch (e) { return false; }
+}
+
 async function handleCheckin(request, env) {
   let body;
   try {
@@ -759,6 +830,8 @@ async function handleCheckin(request, env) {
   let boost2xExpiresAt = 0;
   let hasPermProdBoost = false;
   let hasClickBypass = false;
+  let serverPrestigeCount = 0;
+  let isPrestigePioneer = false;
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -811,11 +884,13 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
       if (boostRow && boostRow.clickbypass) hasClickBypass = true;
+      if (boostRow && Number.isFinite(boostRow.pc)) serverPrestigeCount = boostRow.pc;
+      if (boostRow && boostRow.pion) isPrestigePioneer = true;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -830,6 +905,9 @@ async function handleCheckin(request, env) {
     maxActiveFriendsEver,
     weeklyReferrals,      // friends recruited this week (for the weekly board)
     weeklyWeekId: curWeek, // which week weeklyReferrals belongs to (stale => 0 on the board)
+    prestigeCount: serverPrestigeCount, // server-authoritative; leaderboard's primary rank key
+    isPioneer: isPrestigePioneer,       // "prestige pioneer" title flag
+    lifetimeCookies: Number(body.lifetimeCookies) || 0, // never-resetting total across runs (client-sent, like cps)
   };
   // Mirroring `data` into KV metadata lets list-all operations (leaderboard,
   // the push cron, broadcasts) read every user's fields straight off list()
@@ -849,7 +927,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer });
 }
 
 async function handleLeaderboard(env) {
@@ -866,12 +944,18 @@ async function handleLeaderboard(env) {
         cps: data.cps || 0,
         totalBaked: data.totalBaked || 0,
         maxActiveFriendsEver: data.maxActiveFriendsEver || 0, // client derives the referral title from this
+        prestigeCount: data.prestigeCount || 0, // primary rank key (server-authoritative)
+        isPioneer: !!data.isPioneer,
+        lifetimeCookies: data.lifetimeCookies || 0, // never-resetting total, shown as a secondary figure
       });
     }
     if (list.list_complete || !list.cursor) break;
     cursor = list.cursor;
   }
-  entries.sort((a, b) => b.cps - a.cps);
+  // Prestige first (the most statusful action), current CPS as the tiebreaker
+  // within a tier — so a just-ascended player (CPS reset to ~0) still ranks by
+  // their prestige tier instead of dropping to the bottom.
+  entries.sort((a, b) => (b.prestigeCount - a.prestigeCount) || (b.cps - a.cps));
   return jsonResponse({ ok: true, entries: entries.slice(0, 50) });
 }
 
@@ -1062,6 +1146,10 @@ export default {
 
     if (url.pathname === '/create-clickskip-invoice' && request.method === 'POST') {
       return handleCreateClickskipInvoice(request, env);
+    }
+
+    if (url.pathname === '/prestige/confirm' && request.method === 'POST') {
+      return handlePrestigeConfirm(request, env);
     }
 
     if (url.pathname === '/webhook-info' && request.method === 'GET') {
