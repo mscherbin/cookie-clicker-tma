@@ -194,6 +194,7 @@ html, body {
 }
 
 .big-cookie {
+  position: relative;
   background: none;
   border: none;
   width: min(52vw, 250px);
@@ -205,6 +206,18 @@ html, body {
   justify-content: center;
   transition: transform 0.06s ease-out;
   touch-action: manipulation;
+}
+
+/* Circular warm halo behind the cookie so it stands out in the middle of the
+   (otherwise empty) clicker zone. Round on purpose — no square bounding box. */
+.big-cookie::before {
+  content: '';
+  position: absolute;
+  inset: -8%;
+  border-radius: 50%;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 209, 102, 0.38) 0%, rgba(255, 209, 102, 0.15) 40%, transparent 66%);
 }
 
 .big-cookie:active {
@@ -1441,7 +1454,9 @@ body.theme-golden .topbar {
 }
 /* Turn the golden cookie into a rich chocolate one (dough + chips darken
    together — reads as a double-chocolate cookie). Warm glow underneath. */
+/* Dark-chocolate recolour of the golden cookie. No drop-shadow here — a
+   drop-shadow amplified the SVG grain filter's square region into a visible box;
+   the round .big-cookie::before halo provides the glow instead. */
 body.theme-golden .cookie-svg {
-  filter: brightness(0.45) sepia(0.55) saturate(1.7) hue-rotate(-20deg) contrast(1.14)
-          drop-shadow(0 6px 18px rgba(255, 190, 90, 0.4));
+  filter: brightness(0.4) sepia(0.55) saturate(1.6) hue-rotate(-16deg) contrast(1.05);
 }
