@@ -566,6 +566,13 @@ html, body {
   font-size: 11px;
 }
 
+/* Prestige-tier locked content in the shop list (reuses the greyed .disabled
+   look; the 🔒 tag sits where the price would be). */
+.item-cost.tier-locked-tag {
+  color: var(--hint);
+  font-size: 14px;
+}
+
 .unlock-desc {
   font-size: 12px;
   color: var(--hint);

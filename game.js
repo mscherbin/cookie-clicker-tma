@@ -17,6 +17,10 @@
   }
 
   // ---------- Game data ----------
+  // Optional `tier` on a building/upgrade = required prestige (ascension) count
+  // to unlock it; 0/absent = always available. See tierUnlocked()/itemTier().
+  // Tier-2+ content itself is a separate design pass — this is just the config
+  // slot the gate reads.
   const BUILDINGS = [
     { id: 'cursor',   name: 'Курсор',        icon: '👆', baseCost: 15,      baseCps: 0.1  },
     { id: 'grandma',  name: 'Бабушка',       icon: '👵', baseCost: 100,     baseCps: 1    },
@@ -739,6 +743,17 @@
     return b.baseCps * mult;
   }
 
+  // ---------- Prestige-tier content gating ----------
+  // Buildings/upgrades can be gated behind a prestige tier: content only becomes
+  // available once the player has ascended (prestiged) enough times. An item's
+  // `tier` is the required ascension count — 0 or absent means always available.
+  // Generic and open-ended: future content rounds just set tier 1, 2, 3, … and
+  // the same gate handles them. `state.ascensionCount` is the prestige count
+  // (incremented in ascend()).
+  function itemTier(item) { return item.tier || 0; }
+  function tierUnlocked(item) { return (state.ascensionCount || 0) >= itemTier(item); }
+  function tierLockText(tier) { return `Доступно после ${tier}-го вознесения`; }
+
   // Permanent paid +10% — a standing production multiplier (like the referral
   // bonus), so it belongs inside getCps/getClickPower: it must count in the
   // leaderboard and offline income too. Independent multiplicative factor.
@@ -1179,6 +1194,12 @@
     el.buildingsList.innerHTML = '';
     for (const b of BUILDINGS) {
       const count = state.buildings[b.id];
+      // Prestige-tier gate comes first — a tier-locked building is shown locked
+      // (with its unlock condition) and can't be bought until the tier is reached.
+      if (!tierUnlocked(b)) {
+        el.buildingsList.appendChild(tierLockedBuildingCard(b, count));
+        continue;
+      }
       if (b.referralLocked) {
         el.buildingsList.appendChild(referralBuildingCard(b, count));
         continue;
@@ -1245,6 +1266,28 @@
     return card;
   }
 
+  // A prestige-tier-locked building shows in the shop list as a 🔒 locked row —
+  // its identity is revealed (a teaser to motivate ascending) but it's greyed
+  // out and unbuyable until the required ascension count is reached. Mirrors the
+  // referral-locked look. Tapping it just explains the unlock condition.
+  function tierLockedBuildingCard(b, count) {
+    const tip = tierLockText(itemTier(b));
+    const card = document.createElement('button');
+    card.className = 'item-card disabled tier-locked locked';
+    card.title = tip;
+    card.innerHTML = `
+      <div class="item-icon">${b.icon}</div>
+      <div class="item-info">
+        <div class="item-name">${b.name}</div>
+        <div class="item-sub">${tip}</div>
+      </div>
+      <div class="item-count">${count || 0}</div>
+      <div class="item-cost tier-locked-tag">🔒</div>
+    `;
+    card.addEventListener('click', () => { showToast(tip); haptic('light'); });
+    return card;
+  }
+
   // Collapse state for the "Выполнено" (completed) section. Kept in a module
   // var (not persisted) so it survives the frequent full re-renders — default
   // closed, so completed upgrades don't clutter the "what to buy next" view.
@@ -1295,11 +1338,14 @@
       for (const u of items) {
         const isTeaser = teaserIds.has(u.id);
         const unlocked = u.req(state.buildings, state);
+        const tierOk = tierUnlocked(u);
         const affordable = state.cookies >= u.cost;
-        // "Locked" = requirement not met yet (teaser preview, or affordable but
-        // gated by clicks/buildings/baked). Both show WHY they're locked instead
-        // of a misleading buyable-looking card with a cost.
-        const showLocked = isTeaser || !unlocked;
+        // "Locked" = requirement not met yet (teaser preview, gated by
+        // clicks/buildings/baked, or behind a prestige tier). Shows WHY it's
+        // locked instead of a misleading buyable-looking card with a cost.
+        // Prestige tier takes precedence in the reason — it's the outer gate.
+        const showLocked = isTeaser || !unlocked || !tierOk;
+        const lockReason = !tierOk ? tierLockText(itemTier(u)) : upgradeReqText(u);
         const card = document.createElement('button');
         card.className = 'upgrade-card' + (showLocked ? ' locked' : (affordable ? '' : ' disabled'));
         card.dataset.uid = u.id;
@@ -1307,7 +1353,7 @@
           <div class="upgrade-icon">🔒</div>
           <div class="item-info">
             <div class="upgrade-name">${u.name}</div>
-            <div class="upgrade-desc">${upgradeReqText(u)}</div>
+            <div class="upgrade-desc">${lockReason}</div>
           </div>
         ` : `
           <div class="upgrade-icon">${u.icon}</div>
@@ -1318,7 +1364,7 @@
           </div>
           <div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>
         `;
-        if (!isTeaser && unlocked) {
+        if (!isTeaser && unlocked && tierOk) {
           card.addEventListener('click', () => buyUpgrade(u));
         }
         el.upgradesList.appendChild(card);
@@ -1562,7 +1608,7 @@
   const upgradesTabBtn = document.querySelector('.tab-btn[data-tab="upgrades"]');
 
   function hasAffordableUpgrade() {
-    return UPGRADES.some(u => !state.upgrades[u.id] && u.req(state.buildings, state) && state.cookies >= u.cost);
+    return UPGRADES.some(u => !state.upgrades[u.id] && tierUnlocked(u) && u.req(state.buildings, state) && state.cookies >= u.cost);
   }
 
   function tut() { state.tutorial = state.tutorial || {}; return state.tutorial; }
@@ -1626,6 +1672,7 @@
   // ---------- Actions ----------
   function buyBuilding(b) {
     if (b.referralLocked) return; // referral buildings are placed for free, never bought
+    if (!tierUnlocked(b)) { showToast(tierLockText(itemTier(b))); haptic('light'); return; }
     const count = state.buildings[b.id];
     const cost = buildingCost(b, count);
     if (state.cookies < cost) { haptic('light'); return; }
@@ -1721,6 +1768,8 @@
 
   function buyUpgrade(u) {
     if (state.upgrades[u.id]) return;
+    if (!tierUnlocked(u)) { showToast(tierLockText(itemTier(u))); haptic('light'); return; }
+    if (!u.req(state.buildings, state)) { haptic('light'); return; }
     if (state.cookies < u.cost) { haptic('light'); return; }
     const isFirstUpgrade = Object.keys(state.upgrades).length === 0;
     if (isFirstUpgrade) sendAnalyticsEvent('first_upgrade');
