@@ -118,6 +118,59 @@
       'banner.allBought': 'Всё куплено! 🎉', 'banner.availSub': 'Пора переродиться — +{n}% к производству навсегда',
       'banner.almostAll': 'Почти всё куплено! 🎉', 'banner.soonSub': 'Скоро откроется вознесение — осталось: {rest}',
       'banner.cta': 'Переродиться',
+      // Priority-2: upgrade effect/req/desc, categories, stats, deep toasts, confirms
+      'up.effClick': 'Сила клика: {a} → {b}', 'up.effGlobal': 'Всё производство: {a} → {b} печ/сек',
+      'up.effBuilding': '{name}: {a} → {b} печ/сек за шт.',
+      'up.reqBuilding': '🔒 Откроется: купите {icon} {name}', 'up.reqClicks': '🔒 Откроется: {n} кликов (сделано {d})',
+      'up.reqBaked': '🔒 Откроется: испечено {n} печенек',
+      'up.progress': '🏆 Апгрейды (тир {t}): <b>{b}</b> / {total}', 'up.completed': 'Выполнено ({n})',
+      'up.emptyGrow': 'Апгрейды появятся по мере роста производства', 'up.emptyAll': '🎉 Все апгрейды куплены!',
+      'up.emptyDone': 'Пока всё доступное куплено — новое откроется по мере роста производства',
+      'cat.click': '⚡ Улучшения клика', 'cat.building': '🏭 Улучшения зданий', 'cat.global': '✨ Глобальные',
+      'tier.lockAfter': 'Доступно после {n}-го вознесения',
+      'ref.buildingLocked': 'Доступно за {n} активных друзей',
+      'ref.ready': 'Готово к установке — бесплатно', 'ref.gift': '🫶 дар друзей', 'ref.placedSub': '{n} печ/сек',
+      'bld.persecEach': '{n} печ/сек за шт.',
+      'ref.unlockDesc': 'Награда за {n} активных друзей. Ставится бесплатно и печёт вместе с твоей армией!',
+      'teaser.readySub': 'Открыта! Нажми, чтобы поставить', 'teaser.readyCta': 'Поставить',
+      'teaser.sub': 'Ещё {n} {friends} — особое здание', 'teaser.cta': 'Позвать',
+      'player.default': 'Игрок',
+      'stat.totalBaked': 'Всего испечено', 'stat.clicks': 'Кликов сделано', 'stat.cps': 'Печенек в секунду',
+      'stat.clickPower': 'Сила клика', 'stat.clickUpg': 'Апгрейдов клика', 'stat.buildings': 'Зданий всего',
+      'stat.upgrades': 'Апгрейдов куплено', 'stat.streak': 'Дней подряд', 'stat.ascensions': 'Вознесений',
+      'toast.offlineBaked': 'Пока вас не было, испечено {n} 🍪',
+      'toast.noBackup': 'Резервной копии нет', 'toast.restored': '✅ Восстановлено: {n} 🍪, тир {t}',
+      'toast.backupCorrupt': 'Резервная копия повреждена',
+      'toast.cloudUnavailable': 'CloudStorage недоступен на этом устройстве', 'toast.cloudPushFail': 'Не удалось отправить в облако',
+      'toast.cloudPushOk': '✅ Это сохранение отправлено в облако', 'toast.cloudEmpty': 'В облаке пусто или ошибка загрузки',
+      'toast.cloudCorrupt': 'Сохранение в облаке повреждено', 'toast.cloudPullOk': '✅ Загружено из облака (резервная копия сохранена)',
+      'toast.cloudParseFail': 'Не удалось разобрать сохранение из облака',
+      'toast.offlineX2Credited': '🍪 ×2 офлайн-доход начислен: +{n}', 'toast.nocapOn': '🚀 Кап офлайна снят на 24 часа!',
+      'toast.boost2xOn': '⚡ ×2 производство активно на 1 час!', 'toast.permOn': '🌟 +10% к производству навсегда!',
+      'toast.clickBypassOn': '⚡ Клик-апгрейды открыты без кликов!', 'toast.upgradeUnlockedGeneric': '🔓 Апгрейд разблокирован!',
+      'toast.lbPrestige': '{n} {word} — постоянный бонус +{x}% к производству',
+      'toast.lbPioneer': 'Один из первых {n} игроков, кто вознёсся — эксклюзивный титул, больше не выдаётся',
+      'toast.ascendGate': 'Сначала купи всё — осталось: {rest}', 'toast.ascendTooEarly': 'Пока рано — испеките больше печенек, чтобы бонус вырос',
+      'toast.ascendTooSoon': 'Вознесение будет доступно чуть позже — поиграй немного между перерождениями',
+      'toast.newTitle': '{icon} Новый титул: «{name}» — ты достиг {n}-го уровня!', 'toast.offlineFreeClaimed': 'Забрано {n} 🍪',
+      'toast.payX2': 'Оплата принята — начисляем ×2…', 'toast.payFailed': 'Оплата не прошла — попробуй ещё раз',
+      'toast.invoiceFail': 'Не удалось создать счёт — попробуй позже', 'toast.payNocap': 'Оплата принята — снимаем кап…',
+      'toast.payBoost2x': 'Оплата принята — включаем ×2…', 'toast.alreadyOwned': 'Уже куплено ✓',
+      'toast.payPerm': 'Оплата принята — активируем +10%…', 'toast.payClickBypass': 'Оплата принята — открываем клик-апгрейды…',
+      'toast.alreadyUnlocked': 'Уже разблокировано ✓', 'toast.payUpgradeSkip': 'Оплата принята — открываем «{name}»…',
+      'toast.buildingPlaced': '{icon} {name} установлена!', 'toast.prestigeSoonNudge': 'Осталось: {rest} — купи, и откроется вознесение',
+      'toast.boughtNamed': 'Куплено: {name}', 'toast.offlineHint': '🍪 Печеньки копятся, даже когда ты вышел — загляни попозже за добычей',
+      'toast.frenzy': '🔥 Безумие печенья! x7 на 30 сек', 'toast.golden': '✨ Золотое печенье! +{n}',
+      'confirm.ascend': 'Вознестись? Прогресс обнулится, но вы навсегда получите +{n}% к производству.',
+      'confirm.reset': 'Точно сбросить весь прогресс?',
+      'sync.ok': '☁️ Облако Telegram — синхронизируется между устройствами',
+      'sync.noTg': '📱 Не в Telegram — сохранение только в этом браузере',
+      'sync.noApi': '⚠️ CloudStorage недоступен — сохранение только на этом устройстве',
+      'sync.oldVer': '⚠️ Версия Telegram устарела для облака — сохранение только на этом устройстве',
+      'confirm.cloudPush': 'Здесь: всего испечено {here} 🍪.\nСейчас в облаке: всего испечено {cloud} 🍪.\n\nЗаменить сохранение в облаке данными с этого устройства?',
+      'confirm.cloudPull': 'Здесь: всего испечено {here} 🍪.\nВ облаке: всего испечено {cloud} 🍪.\n\nЗаменить прогресс на этом устройстве данными из облака? (текущее состояние сохранится как резервная копия)',
+      'share.text': 'Залипаю в Cookie Clicker — залетай печь печеньки со мной! 🍪',
+      'evt.refReward': '🎉 Награда за друзей ×{mult}', 'evt.callFriends': 'зови друзей!',
     },
     en: {
       'tab.buildings': 'Buildings', 'tab.upgrades': 'Upgrades', 'tab.shop': '🛒 Shop',
@@ -194,6 +247,59 @@
       'banner.allBought': 'All bought! 🎉', 'banner.availSub': 'Time to ascend — +{n}% to production forever',
       'banner.almostAll': 'Almost everything bought! 🎉', 'banner.soonSub': 'Ascension unlocks soon — left: {rest}',
       'banner.cta': 'Ascend',
+      // Priority-2: upgrade effect/req/desc, categories, stats, deep toasts, confirms
+      'up.effClick': 'Click power: {a} → {b}', 'up.effGlobal': 'All production: {a} → {b}/sec',
+      'up.effBuilding': '{name}: {a} → {b}/sec each',
+      'up.reqBuilding': '🔒 Unlocks: buy {icon} {name}', 'up.reqClicks': '🔒 Unlocks: {n} clicks (done {d})',
+      'up.reqBaked': '🔒 Unlocks: {n} cookies baked',
+      'up.progress': '🏆 Upgrades (tier {t}): <b>{b}</b> / {total}', 'up.completed': 'Completed ({n})',
+      'up.emptyGrow': 'Upgrades appear as your production grows', 'up.emptyAll': '🎉 All upgrades purchased!',
+      'up.emptyDone': "Everything available is bought — more unlocks as production grows",
+      'cat.click': '⚡ Click upgrades', 'cat.building': '🏭 Building upgrades', 'cat.global': '✨ Global',
+      'tier.lockAfter': 'Unlocks after ascension {n}',
+      'ref.buildingLocked': 'Unlocks at {n} active friends',
+      'ref.ready': 'Ready to place — free', 'ref.gift': '🫶 gift of friends', 'ref.placedSub': '{n}/sec',
+      'bld.persecEach': '{n}/sec each',
+      'ref.unlockDesc': 'Reward for {n} active friends. Placed for free and bakes alongside your army!',
+      'teaser.readySub': 'Unlocked! Tap to place', 'teaser.readyCta': 'Place',
+      'teaser.sub': '{n} more {friends} — special building', 'teaser.cta': 'Invite',
+      'player.default': 'Player',
+      'stat.totalBaked': 'Total baked', 'stat.clicks': 'Clicks made', 'stat.cps': 'Cookies per second',
+      'stat.clickPower': 'Click power', 'stat.clickUpg': 'Click upgrades', 'stat.buildings': 'Buildings total',
+      'stat.upgrades': 'Upgrades bought', 'stat.streak': 'Day streak', 'stat.ascensions': 'Ascensions',
+      'toast.offlineBaked': 'While you were away, baked {n} 🍪',
+      'toast.noBackup': 'No backup found', 'toast.restored': '✅ Restored: {n} 🍪, tier {t}',
+      'toast.backupCorrupt': 'Backup is corrupted',
+      'toast.cloudUnavailable': 'CloudStorage unavailable on this device', 'toast.cloudPushFail': 'Failed to upload to cloud',
+      'toast.cloudPushOk': '✅ This save was uploaded to the cloud', 'toast.cloudEmpty': 'Cloud is empty or failed to load',
+      'toast.cloudCorrupt': 'Cloud save is corrupted', 'toast.cloudPullOk': '✅ Loaded from cloud (backup saved)',
+      'toast.cloudParseFail': 'Failed to parse cloud save',
+      'toast.offlineX2Credited': '🍪 ×2 offline income credited: +{n}', 'toast.nocapOn': '🚀 Offline cap removed for 24 hours!',
+      'toast.boost2xOn': '⚡ ×2 production active for 1 hour!', 'toast.permOn': '🌟 +10% production forever!',
+      'toast.clickBypassOn': '⚡ Click upgrades unlocked without clicks!', 'toast.upgradeUnlockedGeneric': '🔓 Upgrade unlocked!',
+      'toast.lbPrestige': '{n} {word} — permanent +{x}% production bonus',
+      'toast.lbPioneer': 'One of the first {n} players to ascend — an exclusive title, no longer awarded',
+      'toast.ascendGate': 'Buy everything first — remaining: {rest}', 'toast.ascendTooEarly': 'Too early — bake more cookies to grow the bonus',
+      'toast.ascendTooSoon': 'Ascension will be available a bit later — play a little between rebirths',
+      'toast.newTitle': '{icon} New title: "{name}" — you reached tier {n}!', 'toast.offlineFreeClaimed': 'Claimed {n} 🍪',
+      'toast.payX2': 'Payment accepted — crediting ×2…', 'toast.payFailed': 'Payment failed — try again',
+      'toast.invoiceFail': 'Could not create invoice — try later', 'toast.payNocap': 'Payment accepted — removing cap…',
+      'toast.payBoost2x': 'Payment accepted — enabling ×2…', 'toast.alreadyOwned': 'Already purchased ✓',
+      'toast.payPerm': 'Payment accepted — activating +10%…', 'toast.payClickBypass': 'Payment accepted — unlocking click upgrades…',
+      'toast.alreadyUnlocked': 'Already unlocked ✓', 'toast.payUpgradeSkip': 'Payment accepted — unlocking "{name}"…',
+      'toast.buildingPlaced': '{icon} {name} placed!', 'toast.prestigeSoonNudge': 'Remaining: {rest} — buy it to unlock ascension',
+      'toast.boughtNamed': 'Purchased: {name}', 'toast.offlineHint': '🍪 Cookies pile up even while you are away — come back later for your loot',
+      'toast.frenzy': '🔥 Cookie frenzy! x7 for 30 sec', 'toast.golden': '✨ Golden cookie! +{n}',
+      'confirm.ascend': 'Ascend? Progress resets, but you permanently gain +{n}% production.',
+      'confirm.reset': 'Really reset all progress?',
+      'sync.ok': '☁️ Telegram cloud — synced across devices',
+      'sync.noTg': '📱 Not in Telegram — saved only in this browser',
+      'sync.noApi': '⚠️ CloudStorage unavailable — saved only on this device',
+      'sync.oldVer': '⚠️ Telegram version too old for cloud — saved only on this device',
+      'confirm.cloudPush': 'This device: {here} 🍪 baked.\nIn the cloud now: {cloud} 🍪 baked.\n\nReplace the cloud save with the data from this device?',
+      'confirm.cloudPull': 'This device: {here} 🍪 baked.\nIn the cloud: {cloud} 🍪 baked.\n\nReplace this device progress with the cloud save? (current state is saved as a backup)',
+      'share.text': 'Hooked on Cookie Clicker — come bake cookies with me! 🍪',
+      'evt.refReward': '🎉 Friend reward ×{mult}', 'evt.callFriends': 'invite friends!',
     },
   };
 
@@ -360,11 +466,60 @@
     { id: 'click_t3_2', name: 'Длань творца',      desc: 'Сила клика x2', icon: '✋', cost: 1.0e14, category: 'click', reqType: 'clicks', reqValue: 400000, req: (b, s) => s.totalClicks >= 400000, effect: s => s.clickMult *= 2, tier: 2 },
   ];
 
-  const CATEGORY_LABELS = {
-    click: '⚡ Улучшения клика',
-    building: '🏭 Улучшения зданий',
-    global: '✨ Глобальные',
+  // English names for every building + upgrade (Priority-2 localization). The RU
+  // name lives in the config above; here's its EN counterpart keyed by id. Descs
+  // are formulaic (see upgradeDescText) so only names need a table.
+  const EN_NAMES = {
+    // buildings
+    cursor: 'Cursor', grandma: 'Grandma', farm: 'Farm', mine: 'Mine', factory: 'Factory',
+    bank: 'Bank', temple: 'Temple', lab: 'Laboratory', portal: 'Portal', timeMachine: 'Time Machine',
+    antimatter: 'Antimatter', prism: 'Prism', quasar: 'Quasar', pulsar: 'Pulsar', supernova: 'Supernova',
+    cosmicString: 'Cosmic String', primeMover: 'Prime Mover',
+    chocoSpring: 'Chocolate Spring', goldHive: 'Golden Hive', royalBakery: 'Royal Bakery',
+    diamondGlaze: 'Diamond Glaze', solarOven: 'Solar Oven', caramelVolcano: 'Caramel Volcano',
+    ambrosiaWell: 'Ambrosia Well', goldenArk: 'Golden Ark', cocoaTemple: 'Cocoa Temple', midasThrone: 'Midas Throne',
+    starBakery: 'Star Bakery', moonMill: 'Moon Mill', skyForge: 'Sky Forge', ringWorks: 'Planetary Ring',
+    galaxyMixer: 'Galaxy Mixer', meteorRain: 'Meteor Rain', bifrost: 'Bifrost Bridge', starArk: 'Star Ark',
+    cosmicEye: 'Eye of the Universe', heavenThrone: "Heaven's Throne", friendBakery: 'Friendship Bakery',
+    // upgrades
+    cursor_u1: 'Sharpened Cursors', grandma_u1: "Grandma's Recipes", farm_u1: 'Fertilizer',
+    click_u1: 'Firm Grip', mine_u1: 'New Pickaxes', click_u2: 'Steel Fingers', factory_u1: 'Automation',
+    global_u1: 'Gold-Flecked Cookie', bank_u1: 'Crunchy Interest', temple_u1: 'Ancient Blessings',
+    lab_u1: 'Nuclear Baking', global_u2: "Baker's Philosopher Stone", global_u3: 'Cookie from Another Dimension',
+    global_u4: 'Universal Baking', portal_u1: 'Portal Stabilizer', timeMachine_u1: 'Chrono Accelerator',
+    antimatter_u1: 'Compressed Antimatter', prism_u1: 'Prism Cut', global_u5: 'Singularity Cookie',
+    global_u6: 'Cookie Multiverse', global_u7: 'Infinite Baking', quasar_u1: 'Quasar Accelerator',
+    pulsar_u1: 'Pulsar Magnetic Field', supernova_u1: 'Controlled Collapse', cosmicString_u1: 'String Tension',
+    primeMover_u1: "Creator's Design", click_u3: 'Titanium Nails', click_u4: 'Cosmic Click',
+    global_u8: 'Cosmic Leaven', global_u9: 'Bakery of the Gods', global_u10: 'Creator Cookie',
+    chocoSpring_u1: 'Belgian Recipe', goldHive_u1: 'Golden Bees', royalBakery_u1: 'Royal Patent',
+    diamondGlaze_u1: 'Perfect Cut', solarOven_u1: 'Thermonuclear Heat', caramelVolcano_u1: 'Burnt Sugar',
+    ambrosiaWell_u1: 'Gift of the Gods', goldenArk_u1: 'Sacred Ark', cocoaTemple_u1: 'Ancient Ritual',
+    midasThrone_u1: 'Midas Touch', global_t2_1: 'Golden Glaze', global_t2_2: 'Chocolate Coating',
+    global_t2_3: 'Fairy Dust', global_t2_4: "Philosopher's Gold", click_t2_1: 'Golden Touch',
+    click_t2_2: 'Chocolate Hand', starBakery_u1: 'Stardust', moonMill_u1: 'Lunar Gravity',
+    skyForge_u1: 'Celestial Flame', ringWorks_u1: 'Perfect Orbit', galaxyMixer_u1: 'Spiral Arm',
+    meteorRain_u1: 'Meteor Stream', bifrost_u1: 'Rainbow Code', starArk_u1: 'Warp Drive',
+    cosmicEye_u1: 'All-Seeing Gaze', heavenThrone_u1: 'Divine Mandate', global_t3_1: 'Star Matter',
+    global_t3_2: 'Dark Matter', global_t3_3: 'Cosmic Harmony', global_t3_4: 'Will of the Universe',
+    click_t3_1: 'Astral Click', click_t3_2: "Creator's Hand",
   };
+  // Localized display name for a building or upgrade (EN table falls back to the
+  // RU config name). One helper for both — they're keyed the same way.
+  function itemName(item) {
+    return (state.lang === 'en' && EN_NAMES[item.id]) ? EN_NAMES[item.id] : item.name;
+  }
+  // Localized upgrade description. Descs are formulaic, so we build them from the
+  // category (+ the target building's localized name) instead of a per-item table.
+  function upgradeDescText(u) {
+    if (state.lang !== 'en') return u.desc;
+    if (u.category === 'global') return 'All production ×2';
+    if (u.category === 'click') return 'Click power ×2';
+    const b = BUILDINGS.find(x => x.id === u.buildingId);
+    return `${b ? itemName(b) : ''} ×2`;
+  }
+
+  // Category labels are localized via t('cat.'+category); order only here.
   const CATEGORY_ORDER = ['click', 'building', 'global'];
   const CLICK_UPGRADES_TOTAL = UPGRADES.filter(u => u.category === 'click').length;
 
@@ -610,7 +765,7 @@
         state.lastTs = Date.now();
         const threshold = Math.max(OFFLINE_CLAIM_MIN, getCps() * OFFLINE_CLAIM_THRESHOLD_SECONDS);
         if (state.offlinePending > 0 && state.offlinePending < threshold) {
-          if (state.offlinePending > 1) showToast(`Пока вас не было, испечено ${formatNum(state.offlinePending)} 🍪`);
+          if (state.offlinePending > 1) showToast(t('toast.offlineBaked', { n: formatNum(state.offlinePending) }));
           state.cookies += state.offlinePending;
           state.totalBaked += state.offlinePending;
           state.offlinePending = 0;
@@ -638,10 +793,10 @@
 
   function cloudStorageStatusText() {
     switch (cloudStorageStatus()) {
-      case 'ok': return '☁️ Облако Telegram — синхронизируется между устройствами';
-      case 'no-telegram': return '📱 Не в Telegram — сохранение только в этом браузере';
-      case 'no-cloudstorage-api': return '⚠️ CloudStorage недоступен — сохранение только на этом устройстве';
-      default: return '⚠️ Версия Telegram устарела для облака — сохранение только на этом устройстве';
+      case 'ok': return t('sync.ok');
+      case 'no-telegram': return t('sync.noTg');
+      case 'no-cloudstorage-api': return t('sync.noApi');
+      default: return t('sync.oldVer');
     }
   }
 
@@ -670,7 +825,7 @@
   function restoreBackup() {
     let raw;
     try { raw = localStorage.getItem(BACKUP_KEY); } catch (e) { raw = null; }
-    if (!raw) { showToast('Резервной копии нет'); return; }
+    if (!raw) { showToast(t('toast.noBackup')); return; }
     // NOTE: no confirm dialog here on purpose. Restore is a deliberate one-tap
     // "undo" (the button is clearly labelled), and this device's Telegram client
     // handles confirm dialogs unreliably (tg.showConfirm returned cancel even on
@@ -679,46 +834,42 @@
     if (applyLoaded(raw, { grantOfflineProgress: false })) {
       saveState();
       refreshAll();
-      showToast(`✅ Восстановлено: ${formatNum(state.totalBaked || 0)} 🍪, тир ${(state.ascensionCount || 0) + 1}`, 5000);
+      showToast(t('toast.restored', { n: formatNum(state.totalBaked || 0), t: (state.ascensionCount || 0) + 1 }), 5000);
     } else {
-      showToast('Резервная копия повреждена');
+      showToast(t('toast.backupCorrupt'));
     }
   }
 
   function pushToCloud() {
-    if (!tg || !tg.CloudStorage) { showToast('CloudStorage недоступен на этом устройстве'); return; }
+    if (!tg || !tg.CloudStorage) { showToast(t('toast.cloudUnavailable')); return; }
     tg.CloudStorage.getItem(SAVE_KEY, async (getErr, existing) => {
       let existingBaked = 0;
       if (!getErr && existing) {
         try { existingBaked = JSON.parse(existing).totalBaked || 0; } catch (e) { /* ignore */ }
       }
-      const msg = `Здесь: всего испечено ${formatNum(state.totalBaked)} 🍪.\n`
-        + `Сейчас в облаке: всего испечено ${formatNum(existingBaked)} 🍪.\n\n`
-        + `Заменить сохранение в облаке данными с этого устройства?`;
+      const msg = t('confirm.cloudPush', { here: formatNum(state.totalBaked), cloud: formatNum(existingBaked) });
       if (!(await confirmDialog(msg))) return;
       tg.CloudStorage.setItem(SAVE_KEY, JSON.stringify(state), (err, success) => {
-        if (err || success === false) { showToast('Не удалось отправить в облако'); return; }
-        showToast('✅ Это сохранение отправлено в облако');
+        if (err || success === false) { showToast(t('toast.cloudPushFail')); return; }
+        showToast(t('toast.cloudPushOk'));
       });
     });
   }
 
   function pullFromCloud() {
-    if (!tg || !tg.CloudStorage) { showToast('CloudStorage недоступен на этом устройстве'); return; }
+    if (!tg || !tg.CloudStorage) { showToast(t('toast.cloudUnavailable')); return; }
     tg.CloudStorage.getItem(SAVE_KEY, async (err, value) => {
-      if (err || !value) { showToast('В облаке пусто или ошибка загрузки'); return; }
+      if (err || !value) { showToast(t('toast.cloudEmpty')); return; }
       let cloudData;
-      try { cloudData = JSON.parse(value); } catch (e) { showToast('Сохранение в облаке повреждено'); return; }
-      const msg = `Здесь: всего испечено ${formatNum(state.totalBaked)} 🍪.\n`
-        + `В облаке: всего испечено ${formatNum(cloudData.totalBaked || 0)} 🍪.\n\n`
-        + `Заменить прогресс на этом устройстве данными из облака? (текущее состояние сохранится как резервная копия)`;
+      try { cloudData = JSON.parse(value); } catch (e) { showToast(t('toast.cloudCorrupt')); return; }
+      const msg = t('confirm.cloudPull', { here: formatNum(state.totalBaked), cloud: formatNum(cloudData.totalBaked || 0) });
       if (!(await confirmDialog(msg))) return;
       backupCurrentState();
       if (applyLoaded(value, { grantOfflineProgress: false })) {
         saveState();
-        showToast('✅ Загружено из облака (резервная копия сохранена)');
+        showToast(t('toast.cloudPullOk'));
       } else {
-        showToast('Не удалось разобрать сохранение из облака');
+        showToast(t('toast.cloudParseFail'));
       }
     });
   }
@@ -811,7 +962,7 @@
           state.offlinePending = Math.max(0, (state.offlinePending || 0) - credit / 2);
           hideOfflineModal();
           haptic('heavy');
-          showToast(`🍪 ×2 офлайн-доход начислен: +${formatNum(credit)}`, 4000);
+          showToast(t('toast.offlineX2Credited', { n: formatNum(credit) }), 4000);
           saveState();
           refreshAll();
         }
@@ -822,7 +973,7 @@
           state.boostExpiresAt = data.boostExpiresAt;
           saveState();
           refreshAll();
-          if (!wasActive && data.boostExpiresAt > Date.now()) showToast('🚀 Кап офлайна снят на 24 часа!', 4000);
+          if (!wasActive && data.boostExpiresAt > Date.now()) showToast(t('toast.nocapOn'), 4000);
         }
         // x2-production boost window (server-authoritative).
         if (data && typeof data.boost2xExpiresAt === 'number' && data.boost2xExpiresAt !== (state.boost2xExpiresAt || 0)) {
@@ -830,7 +981,7 @@
           state.boost2xExpiresAt = data.boost2xExpiresAt;
           saveState();
           refreshAll();
-          if (!wasActive && data.boost2xExpiresAt > Date.now()) showToast('⚡ ×2 производство активно на 1 час!', 4000);
+          if (!wasActive && data.boost2xExpiresAt > Date.now()) showToast(t('toast.boost2xOn'), 4000);
         }
         // Rewarded-ad daily counter (server-authoritative). Drives the shop
         // button labels / disabled state.
@@ -872,7 +1023,7 @@
           state.hasPermProdBoost = data.hasPermProdBoost;
           saveState();
           refreshAll();
-          if (!wasOwned && data.hasPermProdBoost) showToast('🌟 +10% к производству навсегда!', 4000);
+          if (!wasOwned && data.hasPermProdBoost) showToast(t('toast.permOn'), 4000);
         }
         // Click-bypass flag (server-authoritative, one-time): skips the click-count
         // requirement on click upgrades.
@@ -881,7 +1032,7 @@
           state.hasClickBypass = data.hasClickBypass;
           saveState();
           refreshAll();
-          if (!wasOwned && data.hasClickBypass) showToast('⚡ Клик-апгрейды открыты без кликов!', 4000);
+          if (!wasOwned && data.hasClickBypass) showToast(t('toast.clickBypassOn'), 4000);
         }
         // Per-upgrade paid skips (server-authoritative list of upgrade ids).
         if (data && Array.isArray(data.paidUnlockedUpgrades)) {
@@ -891,7 +1042,7 @@
             state.paidUnlockedUpgrades = data.paidUnlockedUpgrades.slice();
             saveState();
             refreshAll();
-            if (added.length) showToast('🔓 Апгрейд разблокирован!', 4000);
+            if (added.length) showToast(t('toast.upgradeUnlockedGeneric'), 4000);
           }
         }
       })
@@ -915,14 +1066,14 @@
 
   function ownDisplayName() {
     const u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
-    return (u && (u.first_name || u.username)) || 'Игрок';
+    return (u && (u.first_name || u.username)) || t('player.default');
   }
 
   function inviteFriend() {
     const myId = ownTelegramUserId();
     if (!myId || !tg || !tg.openTelegramLink) { showToast(t('toast.onlyTelegram')); return; }
     const deepLink = `https://t.me/${BOT_USERNAME}?start=ref${myId}`;
-    const shareText = 'Залипаю в Cookie Clicker — залетай печь печеньки со мной! 🍪';
+    const shareText = t('share.text');
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(shareText)}`);
   }
 
@@ -1049,12 +1200,12 @@
     if (pres) {
       const n = Number(pres.dataset.prestige) || 0;
       const x = Number(pres.dataset.bonus) || 0;
-      showToast(`${n} ${ascendWord(n)} — постоянный бонус +${x}% к производству`, 4000);
+      showToast(t('toast.lbPrestige', { n, word: ascendWord(n), x }), 4000);
       return;
     }
     const pio = e.target.closest && e.target.closest('.lb-pioneer');
     if (pio) {
-      showToast(`Один из первых ${leaderboardPioneerLimit} игроков, кто вознёсся — эксклюзивный титул, больше не выдаётся`, 4500);
+      showToast(t('toast.lbPioneer', { n: leaderboardPioneerLimit }), 4500);
     }
   }
 
@@ -1218,16 +1369,16 @@
     // Full-completion gate: ascension opens only once every purchasable building
     // and reachable upgrade is bought.
     if (!allContentBought()) {
-      showToast(`Сначала купи всё — осталось: ${remainingContentLabel()}`, 3500);
+      showToast(t('toast.ascendGate', { rest: remainingContentLabel() }), 3500);
       haptic('light');
       return;
     }
     const crumbsEarned = potentialCrumbs();
     if (crumbsEarned <= 0) {
-      showToast('Пока рано — испеките больше печенек, чтобы бонус вырос');
+      showToast(t('toast.ascendTooEarly'));
       return;
     }
-    if (!(await confirmDialog(`Вознестись? Прогресс обнулится, но вы навсегда получите +${formatNum(crumbsEarned)}% к производству.`))) return;
+    if (!(await confirmDialog(t('confirm.ascend', { n: formatNum(crumbsEarned) })))) return;
 
     // Server owns prestige_count (the leaderboard's rank key). Confirm BEFORE
     // resetting, so an anti-farm 'too_soon' reject blocks cleanly without
@@ -1243,7 +1394,7 @@
         });
         const data = await resp.json();
         if (data && data.ok === false && (data.error === 'too_soon' || data.error === 'no_activity')) {
-          showToast('Вознесение будет доступно чуть позже — поиграй немного между перерождениями', 4000);
+          showToast(t('toast.ascendTooSoon'), 4000);
           haptic('light');
           return; // do NOT reset
         }
@@ -1288,7 +1439,7 @@
     const oldDT = prevAsc + 1, newDT = keepAscensionCount + 1;
     const reached = PRESTIGE_TITLES.filter(t => t.tier > oldDT && t.tier <= newDT).sort((a, b) => b.tier - a.tier)[0];
     if (reached) {
-      setTimeout(() => showToast(`${reached.icon} Новый титул: «${reached.name}» — ты достиг ${newDT}-го уровня!`, 5000), 1600);
+      setTimeout(() => showToast(t('toast.newTitle', { icon: reached.icon, name: t(reached.nameKey), n: newDT }), 5000), 1600);
     }
     saveState();
     refreshAll();
@@ -1323,7 +1474,7 @@
   // (incremented in ascend()).
   function itemTier(item) { return item.tier || 0; }
   function tierUnlocked(item) { return (state.ascensionCount || 0) >= itemTier(item); }
-  function tierLockText(tier) { return `Доступно после ${tier}-го вознесения`; }
+  function tierLockText(tier) { return t('tier.lockAfter', { n: tier }); }
 
   // Player-facing tier number: tier 1 at ascension 0, tier 2 after the 1st
   // ascension, … So displayTier = ascensionCount + 1.
@@ -1338,7 +1489,7 @@
     const dt = displayTier();
     const v = b.tierVariants && b.tierVariants[dt];
     if (v) return { name: v.name, icon: v.icon || b.icon };
-    return { name: b.name, icon: b.icon };
+    return { name: itemName(b), icon: b.icon };
   }
 
   // An upgrade's unlock requirement, honouring the paid bypasses:
@@ -1391,24 +1542,24 @@
   function upgradeEffectText(u) {
     if (u.category === 'click') {
       const before = getClickPower();
-      return `Сила клика: ${formatNum(before)} → ${formatNum(before * 2)}`;
+      return t('up.effClick', { a: formatNum(before), b: formatNum(before * 2) });
     }
     if (u.category === 'global') {
       const before = getCps();
-      return `Всё производство: ${formatNum(before)} → ${formatNum(before * 2)} печ/сек`;
+      return t('up.effGlobal', { a: formatNum(before), b: formatNum(before * 2) });
     }
-    const b = BUILDINGS.find(x => x.id === u.buildingId);
-    const before = buildingCps(b);
-    return `${b.name}: ${formatNum(before)} → ${formatNum(before * 2)} печ/сек за шт.`;
+    const bl = BUILDINGS.find(x => x.id === u.buildingId);
+    const before = buildingCps(bl);
+    return t('up.effBuilding', { name: itemName(bl), a: formatNum(before), b: formatNum(before * 2) });
   }
 
   function upgradeReqText(u) {
     if (u.reqType === 'building') {
-      const b = BUILDINGS.find(x => x.id === u.buildingId);
-      return `🔒 Откроется: купите ${b.icon} ${b.name}`;
+      const bl = BUILDINGS.find(x => x.id === u.buildingId);
+      return t('up.reqBuilding', { icon: bl.icon, name: itemName(bl) });
     }
-    if (u.reqType === 'clicks') return `🔒 Откроется: ${formatNum(u.reqValue)} кликов (сделано ${formatNum(state.totalClicks)})`;
-    return `🔒 Откроется: испечено ${formatNum(u.reqValue)} печенек`;
+    if (u.reqType === 'clicks') return t('up.reqClicks', { n: formatNum(u.reqValue), d: formatNum(state.totalClicks) });
+    return t('up.reqBaked', { n: formatNum(u.reqValue) });
   }
 
   // ---------- Daily reward ----------
@@ -1509,7 +1660,7 @@
       state.totalBaked += n;
       state.offlinePending = 0;
       haptic('medium');
-      showToast(`Забрано ${formatNum(n)} 🍪`);
+      showToast(t('toast.offlineFreeClaimed', { n: formatNum(n) }));
       saveState();
       refreshAll();
     }
@@ -1585,18 +1736,18 @@
       tg.openInvoice(data.link, (status) => {
         if (status === 'paid') {
           // Server credits via webhook; the credit is applied on checkin.
-          showToast('Оплата принята — начисляем ×2…', 4000);
+          showToast(t('toast.payX2'), 4000);
           pollPaidCredit();
           resolveOfflineThenDaily();
         } else {
           // cancelled / failed / pending — balance untouched, allow retry.
           setOfflineModalProcessing(false);
-          if (status === 'failed') showToast('Оплата не прошла — попробуй ещё раз');
+          if (status === 'failed') showToast(t('toast.payFailed'));
         }
       });
     } catch (e) {
       setOfflineModalProcessing(false);
-      showToast('Не удалось создать счёт — попробуй позже');
+      showToast(t('toast.invoiceFail'));
     }
   }
 
@@ -1616,15 +1767,15 @@
       tg.openInvoice(data.link, (status) => {
         if (el.nocapBtn) el.nocapBtn.disabled = false;
         if (status === 'paid') {
-          showToast('Оплата принята — снимаем кап…', 4000);
+          showToast(t('toast.payNocap'), 4000);
           pollPaidCredit(); // nudges checkins; boostExpiresAt lands via checkin
         } else if (status === 'failed') {
-          showToast('Оплата не прошла — попробуй ещё раз');
+          showToast(t('toast.payFailed'));
         }
       });
     } catch (e) {
       if (el.nocapBtn) el.nocapBtn.disabled = false;
-      showToast('Не удалось создать счёт — попробуй позже');
+      showToast(t('toast.invoiceFail'));
     }
   }
 
@@ -1644,22 +1795,22 @@
       tg.openInvoice(data.link, (status) => {
         if (el.boost2xBtn) el.boost2xBtn.disabled = false;
         if (status === 'paid') {
-          showToast('Оплата принята — включаем ×2…', 4000);
+          showToast(t('toast.payBoost2x'), 4000);
           pollPaidCredit(); // nudges checkins; boost2xExpiresAt lands via checkin
         } else if (status === 'failed') {
-          showToast('Оплата не прошла — попробуй ещё раз');
+          showToast(t('toast.payFailed'));
         }
       });
     } catch (e) {
       if (el.boost2xBtn) el.boost2xBtn.disabled = false;
-      showToast('Не удалось создать счёт — попробуй позже');
+      showToast(t('toast.invoiceFail'));
     }
   }
 
   // Paid one-time "+10% forever". The server refuses if already owned; on
   // success the flag arrives via checkin and getCps/getClickPower pick up +10%.
   async function buyPermProd() {
-    if (state.hasPermProdBoost) { showToast('Уже куплено ✓'); return; }
+    if (state.hasPermProdBoost) { showToast(t('toast.alreadyOwned')); return; }
     if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     if (el.permProdBtn) el.permProdBtn.disabled = true;
     try {
@@ -1671,7 +1822,7 @@
       const data = await resp.json();
       if (data && data.error === 'already_owned') {
         state.hasPermProdBoost = true; saveState(); refreshAll();
-        showToast('Уже куплено ✓');
+        showToast(t('toast.alreadyOwned'));
         return;
       }
       if (!data || !data.ok || !data.link) throw new Error('no_link');
@@ -1679,23 +1830,23 @@
         if (status === 'paid') {
           // Keep the button disabled — the flag lands via checkin and flips the
           // button to "Куплено", preventing a rapid second (real) purchase.
-          showToast('Оплата принята — активируем +10%…', 4000);
+          showToast(t('toast.payPerm'), 4000);
           pollPaidCredit();
         } else {
           if (el.permProdBtn) el.permProdBtn.disabled = false;
-          if (status === 'failed') showToast('Оплата не прошла — попробуй ещё раз');
+          if (status === 'failed') showToast(t('toast.payFailed'));
         }
       });
     } catch (e) {
       if (el.permProdBtn) el.permProdBtn.disabled = false;
-      showToast('Не удалось создать счёт — попробуй позже');
+      showToast(t('toast.invoiceFail'));
     }
   }
 
   // Paid one-time "skip the clicker": removes the click-count requirement on
   // click upgrades. Server owns the has_click_bypass flag (mirrors buyPermProd).
   async function buyClickBypass() {
-    if (state.hasClickBypass) { showToast('Уже куплено ✓'); return; }
+    if (state.hasClickBypass) { showToast(t('toast.alreadyOwned')); return; }
     if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     if (el.clickBypassBtn) el.clickBypassBtn.disabled = true;
     try {
@@ -1707,23 +1858,23 @@
       const data = await resp.json();
       if (data && data.error === 'already_owned') {
         state.hasClickBypass = true; saveState(); refreshAll();
-        showToast('Уже куплено ✓');
+        showToast(t('toast.alreadyOwned'));
         return;
       }
       if (!data || !data.ok || !data.link) throw new Error('no_link');
       tg.openInvoice(data.link, (status) => {
         if (status === 'paid') {
           // Flag lands via checkin and flips the button to "Куплено".
-          showToast('Оплата принята — открываем клик-апгрейды…', 4000);
+          showToast(t('toast.payClickBypass'), 4000);
           pollPaidCredit();
         } else {
           if (el.clickBypassBtn) el.clickBypassBtn.disabled = false;
-          if (status === 'failed') showToast('Оплата не прошла — попробуй ещё раз');
+          if (status === 'failed') showToast(t('toast.payFailed'));
         }
       });
     } catch (e) {
       if (el.clickBypassBtn) el.clickBypassBtn.disabled = false;
-      showToast('Не удалось создать счёт — попробуй позже');
+      showToast(t('toast.invoiceFail'));
     }
   }
 
@@ -1739,7 +1890,7 @@
   // one already paid-unlocked; the client also aborts if it got unlocked
   // organically (enough clicks) between render and tap.
   async function buyUpgradeSkip(u) {
-    if (upgradeUnlocked(u)) { showToast('Уже разблокировано ✓'); refreshAll(); return; }
+    if (upgradeUnlocked(u)) { showToast(t('toast.alreadyUnlocked')); refreshAll(); return; }
     if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     try {
       const resp = await fetch(CREATE_UPGRADE_SKIP_INVOICE_URL, {
@@ -1748,19 +1899,19 @@
         body: JSON.stringify({ initData: tg.initData, upgradeId: u.id }),
       });
       const data = await resp.json();
-      if (data && data.error === 'already_owned') { addPaidUnlock(u.id); showToast('Уже разблокировано ✓'); return; }
+      if (data && data.error === 'already_owned') { addPaidUnlock(u.id); showToast(t('toast.alreadyUnlocked')); return; }
       if (!data || !data.ok || !data.link) throw new Error('no_link');
       tg.openInvoice(data.link, (status) => {
         if (status === 'paid') {
           // The unlock lands via checkin (paidUnlockedUpgrades); nudge checkins.
-          showToast(`Оплата принята — открываем «${u.name}»…`, 4000);
+          showToast(t('toast.payUpgradeSkip', { name: itemName(u) }), 4000);
           pollPaidCredit();
         } else if (status === 'failed') {
-          showToast('Оплата не прошла — попробуй ещё раз');
+          showToast(t('toast.payFailed'));
         }
       });
     } catch (e) {
-      showToast('Не удалось создать счёт — попробуй позже');
+      showToast(t('toast.invoiceFail'));
     }
   }
 
@@ -2012,16 +2163,16 @@
     if (!el.refEventBanner) return;
     if (!refEventInfo || !refEventInfo.active) { el.refEventBanner.hidden = true; return; }
     const mult = refEventInfo.multiplier || 1;
-    let text = `🎉 Награда за друзей ×${mult}`;
+    let text = t('evt.refReward', { mult });
     if (refEventInfo.endAt) {
       const remain = refEventInfo.endAt - Date.now();
       if (remain <= 0) { el.refEventBanner.hidden = true; refEventInfo = null; return; }
       const hh = String(Math.floor(remain / 3600000)).padStart(2, '0');
       const mm = String(Math.floor((remain % 3600000) / 60000)).padStart(2, '0');
       const ss = String(Math.floor((remain % 60000) / 1000)).padStart(2, '0');
-      text += ` · осталось ${hh}:${mm}:${ss}`;
+      text += ' · ' + t('evt.remain', { t: `${hh}:${mm}:${ss}` });
     }
-    text += ' · зови друзей!';
+    text += ' · ' + t('evt.callFriends');
     el.refEventBannerText.textContent = text;
     el.refEventBanner.hidden = false;
   }
@@ -2049,7 +2200,7 @@
         <div class="item-icon">${disp.icon}</div>
         <div class="item-info">
           <div class="item-name">${disp.name}</div>
-          <div class="item-sub">${formatNum(buildingCps(b))} печ/сек за шт.</div>
+          <div class="item-sub">${t('bld.persecEach', { n: formatNum(buildingCps(b)) })}</div>
         </div>
         <div class="item-count">${count}</div>
         <div class="item-cost">${formatNum(cost)} 🍪</div>
@@ -2067,29 +2218,29 @@
     const peak = state.maxActiveFriendsEver || 0;
     const unlocked = peak >= b.unlockFriends;
     const placed = count >= 1;
-    const tip = `Доступно за ${b.unlockFriends} активных друзей`;
+    const tip = t('ref.buildingLocked', { n: b.unlockFriends });
     const card = document.createElement('button');
 
     let subText, costHtml;
     if (placed) {
       card.className = 'item-card referral placed';
-      subText = `${formatNum(buildingCps(b))} печ/сек`;
-      costHtml = '<div class="item-cost referral-tag">🫶 дар друзей</div>';
+      subText = t('ref.placedSub', { n: formatNum(buildingCps(b)) });
+      costHtml = `<div class="item-cost referral-tag">${t('ref.gift')}</div>`;
     } else if (unlocked) {
       card.className = 'item-card referral ready';
-      subText = 'Готово к установке — бесплатно';
-      costHtml = '<div class="item-cost referral-place">Поставить</div>';
+      subText = t('ref.ready');
+      costHtml = `<div class="item-cost referral-place">${t('unlock.place')}</div>`;
     } else {
       card.className = 'item-card disabled referral locked';
       card.title = tip;
       subText = tip;
-      costHtml = `<div class="item-cost referral-locked">🔒 ${b.unlockFriends} друзей</div>`;
+      costHtml = `<div class="item-cost referral-locked">🔒 ${b.unlockFriends} ${friendWord(b.unlockFriends)}</div>`;
     }
 
     card.innerHTML = `
       <div class="item-icon">${b.icon}</div>
       <div class="item-info">
-        <div class="item-name">${b.name}</div>
+        <div class="item-name">${itemName(b)}</div>
         <div class="item-sub">${subText}</div>
       </div>
       <div class="item-count">${count}</div>
@@ -2115,7 +2266,7 @@
     card.innerHTML = `
       <div class="item-icon">${b.icon}</div>
       <div class="item-info">
-        <div class="item-name">${b.name}</div>
+        <div class="item-name">${itemName(b)}</div>
         <div class="item-sub">${tip}</div>
       </div>
       <div class="item-count">${count || 0}</div>
@@ -2150,7 +2301,7 @@
     // explains why the denominator jumps after an ascension (new tier unlocked).
     const progress = document.createElement('div');
     progress.className = 'upgrade-progress';
-    progress.innerHTML = `🏆 Апгрейды (тир ${displayTier()}): <b>${boughtTotal}</b> / ${totalCount}`;
+    progress.innerHTML = t('up.progress', { t: displayTier(), b: boughtTotal, total: totalCount });
     el.upgradesList.appendChild(progress);
 
     // --- "Доступно" — только НЕ купленные апгрейды, сгруппированы по категориям.
@@ -2198,7 +2349,7 @@
       const boughtCount = categoryAll.filter(u => state.upgrades[u.id]).length;
       const header = document.createElement('div');
       header.className = 'section-header';
-      header.textContent = `${CATEGORY_LABELS[category]} (${boughtCount}/${categoryAvailableTotal})`;
+      header.textContent = `${t('cat.' + category)} (${boughtCount}/${categoryAvailableTotal})`;
       el.upgradesList.appendChild(header);
 
       // Free ad-view click-bypass progress: shown ONCE per the "click" section
@@ -2242,7 +2393,7 @@
           card.innerHTML = `
             <div class="upgrade-icon">🔒</div>
             <div class="item-info">
-              <div class="upgrade-name">${u.name}</div>
+              <div class="upgrade-name">${itemName(u)}</div>
               <div class="upgrade-desc">${lockReason}</div>
             </div>
             ${skipHtml}
@@ -2260,8 +2411,8 @@
           card.innerHTML = `
             <div class="upgrade-icon">${u.icon}</div>
             <div class="item-info">
-              <div class="upgrade-name">${u.name}</div>
-              <div class="upgrade-desc">${u.desc}</div>
+              <div class="upgrade-name">${itemName(u)}</div>
+              <div class="upgrade-desc">${upgradeDescText(u)}</div>
               <div class="upgrade-effect">${upgradeEffectText(u)}</div>
             </div>
             <div class="upgrade-cost">${formatNum(u.cost)} 🍪</div>
@@ -2276,10 +2427,10 @@
       const hint = document.createElement('div');
       hint.className = 'empty-hint';
       hint.textContent = boughtTotal === 0
-        ? 'Апгрейды появятся по мере роста производства'
+        ? t('up.emptyGrow')
         : boughtTotal >= totalCount
-          ? '🎉 Все апгрейды куплены!'
-          : 'Пока всё доступное куплено — новое откроется по мере роста производства';
+          ? t('up.emptyAll')
+          : t('up.emptyDone');
       el.upgradesList.appendChild(hint);
     }
 
@@ -2292,7 +2443,7 @@
       head.type = 'button';
       head.className = 'completed-header';
       head.setAttribute('aria-expanded', String(completedExpanded));
-      head.innerHTML = `<span class="chevron">▸</span><span>Выполнено (${boughtTotal})</span>`;
+      head.innerHTML = `<span class="chevron">▸</span><span>${t('up.completed', { n: boughtTotal })}</span>`;
       section.appendChild(head);
 
       const body = document.createElement('div');
@@ -2304,7 +2455,7 @@
         if (boughtInCat.length === 0) continue;
         const ch = document.createElement('div');
         ch.className = 'section-header';
-        ch.textContent = CATEGORY_LABELS[category];
+        ch.textContent = t('cat.' + category);
         inner.appendChild(ch);
         for (const u of boughtInCat) {
           const card = document.createElement('div');
@@ -2313,8 +2464,8 @@
           card.innerHTML = `
             <div class="upgrade-icon">✅</div>
             <div class="item-info">
-              <div class="upgrade-name">${u.name}</div>
-              <div class="upgrade-desc">${u.desc}</div>
+              <div class="upgrade-name">${itemName(u)}</div>
+              <div class="upgrade-desc">${upgradeDescText(u)}</div>
             </div>
           `;
           inner.appendChild(card);
@@ -2383,15 +2534,15 @@
 
   function renderStats() {
     const rows = [
-      ['Всего испечено', formatNum(state.totalBaked)],
-      ['Кликов сделано', formatNum(state.totalClicks)],
-      ['Печенек в секунду', formatNum(getCps())],
-      ['Сила клика', formatNum(getClickPower())],
-      ['Апгрейдов клика', `${countBoughtUpgrades('click')}/${CLICK_UPGRADES_TOTAL}`],
-      ['Зданий всего', Object.values(state.buildings).reduce((a, c) => a + c, 0)],
-      ['Апгрейдов куплено', Object.keys(state.upgrades).length],
-      ['Дней подряд', state.dailyStreak || 0],
-      ['Вознесений', state.ascensionCount || 0],
+      [t('stat.totalBaked'), formatNum(state.totalBaked)],
+      [t('stat.clicks'), formatNum(state.totalClicks)],
+      [t('stat.cps'), formatNum(getCps())],
+      [t('stat.clickPower'), formatNum(getClickPower())],
+      [t('stat.clickUpg'), `${countBoughtUpgrades('click')}/${CLICK_UPGRADES_TOTAL}`],
+      [t('stat.buildings'), Object.values(state.buildings).reduce((a, c) => a + c, 0)],
+      [t('stat.upgrades'), Object.keys(state.upgrades).length],
+      [t('stat.streak'), state.dailyStreak || 0],
+      [t('stat.ascensions'), state.ascensionCount || 0],
     ];
     el.statsList.innerHTML = rows.map(([k, v]) => `<div class="stat-row"><span>${k}</span><span>${v}</span></div>`).join('');
 
@@ -2688,12 +2839,12 @@
 
   function placeReferralBuilding(b) {
     const peak = state.maxActiveFriendsEver || 0;
-    if (peak < b.unlockFriends) { showToast(`Доступно за ${b.unlockFriends} активных друзей`); haptic('light'); return; }
+    if (peak < b.unlockFriends) { showToast(t('ref.buildingLocked', { n: b.unlockFriends })); haptic('light'); return; }
     if (state.buildings[b.id] >= 1) return; // unique — already placed
     state.buildings[b.id] = 1;
     if (state.referralOffered) state.referralOffered[b.id] = true;
     haptic('heavy');
-    showToast(`${b.icon} ${b.name} установлена!`);
+    showToast(t('toast.buildingPlaced', { icon: b.icon, name: itemName(b) }));
     refreshAll();
   }
 
@@ -2721,8 +2872,8 @@
   function showUnlockModal(b) {
     pendingUnlockBuilding = b;
     el.unlockIcon.textContent = b.icon;
-    el.unlockName.textContent = b.name;
-    el.unlockDesc.textContent = `Награда за ${b.unlockFriends} активных друзей. Ставится бесплатно и печёт вместе с твоей армией!`;
+    el.unlockName.textContent = itemName(b);
+    el.unlockDesc.textContent = t('ref.unlockDesc', { n: b.unlockFriends });
     el.unlockModal.classList.add('show');
     haptic('heavy');
   }
@@ -2812,7 +2963,7 @@
   function onPrestigeBannerClick() {
     if (prestigeBannerState() !== 'available') {
       // 'soon' — no ascend yet; nudge toward finishing the last purchases.
-      showToast(`Осталось: ${remainingContentLabel()} — купи, и откроется вознесение`, 3500);
+      showToast(t('toast.prestigeSoonNudge', { rest: remainingContentLabel() }), 3500);
       haptic('light');
       return;
     }
@@ -2841,15 +2992,15 @@
     const peak = state.maxActiveFriendsEver || 0;
     const unlocked = peak >= b.unlockFriends;
     el.rewardTeaser.classList.toggle('ready', unlocked);
-    el.rewardTeaserTitle.textContent = b.name;
+    el.rewardTeaserTitle.textContent = itemName(b);
     el.rewardTeaserFill.style.width = Math.min(100, peak / b.unlockFriends * 100) + '%';
     if (unlocked) {
-      el.rewardTeaserSub.textContent = 'Открыта! Нажми, чтобы поставить';
-      el.rewardTeaserCta.textContent = 'Поставить';
+      el.rewardTeaserSub.textContent = t('teaser.readySub');
+      el.rewardTeaserCta.textContent = t('teaser.readyCta');
     } else {
       const n = b.unlockFriends - peak;
-      el.rewardTeaserSub.textContent = `Ещё ${n} ${friendWord(n)} — особое здание`;
-      el.rewardTeaserCta.textContent = 'Позвать';
+      el.rewardTeaserSub.textContent = t('teaser.sub', { n, friends: friendWord(n) });
+      el.rewardTeaserCta.textContent = t('teaser.cta');
     }
   }
 
@@ -2879,7 +3030,7 @@
     state.upgrades[u.id] = true;
     u.effect(state);
     haptic('rigid');
-    showToast(`Куплено: ${u.name}`);
+    showToast(t('toast.boughtNamed', { name: itemName(u) }));
     refreshAll();
     if (startRect) flyUpgradeToCompleted(u, startRect);
     // Tutorial step 2: the one and only offline-mechanic nudge, right after the
@@ -2889,7 +3040,7 @@
     if (isFirstUpgrade && !t.offlineHintDone) {
       t.offlineHintDone = true;
       saveState();
-      setTimeout(() => showToast('🍪 Печеньки копятся, даже когда ты вышел — загляни попозже за добычей', 5000), 1500);
+      setTimeout(() => showToast(t('toast.offlineHint'), 5000), 1500);
     }
   }
 
@@ -2945,7 +3096,7 @@
   }
 
   async function resetProgress() {
-    if (!(await confirmDialog('Точно сбросить весь прогресс?'))) return;
+    if (!(await confirmDialog(t('confirm.reset')))) return;
     backupCurrentState();
     state = defaultState();
     saveState();
@@ -2973,12 +3124,12 @@
       const bonusType = Math.random() < 0.5 ? 'frenzy' : 'bonus';
       if (bonusType === 'frenzy') {
         applyFrenzy();
-        showToast('🔥 Безумие печенья! x7 на 30 сек');
+        showToast(t('toast.frenzy'));
       } else {
         const bonus = Math.max(getCps() * 60, 50);
         state.cookies += bonus;
         state.totalBaked += bonus;
-        showToast(`✨ Золотое печенье! +${formatNum(bonus)}`);
+        showToast(t('toast.golden', { n: formatNum(bonus) }));
       }
       haptic('heavy');
       gc.remove();
