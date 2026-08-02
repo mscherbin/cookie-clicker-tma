@@ -186,3 +186,7 @@ INSERT OR IGNORE INTO config (key, value) VALUES
 --   ALTER TABLE users ADD COLUMN ad_click_bypass_views INTEGER NOT NULL DEFAULT 0;
 -- Secret for the reward callback lives in a Worker secret, not here:
 --   wrangler secret put ADSGRAM_REWARD_SECRET
+
+-- NOTE: Channel auto-posting (SMM) lives in a SEPARATE worker — see ../smm
+-- (its own wrangler.toml + schema.sql). The scheduled_posts table and the
+-- channel_id / autopost_enabled config rows are defined there, not here.

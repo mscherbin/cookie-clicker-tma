@@ -1,0 +1,61 @@
+{
+  "_comment": "2-недельный контент-план канала Cookie Clicker (RU+EN). day = смещение в днях от START (см. seed-posts.mjs). hour = час публикации по локальному времени машины, где запускается скрипт. text = тело поста (parse_mode HTML: разрешены <b>). Кнопка-CTA добавляется скриптом по умолчанию; чтобы убрать — поставьте \"button\": false. Первый элемент (day 0, pin:true) — закреп, его нужно закрепить в канале руками после публикации.",
+  "posts": [
+    {
+      "day": 0, "hour": 12, "pin": true,
+      "text": "🍪 <b>Добро пожаловать в Печеньковую Империю!</b>\n\nЗдесь мы печём триллионы печенек, деремся за топ и зовём друзей в армию.\n\nЧто ты получишь:\n⚡ Анонсы Печеньковых часов ×2 — не пропусти удвоение\n🏆 Топ игроков недели и легенды лидерборда\n👑 Гайды: как быстрее вознестись и открыть Золотой век\n🤝 Движ: зови друзей → каждый даёт тебе вечный буст\n\n▶️ Играть в один тап — жми кнопку ниже 👇\n\n——————————————\n🍪 <b>Welcome to the Cookie Empire!</b>\n⚡ ×2 Cookie Hour alerts · 🏆 Weekly top players · 👑 Ascension guides · 🤝 Invite your army\n▶️ Play in one tap 👇"
+    },
+    {
+      "day": 1, "hour": 18,
+      "text": "👑 <b>Гайд: первые 10 минут в Cookie Clicker</b>\n\n1️⃣ Тапай печеньку — это твои первые крошки\n2️⃣ Накопил — бери первое здание (Курсор), оно печёт за тебя\n3️⃣ Правило простое: покупай самое дорогое здание, что можешь позволить\n4️⃣ Апгрейды множат доход, а не складывают — не пропускай\n5️⃣ Закрыл игру? Печеньки капают даже офлайн 💤\n\n▶️ Проверить на себе 👇\n\n——————————————\n👑 <b>Guide: your first 10 minutes</b>\n1️⃣ Tap the cookie 2️⃣ Buy your first building 3️⃣ Always buy the priciest one you can afford 4️⃣ Upgrades multiply, not add 5️⃣ Cookies pile up even offline 💤\n▶️ Try it 👇"
+    },
+    {
+      "day": 2, "hour": 18,
+      "text": "🤝 <b>Один друг = вечный буст. Не разовый — НАВСЕГДА.</b>\n\nВ Cookie Clicker есть «Печенькина армия»: каждый друг, которого ты позвал, постоянно множит твоё производство. 10 друзей → +33%. 25 → уже +63% 🚀\n\nА на 10 активных друзьях открывается особое здание — 🫶 Пекарня дружбы, которую нельзя купить за печеньки. Только собрать армию.\n\nНе жадничай — зови своих 😎 👇\n\n——————————————\n🤝 <b>One friend = a permanent boost, forever.</b> Your Cookie Army multiplies production for good. 10 friends → +33%, 25 → +63% 🚀 Reach 10 to unlock the special Friendship Bakery 🫶 👇"
+    },
+    {
+      "day": 3, "hour": 19,
+      "text": "😄 Я: «закрою игру на минутку»\n\nОфлайн-доход через 3 часа: 🍪🍪🍪 47 миллиардов печенек\n\nIdle-игры такие idle-игры. Загляни — тебя ждёт добыча 💤 👇\n\n——————————————\n😄 Me: “I’ll close it for a sec.” Offline income 3 hours later: 47B cookies. Come collect your loot 💤 👇"
+    },
+    {
+      "day": 4, "hour": 18,
+      "text": "⚡ <b>Печеньковые выходные на подходе!</b>\n\nВесь уикенд — ×1.5 к производству и вдвое чаще золотые печеньки 🥇 А если поймаешь ещё и Печеньковый час — множители стекаются.\n\nЗайди в выходные и качни прогресс, пока идёт бонус 👇\n\n——————————————\n⚡ <b>Cookie Weekend incoming!</b> All weekend: ×1.5 production + twice as many golden cookies 🥇 Multipliers stack with the Cookie Hour. Hop in while the bonus is live 👇"
+    },
+    {
+      "day": 5, "hour": 13,
+      "text": "🏆 <b>Покажи свой cps!</b>\n\nСколько печенек в секунду ты выжимаешь? Скинь скрин в комментах 👇 Соберём народный рейтинг канала и найдём первых легенд.\n\nСамые сочные цифры закрепим 😏\n\n——————————————\n🏆 <b>Show your cps!</b> Drop a screenshot of your cookies-per-second in the comments 👇 Let’s find the channel’s first legends."
+    },
+    {
+      "day": 6, "hour": 18,
+      "text": "🌟 <b>А ты дошёл до Золотого века?</b>\n\nКогда напечёшь достаточно — можно ВОЗНЕСТИСЬ: сбросить прогресс в обмен на небесные крошки. Каждая крошка = +1% к производству навсегда.\n\nА после первого вознесения мир меняется: фон золотой, печенька — шоколадная 🍫, открывается 10 новых зданий Золотого века.\n\nДоберись сам 😏 👇\n\n——————————————\n🌟 <b>Reached the Golden Age yet?</b> Ascend, trade progress for heavenly crumbs (+1% forever each). After your first ascension the cookie turns to chocolate 🍫 and 10 new buildings unlock 👇"
+    },
+    {
+      "day": 7, "hour": 19,
+      "text": "🏆 <b>Топ игроков недели</b>\n\nЛучшие пекари недели по производству печенек. Хочешь оказаться здесь? Строй здания, бери апгрейды и зови армию — cps растёт быстрее всего вместе.\n\n<i>(скрин лидерборда прикрепим при публикации)</i>\n\nВрывайся в топ 👇\n\n——————————————\n🏆 <b>Top players of the week</b> — the best bakers by production. Want in? Build, upgrade, and rally your army 👇"
+    },
+    {
+      "day": 8, "hour": 18,
+      "text": "👑 <b>Титулы: от Общительной печеньки до Императора</b>\n\nЗа собранную армию друзей ты получаешь титулы:\n🍪 <b>Общительная печенька</b> — 25 друзей\n⭐ <b>Легенда Печенек</b> — 50 друзей\n👑 <b>Император Печенек</b> — 100 друзей\n\nТитул считается по пику — не пропадает, даже если друг ушёл в неактив. Какой у тебя? 👇\n\n——————————————\n👑 <b>Titles: from Social Cookie to Emperor.</b> 25 friends → 🍪 Social Cookie, 50 → ⭐ Cookie Legend, 100 → 👑 Cookie Emperor. Based on your peak — it never regresses. What’s yours? 👇"
+    },
+    {
+      "day": 9, "hour": 18,
+      "text": "🤝 <b>Челлендж: кто соберёт армию быстрее?</b>\n\nУсловие простое — зови друзей в игру. У кого на этой неделе больше всех новых бойцов в «Печенькиной армии», того отметим в канале как Героя недели 🏅\n\nСсылка на приглашение — прямо в игре, кнопка «Позвать друга». Погнали 👇\n\n——————————————\n🤝 <b>Challenge: grow your army fastest.</b> Recruit the most new friends this week → get featured as Hero of the Week 🏅 Invite link is in-game. Go 👇"
+    },
+    {
+      "day": 10, "hour": 19,
+      "text": "😄 Сколько у тебя зданий? Голосуй 👇 и пиши в комментах, на каком ты тире.\n\n🍪 1–10\n🍪🍪 11–20\n🍪🍪🍪 21+\n\n<i>(опрос добавим при публикации)</i>\n\n——————————————\n😄 How many buildings do you own? Vote 👇 and tell us your tier in the comments."
+    },
+    {
+      "day": 11, "hour": 18,
+      "text": "⚡ <b>Не забывай про ежедневную награду!</b>\n\nЗаходи каждый день — стрик растёт, а награда вместе с ним: на 7-й день подряд это уже +90% сверху 🔥 Пропустил день — стрик сгорает, так что дисциплина решает.\n\nЗабери сегодняшнюю 👇\n\n——————————————\n⚡ <b>Don’t skip your daily reward!</b> Log in daily — your streak grows and so does the bonus: up to +90% on day 7 🔥 Miss a day and it resets. Claim today’s 👇"
+    },
+    {
+      "day": 12, "hour": 18,
+      "text": "🌟 <b>Что в разработке</b>\n\nМы постоянно докидываем контент: новые здания, апгрейды, события и бусты. Идеи и баг-репорты кидай в комменты — реально читаем и внедряем ❤️\n\nЧего тебе не хватает в игре прямо сейчас? 👇\n\n——————————————\n🌟 <b>What’s cooking</b> — we ship new buildings, upgrades, events and boosts constantly. Drop ideas & bug reports in the comments ❤️ What do you miss most right now? 👇"
+    },
+    {
+      "day": 13, "hour": 19,
+      "text": "📊 <b>Итоги недели + Герой недели</b>\n\nСпасибо всем, кто пёк, звал друзей и рубился за топ 🙌 Отмечаем тех, кто больше всех вырастил свою армию и cps за неделю.\n\n<i>(имена/скрины добавим при публикации)</i>\n\nНовая неделя — новый шанс попасть сюда. Печём дальше 🍪 👇\n\n——————————————\n📊 <b>Week wrap-up + Hero of the Week.</b> Thanks to everyone who baked, invited and climbed 🙌 New week, new shot at the top. Keep baking 🍪 👇"
+    }
+  ]
+}

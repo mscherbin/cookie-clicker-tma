@@ -1,0 +1,20 @@
+name = "cookie-clicker-tma-smm"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# Own cron — publishes any due posts. 15 min matches the game worker's cadence;
+# tighten if you need finer scheduling granularity.
+[triggers]
+crons = ["*/15 * * * *"]
+
+# Same D1 as the game worker: reads the shared `config` table (channel_id /
+# autopost_enabled) and owns the `scheduled_posts` table. If you'd rather fully
+# isolate the data, point this at a separate database and apply schema.sql there.
+[[d1_databases]]
+binding = "DB"
+database_name = "cookie-clicker-analytics"
+database_id = "0d3bf956-efce-4132-967b-44c62833fcca"
+
+# Secrets (set with `wrangler secret put`, never commit):
+#   BOT_TOKEN  — same bot token as the game worker (posts as the bot)
+#   ADMIN_KEY  — gates every /admin/* endpoint
