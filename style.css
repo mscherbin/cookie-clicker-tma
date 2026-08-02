@@ -997,6 +997,21 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
 .ms-row.done .ms-status { color: #7bd88f; }
 .ms-next { font-size: 12px; color: var(--hint); margin-top: 10px; text-align: center; }
 
+/* === "Магазин" tab: paid boosts card (gold-accented to signal Stars spend) + general stats card === */
+.shop-card, .stats-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.shop-card {
+  border-color: rgba(255, 209, 102, 0.35);
+  background: linear-gradient(180deg, rgba(255, 209, 102, 0.06), var(--card));
+}
+.shop-title { font-size: 15px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
+.shop-desc { font-size: 12px; color: var(--hint); margin-bottom: 6px; }
+
 /* Paid "remove offline cap 24h" boost button (in the army/offline card) */
 .nocap-btn {
   width: 100%;

@@ -1454,18 +1454,12 @@
     pushCloudBtn: document.getElementById('pushCloudBtn'),
     pullCloudBtn: document.getElementById('pullCloudBtn'),
     restoreBackupBtn: document.getElementById('restoreBackupBtn'),
-    inviteBtn: document.getElementById('inviteBtn'),
-    armyCount: document.getElementById('armyCount'),
-    armyBoost: document.getElementById('armyBoost'),
-    armyOfflineCap: document.getElementById('armyOfflineCap'),
-    armyOfflineLabel: document.getElementById('armyOfflineLabel'),
     nocapBtn: document.getElementById('nocapBtn'),
     boost2xBtn: document.getElementById('boost2xBtn'),
     permProdBtn: document.getElementById('permProdBtn'),
     clickBypassBtn: document.getElementById('clickBypassBtn'),
     playerProfile: document.getElementById('playerProfile'),
-    titleTrack: document.getElementById('titleTrack'),
-    titleNext: document.getElementById('titleNext'),
+    fsOfflineLabel: document.getElementById('fsOfflineLabel'),
     rewardBurst: document.getElementById('rewardBurst'),
     rewardBurstAmount: document.getElementById('rewardBurstAmount'),
   };
@@ -1918,20 +1912,10 @@
       }
     }
 
-    const army = state.activeReferrals || 0;
-    el.armyCount.textContent = formatNum(army);
-    el.armyBoost.textContent = `+${(referralBoost(army) * 100).toFixed(1).replace(/\.0$/, '')}%`;
-    // Offline row is boost-aware: while the paid no-cap boost is live, show its
-    // countdown here (the transparency slot); otherwise the normal full-rate cap.
+    // Referral stats (friends / boost / offline timer) moved to the "Друзья"
+    // tab (renderFriendsTab). Here in the shop we only need the no-cap boost
+    // countdown to label its button.
     const boostLeft = (state.boostExpiresAt || 0) - Date.now();
-    if (boostLeft > 0) {
-      if (el.armyOfflineLabel) el.armyOfflineLabel.textContent = '🚀 Офлайн без ограничений';
-      el.armyOfflineCap.textContent = `ещё ${fmtHM(boostLeft)}`;
-    } else {
-      if (el.armyOfflineLabel) el.armyOfflineLabel.textContent = 'Офлайн на полной скорости';
-      const capTotalMin = Math.round(getOfflineCapHours(army) * 60);
-      el.armyOfflineCap.textContent = `${Math.floor(capTotalMin / 60)}ч ${capTotalMin % 60}мин`;
-    }
     if (el.nocapBtn) el.nocapBtn.textContent = boostLeft > 0
       ? `Продлить ещё на 24ч · ${NOCAP_BOOST_STARS} ⭐`
       : `🚀 Снять кап офлайна на 24ч · ${NOCAP_BOOST_STARS} ⭐`;
@@ -1961,7 +1945,6 @@
       }
     }
 
-    renderTitles();
     el.syncStatus.textContent = cloudStorageStatusText();
   }
 
@@ -1999,58 +1982,44 @@
   function buildingWord(n) { return pluralRu(n, 'здание', 'здания', 'зданий'); }
   function upgradeWord(n) { return pluralRu(n, 'апгрейд', 'апгрейда', 'апгрейдов'); }
 
-  // Referral-title profile badge + threshold progress track. Everything keys
-  // off the peak army size (maxActiveFriendsEver), so a title/track position
-  // never regresses when a friend goes inactive.
-  function renderTitles() {
-    if (!el.titleTrack) return;
-    const peak = state.maxActiveFriendsEver || 0;
-    const cur = titleFor(peak);
-    const nt = nextTitle(peak);
-    const lastTh = TITLES[TITLES.length - 1].threshold;
-
-    const badge = cur
-      ? `<span class="title-badge">${cur.icon} ${cur.name}</span>`
-      : `<span class="title-badge title-badge-none">Пока без титула</span>`;
-    // Prestige-tier milestone title (tiers 5 & 10), shown next to the referral one.
-    const pt = prestigeTitleForTier(displayTier());
-    const prestigeBadge = pt ? `<span class="title-badge title-badge-prestige">${pt.icon} ${pt.name}</span>` : '';
-    el.playerProfile.innerHTML = `<span class="pp-name">👤 ${escapeHtml(ownDisplayName())}</span>${prestigeBadge}${badge}`;
-
-    const fillPct = Math.min(100, peak / lastTh * 100);
-    el.titleTrack.innerHTML =
-      `<div class="track-rail"><div class="track-fill" style="width:${fillPct}%"></div>` +
-      TITLES.map(t => {
-        const on = peak >= t.threshold;
-        const isNext = nt && nt.threshold === t.threshold;
-        return `<div class="track-node${on ? ' on' : ''}${isNext ? ' next' : ''}" style="left:${t.threshold / lastTh * 100}%">` +
-          `<span class="track-dot">${on ? t.icon : '🔒'}</span>` +
-          `<span class="track-cap">${t.threshold}</span></div>`;
-      }).join('') +
-      `</div>`;
-
-    el.titleNext.textContent = nt
-      ? `Ещё ${nt.threshold - peak} ${friendWord(nt.threshold - peak)} до «${nt.name}»`
-      : 'Все титулы открыты! 👑';
-  }
-
-  // "Друзья" tab: the player's personal referral payoff (Priority 1) + the full
-  // milestone track (Priority 2). Live figures come straight from state/formulas
-  // so it matches the "Печенькина армия" card on the stats tab.
+  // "Друзья" tab: player profile (name + titles, moved here from the old army
+  // card) + personal referral payoff (Priority 1) + the full milestone track
+  // (Priority 2). Figures come straight from state/formulas.
   function renderFriendsTab() {
     if (!el.fsFriends) return;
     const army = state.activeReferrals || 0;
     const peak = state.maxActiveFriendsEver || 0;
 
+    // Profile line (moved from the removed «Печенькина армия» card): name +
+    // earned titles (referral title by peak friends + prestige-tier milestone).
+    if (el.playerProfile) {
+      const cur = titleFor(peak);
+      const refBadge = cur
+        ? `<span class="title-badge">${cur.icon} ${cur.name}</span>`
+        : `<span class="title-badge title-badge-none">Пока без титула</span>`;
+      const pt = prestigeTitleForTier(displayTier());
+      const prestigeBadge = pt ? `<span class="title-badge title-badge-prestige">${pt.icon} ${pt.name}</span>` : '';
+      el.playerProfile.innerHTML = `<span class="pp-name">👤 ${escapeHtml(ownDisplayName())}</span>${prestigeBadge}${refBadge}`;
+    }
+
     // Priority 1 — what you already get from invited friends.
     el.fsFriends.textContent = formatNum(army);
     el.fsBoost.textContent = `+${(referralBoost(army) * 100).toFixed(1).replace(/\.0$/, '')}%`;
-    const capMin = Math.round(getOfflineCapHours(army) * 60);
-    const baseMin = Math.round((Number.isFinite(state.offlineBaseHours) ? state.offlineBaseHours : OFFLINE_BASE_HOURS_DEFAULT) * 60);
-    const extraMin = Math.max(0, capMin - baseMin);
-    const capStr = `${Math.floor(capMin / 60)}ч ${capMin % 60}мин`;
-    const extraStr = extraMin >= 60 ? `${Math.floor(extraMin / 60)}ч ${extraMin % 60}мин` : `${extraMin}мин`;
-    el.fsOffline.textContent = extraMin > 0 ? `${capStr} · +${extraStr} за друзей` : capStr;
+    // Offline line — boost-aware: show the paid no-cap countdown while it's live
+    // (moved from the army card), otherwise the friend-extended full-rate cap.
+    const boostLeft = (state.boostExpiresAt || 0) - Date.now();
+    if (boostLeft > 0) {
+      if (el.fsOfflineLabel) el.fsOfflineLabel.textContent = '🚀 Офлайн без ограничений';
+      el.fsOffline.textContent = `ещё ${fmtHM(boostLeft)}`;
+    } else {
+      if (el.fsOfflineLabel) el.fsOfflineLabel.textContent = 'Офлайн на полной скорости';
+      const capMin = Math.round(getOfflineCapHours(army) * 60);
+      const baseMin = Math.round((Number.isFinite(state.offlineBaseHours) ? state.offlineBaseHours : OFFLINE_BASE_HOURS_DEFAULT) * 60);
+      const extraMin = Math.max(0, capMin - baseMin);
+      const capStr = `${Math.floor(capMin / 60)}ч ${capMin % 60}мин`;
+      const extraStr = extraMin >= 60 ? `${Math.floor(extraMin / 60)}ч ${extraMin % 60}мин` : `${extraMin}мин`;
+      el.fsOffline.textContent = extraMin > 0 ? `${capStr} · +${extraStr} за друзей` : capStr;
+    }
 
     // Priority 2 — full milestone track, current position + next threshold.
     const next = REF_MILESTONES.find(m => peak < m.n);
@@ -2541,7 +2510,6 @@
   el.pushCloudBtn.addEventListener('click', pushToCloud);
   el.pullCloudBtn.addEventListener('click', pullFromCloud);
   el.restoreBackupBtn.addEventListener('click', restoreBackup);
-  el.inviteBtn.addEventListener('click', inviteFriend);
   if (el.fsInviteBtn) el.fsInviteBtn.addEventListener('click', inviteFriend);
   el.dailyBadge.addEventListener('click', showDailyModal);
   el.dailyClaimBtn.addEventListener('click', claimDailyReward);
