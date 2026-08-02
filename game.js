@@ -52,6 +52,7 @@
       'shop.adLimit': '📺 Реклама на сегодня: {used}/{limit}',
       'shop.adBypassOr': 'Или бесплатно за рекламу', 'shop.adBypass': '📺 +1 просмотр к разблокировке',
       'toast.adBypassProgress': '📺 Прогресс: {views}/{target} просмотров', 'toast.adBypassUnlocked': '⚡ Клик-апгрейды открыты за рекламу!',
+      'popup.offlineTitle': '💤 Офлайн-доход', 'popup.cpsTitle': '⚡ Производство',
       'toast.adLoading': 'Загружаем рекламу…', 'toast.adReward': '📺 Награда за рекламу начислена!',
       'toast.adNoReward': 'Реклама не досмотрена — награда не начислена', 'toast.adUnavailable': 'Реклама сейчас недоступна',
       'toast.adLimitReached': 'Лимит рекламы на сегодня исчерпан ({used}/{limit})',
@@ -135,6 +136,7 @@
       'shop.adLimit': '📺 Ads today: {used}/{limit}',
       'shop.adBypassOr': 'Or unlock free by watching ads', 'shop.adBypass': '📺 +1 view toward unlock',
       'toast.adBypassProgress': '📺 Progress: {views}/{target} views', 'toast.adBypassUnlocked': '⚡ Click upgrades unlocked via ads!',
+      'popup.offlineTitle': '💤 Offline income', 'popup.cpsTitle': '⚡ Production',
       'toast.adLoading': 'Loading ad…', 'toast.adReward': '📺 Ad reward granted!',
       'toast.adNoReward': 'Ad not completed — no reward', 'toast.adUnavailable': 'Ads are unavailable right now',
       'toast.adLimitReached': 'Daily ad limit reached ({used}/{limit})',
@@ -1661,6 +1663,91 @@
     }
   }
 
+  // ---------- Contextual offers (shared state, one renderer) ----------
+  // The same boost can now be triggered from several places: the Shop, the
+  // header popups (offline timer / CPS), and upgrade cards. To keep
+  // owned/pending/daily-limit state from diverging between those places, EVERY
+  // offer button carries data-offer="<id>", is labelled/disabled by ONE render
+  // fn from shared `state`, and dispatched by ONE delegated click handler.
+  // Never hand-render an offer button's label/disabled/owned anywhere else.
+  const adLimited = () => adsUsed() >= adsLimit();
+  const OFFERS = {
+    nocap: {
+      action: buyNocapBoost,
+      render(btn) {
+        btn.textContent = (state.boostExpiresAt || 0) > Date.now()
+          ? t('shop.nocapExtend', { n: NOCAP_BOOST_STARS })
+          : t('shop.nocap', { n: NOCAP_BOOST_STARS });
+        btn.disabled = false; btn.classList.remove('owned');
+      },
+    },
+    boost2x: {
+      action: buyBoost2x,
+      render(btn) {
+        btn.textContent = (state.boost2xExpiresAt || 0) > Date.now()
+          ? t('shop.boost2xExtend', { n: PROD2X_BOOST_STARS })
+          : t('shop.boost2x', { n: PROD2X_BOOST_STARS });
+        btn.disabled = false; btn.classList.remove('owned');
+      },
+    },
+    permProd: {
+      action: buyPermProd,
+      render(btn) {
+        const owned = !!state.hasPermProdBoost;
+        btn.textContent = owned ? t('shop.permOwned') : t('shop.perm', { n: PERM_PROD_STARS });
+        btn.disabled = owned; btn.classList.toggle('owned', owned);
+      },
+    },
+    clickBypass: {
+      action: buyClickBypass,
+      render(btn) {
+        const owned = !!state.hasClickBypass;
+        btn.textContent = owned ? t('shop.clickBypassOwned') : t('shop.clickBypass', { n: CLICK_BYPASS_STARS });
+        btn.disabled = owned; btn.classList.toggle('owned', owned);
+      },
+    },
+    adNocap: {
+      action: () => watchAd('nocap'),
+      render(btn) { const lim = adLimited(); btn.textContent = lim ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adNocap'); btn.disabled = lim; },
+    },
+    adBoost2x: {
+      action: () => watchAd('boost2x'),
+      render(btn) { const lim = adLimited(); btn.textContent = lim ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adBoost2x'); btn.disabled = lim; },
+    },
+    adBypass: {
+      action: () => watchAd('click_bypass_progress'),
+      render(btn) { const lim = adLimited(); btn.textContent = lim ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adBypass'); btn.disabled = lim; },
+    },
+  };
+
+  // Re-render EVERY offer button currently mounted (Shop + open popup) from
+  // shared state, so all entry points show identical owned/pending/limit state.
+  function renderOffers() {
+    document.querySelectorAll('[data-offer]').forEach((btn) => {
+      const o = OFFERS[btn.dataset.offer];
+      if (o) o.render(btn);
+    });
+  }
+
+  // Header contextual popup: a small titled sheet with 2 relevant offers
+  // (Stars + ad). Buttons are built from the same registry, so no duplicated
+  // markup or state. offerIds e.g. ['nocap','adNocap'].
+  function openOfferPopup(titleKey, offerIds) {
+    if (!el.offerPopup) return;
+    el.offerPopupTitle.textContent = t(titleKey);
+    el.offerPopupBody.innerHTML = '';
+    offerIds.forEach((id) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = id.startsWith('ad') ? 'ad-btn' : 'nocap-btn';
+      b.dataset.offer = id;
+      el.offerPopupBody.appendChild(b);
+    });
+    renderOffers(); // label from shared state
+    el.offerPopup.classList.add('show');
+  }
+  function closeOfferPopup() { if (el.offerPopup) el.offerPopup.classList.remove('show'); }
+
   // ---------- Rendering ----------
   const el = {
     cookieCount: document.getElementById('cookieCount'),
@@ -1747,6 +1834,9 @@
     fsOfflineLabel: document.getElementById('fsOfflineLabel'),
     rewardBurst: document.getElementById('rewardBurst'),
     rewardBurstAmount: document.getElementById('rewardBurstAmount'),
+    offerPopup: document.getElementById('offerPopup'),
+    offerPopupTitle: document.getElementById('offerPopupTitle'),
+    offerPopupBody: document.getElementById('offerPopupBody'),
   };
 
   function countBoughtUpgrades(category) {
@@ -2004,6 +2094,15 @@
       header.textContent = `${CATEGORY_LABELS[category]} (${boughtCount}/${categoryAvailableTotal})`;
       el.upgradesList.appendChild(header);
 
+      // Free ad-view click-bypass progress: shown ONCE per the "click" section
+      // (above its cards), so the free alternative is visible right where the
+      // locked click cards live — not only in the Shop. Hidden once the bypass is
+      // unlocked by any path; only while a click upgrade is still click-locked.
+      if (category === 'click' && !state.hasClickBypass
+          && items.some(u => u.reqType === 'clicks' && tierUnlocked(u) && !upgradeUnlocked(u))) {
+        el.upgradesList.appendChild(buildAdBypassBlock());
+      }
+
       for (const u of items) {
         const isTeaser = teaserIds.has(u.id);
         const unlocked = upgradeUnlocked(u);
@@ -2027,13 +2126,19 @@
           card = document.createElement('div');
           card.className = 'upgrade-card locked';
           card.dataset.uid = u.id;
+          // Per-card we only offer the per-UPGRADE Stars skip (price differs per
+          // upgrade). The free ad-view path unlocks ALL click upgrades at once, so
+          // it's shown ONCE per section (below the "click" header), not per card.
+          const skipHtml = canSkip
+            ? `<button class="upgrade-skip-btn" type="button">${u.skipStars} ⭐</button>`
+            : '';
           card.innerHTML = `
             <div class="upgrade-icon">🔒</div>
             <div class="item-info">
               <div class="upgrade-name">${u.name}</div>
               <div class="upgrade-desc">${lockReason}</div>
             </div>
-            ${canSkip ? `<button class="upgrade-skip-btn" type="button">${u.skipStars} ⭐</button>` : ''}
+            ${skipHtml}
           `;
           if (canSkip) {
             card.querySelector('.upgrade-skip-btn').addEventListener('click', (e) => {
@@ -2209,65 +2314,54 @@
       }
     }
 
-    // Referral stats (friends / boost / offline timer) moved to the "Друзья"
-    // tab (renderFriendsTab). Here in the shop we only need the no-cap boost
-    // countdown to label its button.
-    const boostLeft = (state.boostExpiresAt || 0) - Date.now();
-    if (el.nocapBtn) el.nocapBtn.textContent = boostLeft > 0
-      ? t('shop.nocapExtend', { n: NOCAP_BOOST_STARS })
-      : t('shop.nocap', { n: NOCAP_BOOST_STARS });
-    if (el.boost2xBtn) el.boost2xBtn.textContent = (state.boost2xExpiresAt || 0) > Date.now()
-      ? t('shop.boost2xExtend', { n: PROD2X_BOOST_STARS })
-      : t('shop.boost2x', { n: PROD2X_BOOST_STARS });
-    if (el.permProdBtn) {
-      if (state.hasPermProdBoost) {
-        el.permProdBtn.textContent = t('shop.permOwned');
-        el.permProdBtn.disabled = true;
-        el.permProdBtn.classList.add('owned');
-      } else {
-        el.permProdBtn.textContent = t('shop.perm', { n: PERM_PROD_STARS });
-        el.permProdBtn.disabled = false;
-        el.permProdBtn.classList.remove('owned');
-      }
-    }
-    if (el.clickBypassBtn) {
-      if (state.hasClickBypass) {
-        el.clickBypassBtn.textContent = t('shop.clickBypassOwned');
-        el.clickBypassBtn.disabled = true;
-        el.clickBypassBtn.classList.add('owned');
-      } else {
-        el.clickBypassBtn.textContent = t('shop.clickBypass', { n: CLICK_BYPASS_STARS });
-        el.clickBypassBtn.disabled = false;
-        el.clickBypassBtn.classList.remove('owned');
-      }
-    }
-    // Rewarded-ad buttons: label the boost, disable both when today's cap is hit.
-    const adLimited = adsUsed() >= adsLimit();
-    // Free ad-view path to the click-bypass: progress bar next to the 100⭐ button,
-    // hidden once the bypass is unlocked by ANY path (ads or Stars).
+    // All Stars/ad offer buttons (Shop + any open header popup) are labelled and
+    // disabled by the single shared renderer, from `state` — so every entry
+    // point for a given boost shows identical owned/pending/limit state.
+    renderOffers();
+    // Free ad-view path to the click-bypass: the Shop's progress bar next to the
+    // 100⭐ button (hidden once the bypass is unlocked by ANY path). The button
+    // inside it is an offer (data-offer="adBypass"), already handled above.
     if (el.adBypassProgress) {
-      const target = state.adClickBypassTarget || AD_CLICK_BYPASS_TARGET_FALLBACK;
-      const views = Math.min(state.adClickBypassViews || 0, target);
       el.adBypassProgress.hidden = !!state.hasClickBypass;
-      if (!state.hasClickBypass) {
-        if (el.adBypassCount) el.adBypassCount.textContent = `${views} / ${target}`;
-        if (el.adBypassFill) el.adBypassFill.style.width = `${Math.round((views / target) * 100)}%`;
-        if (el.adBypassBtn) {
-          el.adBypassBtn.textContent = adLimited ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adBypass');
-          el.adBypassBtn.disabled = adLimited;
-        }
-      }
-    }
-    if (el.adNocapBtn) {
-      el.adNocapBtn.textContent = adLimited ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adNocap');
-      el.adNocapBtn.disabled = adLimited;
-    }
-    if (el.adBoost2xBtn) {
-      el.adBoost2xBtn.textContent = adLimited ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adBoost2x');
-      el.adBoost2xBtn.disabled = adLimited;
+      if (!state.hasClickBypass) renderAdBypassBar(el.adBypassCount, el.adBypassFill);
     }
 
     el.syncStatus.textContent = cloudStorageStatusText();
+  }
+
+  // Ad-view click-bypass progress, as shared data (used by the Shop's bar and by
+  // the "📺 X/Y" badge on locked click-upgrade cards). Reads shared state, so the
+  // count never diverges between the two places it's shown.
+  function adBypassProgressValues() {
+    const target = state.adClickBypassTarget || AD_CLICK_BYPASS_TARGET_FALLBACK;
+    const views = Math.min(state.adClickBypassViews || 0, target);
+    return { views, target };
+  }
+  function renderAdBypassBar(countEl, fillEl) {
+    const { views, target } = adBypassProgressValues();
+    if (countEl) countEl.textContent = `${views} / ${target}`;
+    if (fillEl) fillEl.style.width = `${Math.round((views / target) * 100)}%`;
+  }
+
+  // Builds the ad-view click-bypass progress block (same visual as the Shop's,
+  // reused on the Upgrades tab above the locked click cards). The count/bar are
+  // filled from shared state (renderAdBypassBar) and the "+1 view" button is a
+  // standard offer (data-offer="adBypass") — so it shares the Shop's daily-limit
+  // label and the one shared action. No duplicated logic, just a second mount.
+  function buildAdBypassBlock() {
+    const wrap = document.createElement('div');
+    wrap.className = 'ad-bypass-progress ad-bypass-inline';
+    wrap.innerHTML = `
+      <div class="ad-bypass-head">
+        <span>${t('shop.adBypassOr')}</span>
+        <span class="ad-bypass-count"></span>
+      </div>
+      <div class="ad-bypass-bar"><div class="ad-bypass-fill"></div></div>
+      <button class="ad-btn" type="button" data-offer="adBypass"></button>
+    `;
+    renderAdBypassBar(wrap.querySelector('.ad-bypass-count'), wrap.querySelector('.ad-bypass-fill'));
+    OFFERS.adBypass.render(wrap.querySelector('[data-offer="adBypass"]')); // shared label/disabled
+    return wrap;
   }
 
   // Language-aware "Xh Ym" from a minute count (units from the i18n table).
@@ -2850,13 +2944,21 @@
   el.dailyInviteBtn.addEventListener('click', inviteFriend);
   el.offlineClaimBtn.addEventListener('click', claimOfflineFree);
   el.offlineX2Btn.addEventListener('click', claimOfflinePaid);
-  if (el.nocapBtn) el.nocapBtn.addEventListener('click', buyNocapBoost);
-  if (el.boost2xBtn) el.boost2xBtn.addEventListener('click', buyBoost2x);
-  if (el.permProdBtn) el.permProdBtn.addEventListener('click', buyPermProd);
-  if (el.clickBypassBtn) el.clickBypassBtn.addEventListener('click', buyClickBypass);
-  if (el.adNocapBtn) el.adNocapBtn.addEventListener('click', () => watchAd('nocap'));
-  if (el.adBoost2xBtn) el.adBoost2xBtn.addEventListener('click', () => watchAd('boost2x'));
-  if (el.adBypassBtn) el.adBypassBtn.addEventListener('click', () => watchAd('click_bypass_progress'));
+  // Single delegated dispatch for EVERY offer button (Shop + header popups),
+  // so a boost triggered from any entry point runs the one shared action.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-offer]');
+    if (!btn || btn.disabled) return;
+    const o = OFFERS[btn.dataset.offer];
+    if (!o) return;
+    if (btn.closest('.offer-popup')) closeOfferPopup(); // header popup: dismiss on choice
+    o.action();
+  });
+  // Header contextual entry points: tap the offline timer / CPS number to open a
+  // 2-offer popup right where the friction is felt.
+  if (el.offlineInfoLine) el.offlineInfoLine.addEventListener('click', () => openOfferPopup('popup.offlineTitle', ['nocap', 'adNocap']));
+  if (el.cps) el.cps.addEventListener('click', () => openOfferPopup('popup.cpsTitle', ['boost2x', 'adBoost2x']));
+  if (el.offerPopup) el.offerPopup.addEventListener('click', (e) => { if (e.target === el.offerPopup) closeOfferPopup(); });
   // Tapping the backdrop = free claim (never lose offline income); ignored while
   // a payment is processing.
   el.offlineModal.addEventListener('click', (e) => {
@@ -2892,7 +2994,11 @@
   updateEventBanner();
   setInterval(updateEventBanner, 1000);
   setInterval(updateRefEventBanner, 1000);
-  setInterval(renderOfflineInfo, 1000);
+  setInterval(() => {
+    renderOfflineInfo();
+    // Keep an open header popup's offer labels fresh (extend-vs-buy, ad limit).
+    if (el.offerPopup && el.offerPopup.classList.contains('show')) renderOffers();
+  }, 1000);
   setInterval(renderBoost2xInfo, 1000);
   scheduleGolden();
 

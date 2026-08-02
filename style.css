@@ -1115,6 +1115,27 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
 }
 .ad-bypass-progress .ad-btn { margin-top: 0; }
 
+/* Contextual offer popup (opened from header offline/CPS taps). Reuses the
+   .daily-modal backdrop; its buttons are the shared offer buttons. */
+.offer-card { max-width: 320px; }
+.offer-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+.offer-body { display: flex; flex-direction: column; }
+.offer-body .nocap-btn:first-child,
+.offer-body .ad-btn:first-child { margin-top: 12px; }
+
+/* Header tap affordances: offline timer + CPS open the offer popup. */
+.cps, .offline-info { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cps:active, .offline-info:active { opacity: 0.6; }
+
+/* Ad-view click-bypass progress reused on the Upgrades tab (under the "click"
+   section header). Same card as the Shop's; a little breathing room in-list. */
+.ad-bypass-inline { margin: 2px 0 10px; }
+
 /* "Куплено" state for the one-time permanent boost — owned, not dimmed */
 .nocap-btn.owned {
   opacity: 1;
