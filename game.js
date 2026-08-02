@@ -677,6 +677,7 @@
         totalBaked: state.totalBaked,
         lifetimeCookies: lifetimeCookiesTotal(),
         crumbs: state.totalCrumbs || 0, // permanent bonus % (for the rank-badge tooltip)
+        lang: state.lang || 'en', // for localized pushes / bot replies
       }),
     })
       .then(r => r.json())

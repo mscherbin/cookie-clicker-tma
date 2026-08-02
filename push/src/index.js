@@ -80,7 +80,7 @@ function getActiveEvents(now) {
     events.push({
       id: 'happyHour',
       occurrenceKey: `${dateKey(now)}-${activeHH.startHour}`,
-      text: '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
+      msgKey: 'evt.happyHour', // localized per-user at broadcast time
     });
   }
   const we = getWeekendWindow(now);
@@ -88,7 +88,7 @@ function getActiveEvents(now) {
     events.push({
       id: 'weekend',
       occurrenceKey: dateKey(we.start),
-      text: '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
+      msgKey: 'evt.weekend',
     });
   }
   return events;
@@ -432,6 +432,9 @@ async function handleTelegramWebhook(request, env) {
     if (startParam) {
       await logEvent(env, userId, 'ref_click', startParam);
     }
+    // Localized welcome reply with the "open game" button (lang from Telegram).
+    const lang = langFromCode(msg.from.language_code);
+    await sendPush(env, userId, pt(lang, 'start.welcome'), lang);
   }
 
   return jsonResponse({ ok: true });
@@ -984,6 +987,9 @@ async function handleCheckin(request, env) {
     isPioneer: isPrestigePioneer,       // "prestige pioneer" title flag
     lifetimeCookies: Number(body.lifetimeCookies) || 0, // never-resetting total across runs (client-sent, like cps)
     crumbs: Number(body.crumbs) || 0,   // permanent bonus % (client-sent, like cps); for the rank-badge tooltip
+    // Player language for localized pushes / bot replies. Prefer the client's
+    // explicit choice (may be a manual override), else Telegram's language_code.
+    lang: (body.lang === 'ru' || body.lang === 'en') ? body.lang : (/^ru/i.test(user.language_code || '') ? 'ru' : 'en'),
   };
   // Mirroring `data` into KV metadata lets list-all operations (leaderboard,
   // the push cron, broadcasts) read every user's fields straight off list()
@@ -1078,21 +1084,60 @@ async function handleReferralLeaderboard(env) {
   });
 }
 
-function stageEarlyText() {
-  return '⏰ Печеньки скоро замедлятся! Ещё 15 минут — и офлайн-скорость выпечки упадёт в 10 раз. Успей зайти, пока печём на полной ставке.';
+// ---------- i18n for pushes / bot replies ----------
+// Player language is stored per-user in KV metadata (data.lang) on checkin, and
+// read from Telegram's language_code for the /start reply. ru* → ru, else en.
+const PUSH_STRINGS = {
+  ru: {
+    'push.early': '⏰ Печеньки скоро замедлятся! Ещё 15 минут — и офлайн-скорость выпечки упадёт в 10 раз. Успей зайти, пока печём на полной ставке.',
+    'push.piling': '🍪 Твои печеньки скучают без присмотра!{extra} Заходи, пока курсоры не разбежались.',
+    'push.pilingExtra': ' Уже накопилось ~{n} 🍪.',
+    'push.reward': '🎁 Ежедневная награда уже ждёт тебя в игре — а печеньки всё это время копились. Не заставляй бабушку печь зря!',
+    'push.openGame': '🍪 Открыть игру',
+    'evt.happyHour': '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
+    'evt.weekend': '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
+    'evt.refEvent': '🎉 Событие рефералов! Награда за приглашённых друзей ×{mult}.{tail}',
+    'evt.refEventTail': ' Успей позвать друзей!',
+    'start.welcome': '🍪 Привет! Это Cookie Clicker — пеки печеньки, прокачивай здания, возносись и зови друзей. Жми кнопку, чтобы начать!',
+  },
+  en: {
+    'push.early': '⏰ Your cookies are about to slow down! In 15 minutes your offline baking rate drops 10×. Hop in while we’re still baking at full speed.',
+    'push.piling': '🍪 Your cookies miss you!{extra} Come back before the cursors wander off.',
+    'push.pilingExtra': ' ~{n} 🍪 already piled up.',
+    'push.reward': '🎁 Your daily reward is waiting in the game — and cookies have been piling up. Don’t let grandma bake for nothing!',
+    'push.openGame': '🍪 Open game',
+    'evt.happyHour': '🎉 Cookie Hour has started! All cookies ×2 for the next hour — jump in!',
+    'evt.weekend': '🎊 Cookie Weekend has started! ×1.5 production and golden cookies twice as often — all weekend.',
+    'evt.refEvent': '🎉 Referral event! Reward for invited friends ×{mult}.{tail}',
+    'evt.refEventTail': ' Invite friends now!',
+    'start.welcome': '🍪 Hi! This is Cookie Clicker — bake cookies, upgrade buildings, ascend, and invite friends. Tap the button to start!',
+  },
+};
+function pt(lang, key, vars) {
+  const table = PUSH_STRINGS[lang === 'ru' ? 'ru' : 'en'] || PUSH_STRINGS.en;
+  let s = table[key];
+  if (s == null) s = PUSH_STRINGS.en[key];
+  if (s == null) return key;
+  if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
+function langFromCode(code) { return /^ru/i.test(code || '') ? 'ru' : 'en'; }
+
+function stageEarlyText(lang) {
+  return pt(lang, 'push.early');
 }
 
 function stagePilingText(data) {
   const approxCookies = Math.round(computeOfflineGain(STAGE_PILING_MS / 1000, data.cps || 0));
-  const cookiesLine = approxCookies > 0 ? ` Уже накопилось ~${approxCookies} 🍪.` : '';
-  return `🍪 Твои печеньки скучают без присмотра!${cookiesLine} Заходи, пока курсоры не разбежались.`;
+  const extra = approxCookies > 0 ? pt(data.lang, 'push.pilingExtra', { n: approxCookies }) : '';
+  return pt(data.lang, 'push.piling', { extra });
 }
 
-function stageRewardText() {
-  return '🎁 Ежедневная награда уже ждёт тебя в игре — а печеньки всё это время копились. Не заставляй бабушку печь зря!';
+function stageRewardText(lang) {
+  return pt(lang, 'push.reward');
 }
 
-async function sendPush(env, chatId, text) {
+async function sendPush(env, chatId, text, lang) {
   await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1100,7 +1145,7 @@ async function sendPush(env, chatId, text) {
       chat_id: chatId,
       text,
       reply_markup: {
-        inline_keyboard: [[{ text: '🍪 Открыть игру', web_app: { url: GAME_URL } }]],
+        inline_keyboard: [[{ text: pt(lang, 'push.openGame'), web_app: { url: GAME_URL } }]],
       },
     }),
   });
@@ -1116,15 +1161,15 @@ async function runPushCycle(env) {
       const elapsed = Date.now() - data.lastActiveTs;
 
       if (data.pushStage < 1 && elapsed >= STAGE_EARLY_MS) {
-        await sendPush(env, data.chatId, stageEarlyText());
+        await sendPush(env, data.chatId, stageEarlyText(data.lang), data.lang);
         data.pushStage = 1;
         await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
       } else if (data.pushStage < 2 && elapsed >= STAGE_PILING_MS) {
-        await sendPush(env, data.chatId, stagePilingText(data));
+        await sendPush(env, data.chatId, stagePilingText(data), data.lang);
         data.pushStage = 2;
         await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
       } else if (data.pushStage < 3 && elapsed >= STAGE_REWARD_MS) {
-        await sendPush(env, data.chatId, stageRewardText());
+        await sendPush(env, data.chatId, stageRewardText(data.lang), data.lang);
         data.pushStage = 3;
         await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
       }
@@ -1134,13 +1179,18 @@ async function runPushCycle(env) {
   }
 }
 
-async function broadcastToAllUsers(env, text) {
+// buildText(lang) → localized message, so each user gets it in their own
+// language (data.lang from KV metadata). One list() sweep, no per-user reads.
+async function broadcastToAllUsers(env, buildText) {
   let cursor;
   for (;;) {
     const list = await env.USERS.list({ prefix: 'user:', cursor });
     for (const k of list.keys) {
       const data = k.metadata;
-      if (data && data.chatId) await sendPush(env, data.chatId, text);
+      if (data && data.chatId) {
+        const lang = data.lang || 'en';
+        await sendPush(env, data.chatId, buildText(lang), lang);
+      }
     }
     if (list.list_complete || !list.cursor) break;
     cursor = list.cursor;
@@ -1156,7 +1206,7 @@ async function checkAndBroadcastEvents(env) {
     const already = await env.USERS.get(markerKey);
     if (already) continue;
     await env.USERS.put(markerKey, '1', { expirationTtl: 5 * 24 * 3600 });
-    await broadcastToAllUsers(env, ev.text);
+    await broadcastToAllUsers(env, (lang) => pt(lang, ev.msgKey));
   }
 
   // Referral boost event (config-driven). Announced once per occurrence,
@@ -1170,8 +1220,10 @@ async function checkAndBroadcastEvents(env) {
     const already = await env.USERS.get(markerKey);
     if (!already) {
       await env.USERS.put(markerKey, '1', { expirationTtl: 7 * 24 * 3600 });
-      const tail = cfg.refEventEnd ? ' Успей позвать друзей!' : '';
-      await broadcastToAllUsers(env, `🎉 Событие рефералов! Награда за приглашённых друзей ×${cfg.refEventMultiplier}.${tail}`);
+      await broadcastToAllUsers(env, (lang) => pt(lang, 'evt.refEvent', {
+        mult: cfg.refEventMultiplier,
+        tail: cfg.refEventEnd ? pt(lang, 'evt.refEventTail') : '',
+      }));
     }
   }
 }
