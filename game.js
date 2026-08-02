@@ -487,8 +487,9 @@
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
   const ADSGRAM_INTENT_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/adsgram-intent';
   // AdsGram rewarded-video Block ID (from the AdsGram dashboard). Platform ID
-  // 38246, bot 8767577526.
-  const ADSGRAM_BLOCK_ID = '40881';
+  // 38246, bot 8767577526. Using test block 40903 while prod block 40881 is in
+  // moderation — swap back to 40881 once it's approved/active.
+  const ADSGRAM_BLOCK_ID = '40903';
   const AD_DAILY_LIMIT_FALLBACK = 8; // used before the first checkin returns the real limit
   const PRESTIGE_CONFIRM_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/prestige/confirm';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
