@@ -667,14 +667,19 @@
     try { localStorage.setItem(BACKUP_KEY, JSON.stringify(state)); } catch (e) {}
   }
 
-  async function restoreBackup() {
+  function restoreBackup() {
     let raw;
     try { raw = localStorage.getItem(BACKUP_KEY); } catch (e) { raw = null; }
     if (!raw) { showToast('Резервной копии нет'); return; }
-    if (!(await confirmDialog('Восстановить прогресс на этом устройстве из последней резервной копии? Текущий прогресс на этом устройстве заменится.'))) return;
+    // NOTE: no confirm dialog here on purpose. Restore is a deliberate one-tap
+    // "undo" (the button is clearly labelled), and this device's Telegram client
+    // handles confirm dialogs unreliably (tg.showConfirm returned cancel even on
+    // OK), which was silently blocking recovery. Apply directly and report the
+    // restored numbers so it's obvious what came back.
     if (applyLoaded(raw, { grantOfflineProgress: false })) {
       saveState();
-      showToast('✅ Восстановлено из резервной копии');
+      refreshAll();
+      showToast(`✅ Восстановлено: ${formatNum(state.totalBaked || 0)} 🍪, тир ${(state.ascensionCount || 0) + 1}`, 5000);
     } else {
       showToast('Резервная копия повреждена');
     }
@@ -841,6 +846,18 @@
           if (Number.isFinite(data.adClickBypassViews)) state.adClickBypassViews = data.adClickBypassViews;
           if (Number.isFinite(data.adClickBypassTarget)) state.adClickBypassTarget = data.adClickBypassTarget;
           if (changed) { saveState(); renderStats(); }
+        }
+        // Prestige count is server-authoritative (grows ONLY via /prestige/confirm).
+        // Trust it as the source of truth for the local tier so the client
+        // self-heals when it's ahead of the server — e.g. after an admin rollback
+        // of an accidental ascension, or a stale cross-device save. In real
+        // Telegram the two are always in sync (ascend() sets the local count from
+        // the same /prestige/confirm response), so this is a no-op except when
+        // correcting a genuine divergence.
+        if (data && Number.isFinite(data.prestigeCount) && data.prestigeCount !== (state.ascensionCount || 0)) {
+          state.ascensionCount = data.prestigeCount;
+          saveState();
+          refreshAll();
         }
         // Channel-subscription bonus flag (server-authoritative, one-time): hides
         // the offer everywhere once claimed (or if claimed on another device).
