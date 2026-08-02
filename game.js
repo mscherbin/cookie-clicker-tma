@@ -1329,17 +1329,15 @@
   // ascension, … So displayTier = ascensionCount + 1.
   function displayTier() { return (state.ascensionCount || 0) + 1; }
 
-  // Tier "reskin": from tier 4 onward the game reuses the same buildings (same
-  // balance) but re-themed per tier, so each ascension feels fresh without new
-  // economy. A building may carry explicit `tierVariants` ({ [tier]: {name,
-  // icon} }); otherwise we fall back to a tier-tagged name («Base ур.N»). Only
-  // the display changes — cost/cps come straight from the building config.
-  const RESKIN_FROM_TIER = 4;
+  // Tier "reskin" (optional): a building MAY carry explicit `tierVariants`
+  // ({ [tier]: {name, icon} }) to show a re-themed name/icon at a given prestige
+  // tier. Without a variant it just shows its base name/icon on every tier — we
+  // deliberately do NOT append a level tag like «· ур.N» (no "level" wording on
+  // buildings). Only the display changes; cost/cps come from the building config.
   function buildingDisplay(b) {
     const dt = displayTier();
     const v = b.tierVariants && b.tierVariants[dt];
     if (v) return { name: v.name, icon: v.icon || b.icon };
-    if (dt >= RESKIN_FROM_TIER) return { name: `${b.name} · ур.${dt}`, icon: b.icon };
     return { name: b.name, icon: b.icon };
   }
 
