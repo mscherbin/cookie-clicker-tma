@@ -67,7 +67,12 @@ CREATE TABLE IF NOT EXISTS users (
   -- paid_unlocked_upgrades: comma-separated upgrade ids whose progress gate was
   -- skipped via a paid Stars purchase (per-upgrade). Applied client-side; the
   -- server owns the list. Only ids in UPGRADE_SKIP_PRICES can end up here.
-  paid_unlocked_upgrades TEXT NOT NULL DEFAULT ''
+  paid_unlocked_upgrades TEXT NOT NULL DEFAULT '',
+  -- ad_click_bypass_views: free, time-gated third path to has_click_bypass —
+  -- AD_CLICK_BYPASS_TARGET (30) ad views accumulate here and, at the target, set
+  -- the SAME has_click_bypass flag the 100⭐ purchase sets. Views share the
+  -- rewarded-ad daily limit (ads_reward_count). Server-authoritative.
+  ad_click_bypass_views INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
@@ -177,5 +182,7 @@ INSERT OR IGNORE INTO config (key, value) VALUES
 -- Migration for the existing prod DB (run once each):
 --   ALTER TABLE users ADD COLUMN ads_reward_day INTEGER NOT NULL DEFAULT 0;
 --   ALTER TABLE users ADD COLUMN ads_reward_count INTEGER NOT NULL DEFAULT 0;
+-- Free ad-view path to the click-bypass (30 views = has_click_bypass). Migration:
+--   ALTER TABLE users ADD COLUMN ad_click_bypass_views INTEGER NOT NULL DEFAULT 0;
 -- Secret for the reward callback lives in a Worker secret, not here:
 --   wrangler secret put ADSGRAM_REWARD_SECRET

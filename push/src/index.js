@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=77';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=78';
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
 const OFFLINE_FULL_RATE_SECONDS = 2 * 3600;
 const OFFLINE_RATE = 0.1;
@@ -184,6 +184,10 @@ const AD_PROD2X_DURATION_MS = 15 * 60 * 1000; // 15 min of ×2 production (paid:
 const AD_NOCAP_DURATION_MS = 2 * 3600 * 1000; // 2h of no offline cap (paid: 24h)
 const AD_INTENT_TTL_S = 600;                  // how long a "which boost" intent stays valid (also idempotency guard)
 const AD_DAILY_LIMIT = 8;                     // rewarded-ad boosts per user per UTC day
+// Free, time-gated third path to the click-bypass: this many ad views accumulate
+// into the SAME has_click_bypass flag the 100⭐ purchase sets. Views share the
+// AD_DAILY_LIMIT with the other ad boosts, so it naturally spans several days.
+const AD_CLICK_BYPASS_TARGET = 30;
 
 // Paid one-time "+10% production forever" boost. The +10% itself is applied
 // client-side; the server just owns the has_permanent_production_boost flag.
@@ -919,6 +923,7 @@ async function handleCheckin(request, env) {
   let isPrestigePioneer = false;
   let paidUnlockedUpgrades = [];
   let adsRewardsUsed = 0; // rewarded-ad boosts already used today (for the client's daily counter)
+  let adClickBypassViews = 0; // ad views accumulated toward the free click-bypass unlock
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -971,7 +976,7 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
@@ -980,6 +985,7 @@ async function handleCheckin(request, env) {
       if (boostRow && boostRow.pion) isPrestigePioneer = true;
       if (boostRow) paidUnlockedUpgrades = parseIdList(boostRow.pu);
       if (boostRow && boostRow.ad === Math.floor(now / 86400000)) adsRewardsUsed = boostRow.ac || 0;
+      if (boostRow && Number.isFinite(boostRow.abv)) adClickBypassViews = boostRow.abv;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -1020,7 +1026,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET });
 }
 
 async function handleLeaderboard(env) {
@@ -1247,7 +1253,7 @@ async function handleAdsgramIntent(request, env) {
   try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
   const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
   if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
-  const type = (body.type === 'nocap' || body.type === 'boost2x') ? body.type : null;
+  const type = (body.type === 'nocap' || body.type === 'boost2x' || body.type === 'click_bypass_progress') ? body.type : null;
   if (!type) return jsonResponse({ ok: false, error: 'bad_type' }, 400);
   await env.USERS.put(`adsintent:${result.user.id}`, type, { expirationTtl: AD_INTENT_TTL_S });
   return jsonResponse({ ok: true });
@@ -1271,18 +1277,38 @@ async function handleAdsgramReward(request, env) {
   // boost and acts as a one-shot idempotency guard: consumed on first grant, so
   // an AdsGram retry finds no intent and does not double-grant.
   const type = await env.USERS.get(`adsintent:${userId}`);
-  if (type !== 'nocap' && type !== 'boost2x') {
+  if (type !== 'nocap' && type !== 'boost2x' && type !== 'click_bypass_progress') {
     return jsonResponse({ ok: false, error: 'no_intent' }); // expired or already consumed
   }
   const now = Date.now();
   const today = Math.floor(now / 86400000); // UTC day number (same trick as the weekly board)
 
   await ensureUser(env, userId, now);
-  const row = await env.DB.prepare('SELECT ads_reward_day AS d, ads_reward_count AS c, boost_expires_at AS e, boost2x_expires_at AS e2 FROM users WHERE user_id = ?').bind(userId).first();
+  const row = await env.DB.prepare('SELECT ads_reward_day AS d, ads_reward_count AS c, boost_expires_at AS e, boost2x_expires_at AS e2, ad_click_bypass_views AS abv, has_click_bypass AS hcb FROM users WHERE user_id = ?').bind(userId).first();
   const count = (row && row.d === today) ? (row.c || 0) : 0; // reset on UTC-day boundary
   if (count >= AD_DAILY_LIMIT) {
     return jsonResponse({ ok: false, error: 'daily_limit', limit: AD_DAILY_LIMIT });
   }
+
+  // Accumulating path: each view is +1 toward AD_CLICK_BYPASS_TARGET; the target
+  // sets the SAME has_click_bypass flag the Stars purchase sets. Idempotent past
+  // the target (views capped, flag never downgraded) — extra views can't corrupt.
+  if (type === 'click_bypass_progress') {
+    if (row && row.hcb) {
+      // Already unlocked (via ads earlier or via Stars). Nothing to grant — consume
+      // the intent, and don't spend a daily slot on a no-op.
+      await env.USERS.delete(`adsintent:${userId}`);
+      return jsonResponse({ ok: true, granted: type, views: AD_CLICK_BYPASS_TARGET, target: AD_CLICK_BYPASS_TARGET, unlocked: true });
+    }
+    const views = Math.min(((row && row.abv) || 0) + 1, AD_CLICK_BYPASS_TARGET);
+    const unlocked = views >= AD_CLICK_BYPASS_TARGET;
+    // MAX() guards against ever downgrading a flag a concurrent Stars purchase set.
+    await env.DB.prepare('UPDATE users SET ad_click_bypass_views = ?, has_click_bypass = MAX(has_click_bypass, ?), ads_reward_day = ?, ads_reward_count = ? WHERE user_id = ?')
+      .bind(views, unlocked ? 1 : 0, today, count + 1, userId).run();
+    await env.USERS.delete(`adsintent:${userId}`); // consume (idempotency)
+    return jsonResponse({ ok: true, granted: type, views, target: AD_CLICK_BYPASS_TARGET, unlocked, count: count + 1, limit: AD_DAILY_LIMIT });
+  }
+
   // Extend the matching boost from max(current expiry, now) — same as Stars boosts.
   const col = type === 'nocap' ? 'boost_expires_at' : 'boost2x_expires_at';
   const dur = type === 'nocap' ? AD_NOCAP_DURATION_MS : AD_PROD2X_DURATION_MS;

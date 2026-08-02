@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=77" />
+<link rel="stylesheet" href="style.css?v=78" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 </head>
@@ -91,6 +91,14 @@
         <button id="adBoost2xBtn" class="ad-btn" data-adtype="boost2x">📺 +15 мин ×2 за рекламу</button>
         <button id="permProdBtn" class="nocap-btn">🌟 +10% к производству навсегда · 200 ⭐</button>
         <button id="clickBypassBtn" class="nocap-btn">⚡ Открыть клик-апгрейды без кликов · 100 ⭐</button>
+        <div id="adBypassProgress" class="ad-bypass-progress" hidden>
+          <div class="ad-bypass-head">
+            <span data-i18n="shop.adBypassOr">Или бесплатно за рекламу</span>
+            <span id="adBypassCount" class="ad-bypass-count">0 / 30</span>
+          </div>
+          <div class="ad-bypass-bar"><div id="adBypassFill" class="ad-bypass-fill"></div></div>
+          <button id="adBypassBtn" class="ad-btn">📺 +1 просмотр к разблокировке</button>
+        </div>
       </div>
     </section>
 
@@ -217,6 +225,6 @@
   </div>
 </div>
 
-<script src="game.js?v=77"></script>
+<script src="game.js?v=78"></script>
 </body>
 </html>

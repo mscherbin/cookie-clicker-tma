@@ -1080,6 +1080,41 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
 }
 .ad-btn:disabled { opacity: 0.55; pointer-events: none; }
 
+/* Free ad-view path to the click-bypass: a small progress card under the 100⭐
+   button. Green (free/ad) accent to match .ad-btn, subordinate to the paid gold. */
+.ad-bypass-progress {
+  margin-top: 8px;
+  padding: 9px 10px 10px;
+  background: rgba(123, 216, 143, 0.07);
+  border: 1px solid rgba(123, 216, 143, 0.3);
+  border-radius: 12px;
+}
+.ad-bypass-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  color: #7bd88f;
+  font-weight: 700;
+}
+.ad-bypass-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ad-bypass-bar {
+  margin: 7px 0 8px;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(123, 216, 143, 0.15);
+  overflow: hidden;
+}
+.ad-bypass-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #7bd88f, #4fbf6a);
+  transition: width 0.3s ease;
+}
+.ad-bypass-progress .ad-btn { margin-top: 0; }
+
 /* "Куплено" state for the one-time permanent boost — owned, not dimmed */
 .nocap-btn.owned {
   opacity: 1;

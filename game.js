@@ -50,6 +50,8 @@
       'shop.clickBypass': '⚡ Открыть клик-апгрейды без кликов · {n} ⭐', 'shop.clickBypassOwned': '⚡ Клик-апгрейды без кликов · Куплено ✓',
       'shop.adNocap': '📺 +2ч без капа за рекламу', 'shop.adBoost2x': '📺 +15 мин ×2 за рекламу',
       'shop.adLimit': '📺 Реклама на сегодня: {used}/{limit}',
+      'shop.adBypassOr': 'Или бесплатно за рекламу', 'shop.adBypass': '📺 +1 просмотр к разблокировке',
+      'toast.adBypassProgress': '📺 Прогресс: {views}/{target} просмотров', 'toast.adBypassUnlocked': '⚡ Клик-апгрейды открыты за рекламу!',
       'toast.adLoading': 'Загружаем рекламу…', 'toast.adReward': '📺 Награда за рекламу начислена!',
       'toast.adNoReward': 'Реклама не досмотрена — награда не начислена', 'toast.adUnavailable': 'Реклама сейчас недоступна',
       'toast.adLimitReached': 'Лимит рекламы на сегодня исчерпан ({used}/{limit})',
@@ -131,6 +133,8 @@
       'shop.clickBypass': '⚡ Unlock click upgrades without clicks · {n} ⭐', 'shop.clickBypassOwned': '⚡ Click upgrades without clicks · Owned ✓',
       'shop.adNocap': '📺 +2h no cap for an ad', 'shop.adBoost2x': '📺 +15 min ×2 for an ad',
       'shop.adLimit': '📺 Ads today: {used}/{limit}',
+      'shop.adBypassOr': 'Or unlock free by watching ads', 'shop.adBypass': '📺 +1 view toward unlock',
+      'toast.adBypassProgress': '📺 Progress: {views}/{target} views', 'toast.adBypassUnlocked': '⚡ Click upgrades unlocked via ads!',
       'toast.adLoading': 'Loading ad…', 'toast.adReward': '📺 Ad reward granted!',
       'toast.adNoReward': 'Ad not completed — no reward', 'toast.adUnavailable': 'Ads are unavailable right now',
       'toast.adLimitReached': 'Daily ad limit reached ({used}/{limit})',
@@ -491,6 +495,7 @@
   // moderation — swap back to 40881 once it's approved/active.
   const ADSGRAM_BLOCK_ID = '40903';
   const AD_DAILY_LIMIT_FALLBACK = 8; // used before the first checkin returns the real limit
+  const AD_CLICK_BYPASS_TARGET_FALLBACK = 30; // ad views to unlock the click-bypass (real value from checkin)
   const PRESTIGE_CONFIRM_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/prestige/confirm';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
   const REFERRAL_LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/referral-leaderboard';
@@ -548,6 +553,8 @@
     lang: detectLang(), // 'ru'|'en'; auto from Telegram language_code on first load, then persisted (overridable in Settings)
     adsRewardsUsed: 0,   // rewarded-ad boosts used today (server-authoritative, from checkin)
     adsDailyLimit: 8,    // per-day rewarded-ad cap (server-authoritative, from checkin)
+    adClickBypassViews: 0,   // ad views accumulated toward the free click-bypass (server-authoritative)
+    adClickBypassTarget: 30, // views needed to unlock the click-bypass (server-authoritative)
   });
 
   let state = defaultState();
@@ -795,6 +802,13 @@
           const changed = data.adsRewardsUsed !== state.adsRewardsUsed || data.adsDailyLimit !== state.adsDailyLimit;
           if (Number.isFinite(data.adsRewardsUsed)) state.adsRewardsUsed = data.adsRewardsUsed;
           if (Number.isFinite(data.adsDailyLimit)) state.adsDailyLimit = data.adsDailyLimit;
+          if (changed) { saveState(); renderStats(); }
+        }
+        // Free ad-view progress toward the click-bypass (server-authoritative).
+        if (data && (Number.isFinite(data.adClickBypassViews) || Number.isFinite(data.adClickBypassTarget))) {
+          const changed = data.adClickBypassViews !== state.adClickBypassViews || data.adClickBypassTarget !== state.adClickBypassTarget;
+          if (Number.isFinite(data.adClickBypassViews)) state.adClickBypassViews = data.adClickBypassViews;
+          if (Number.isFinite(data.adClickBypassTarget)) state.adClickBypassTarget = data.adClickBypassTarget;
           if (changed) { saveState(); renderStats(); }
         }
         // Permanent +10% flag (server-authoritative, one-time).
@@ -1423,7 +1437,9 @@
 
   // Watch a rewarded video for a smaller version of a Stars boost. The grant is
   // server-side (AdsGram's reward callback → /adsgram-reward), verified by the
-  // secret — we never grant on the client. type ∈ {'nocap','boost2x'}.
+  // secret — we never grant on the client.
+  // type ∈ {'nocap','boost2x','click_bypass_progress'} (last = +1 view toward the
+  // free click-bypass unlock; shares the daily ad limit with the other two).
   async function watchAd(type) {
     if (!tg || !tg.initData) { showToast(t('toast.onlyTelegram')); return; }
     if (adsUsed() >= adsLimit()) { showToast(t('toast.adLimitReached', { used: adsUsed(), limit: adsLimit() })); return; }
@@ -1723,6 +1739,10 @@
     clickBypassBtn: document.getElementById('clickBypassBtn'),
     adNocapBtn: document.getElementById('adNocapBtn'),
     adBoost2xBtn: document.getElementById('adBoost2xBtn'),
+    adBypassProgress: document.getElementById('adBypassProgress'),
+    adBypassCount: document.getElementById('adBypassCount'),
+    adBypassFill: document.getElementById('adBypassFill'),
+    adBypassBtn: document.getElementById('adBypassBtn'),
     playerProfile: document.getElementById('playerProfile'),
     fsOfflineLabel: document.getElementById('fsOfflineLabel'),
     rewardBurst: document.getElementById('rewardBurst'),
@@ -2223,6 +2243,21 @@
     }
     // Rewarded-ad buttons: label the boost, disable both when today's cap is hit.
     const adLimited = adsUsed() >= adsLimit();
+    // Free ad-view path to the click-bypass: progress bar next to the 100⭐ button,
+    // hidden once the bypass is unlocked by ANY path (ads or Stars).
+    if (el.adBypassProgress) {
+      const target = state.adClickBypassTarget || AD_CLICK_BYPASS_TARGET_FALLBACK;
+      const views = Math.min(state.adClickBypassViews || 0, target);
+      el.adBypassProgress.hidden = !!state.hasClickBypass;
+      if (!state.hasClickBypass) {
+        if (el.adBypassCount) el.adBypassCount.textContent = `${views} / ${target}`;
+        if (el.adBypassFill) el.adBypassFill.style.width = `${Math.round((views / target) * 100)}%`;
+        if (el.adBypassBtn) {
+          el.adBypassBtn.textContent = adLimited ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adBypass');
+          el.adBypassBtn.disabled = adLimited;
+        }
+      }
+    }
     if (el.adNocapBtn) {
       el.adNocapBtn.textContent = adLimited ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adNocap');
       el.adNocapBtn.disabled = adLimited;
@@ -2821,6 +2856,7 @@
   if (el.clickBypassBtn) el.clickBypassBtn.addEventListener('click', buyClickBypass);
   if (el.adNocapBtn) el.adNocapBtn.addEventListener('click', () => watchAd('nocap'));
   if (el.adBoost2xBtn) el.adBoost2xBtn.addEventListener('click', () => watchAd('boost2x'));
+  if (el.adBypassBtn) el.adBypassBtn.addEventListener('click', () => watchAd('click_bypass_progress'));
   // Tapping the backdrop = free claim (never lose offline income); ignored while
   // a payment is processing.
   el.offlineModal.addEventListener('click', (e) => {
