@@ -976,6 +976,14 @@ html, body {
   font-weight: 600;
 }
 
+/* Prestige-tier milestone title (tiers 5 & 10) — celestial blue→violet so it
+   reads apart from the golden referral title. */
+.title-badge-prestige {
+  color: #fff;
+  background: linear-gradient(135deg, #6aa8ff, #b07bff);
+  box-shadow: 0 0 10px rgba(150, 130, 255, 0.55);
+}
+
 /* --- Referral title progress track --- */
 .title-track-wrap {
   margin-top: 12px;
@@ -1083,6 +1091,10 @@ html, body {
 /* "Пионер перерождения" — rare, distinct pink-gold so it stands out from the
    referral titles. Tappable for its tooltip. */
 .lb-title.lb-pioneer { color: #ff9ec7; cursor: pointer; }
+
+/* Prestige-tier milestone title (tiers 5 & 10) in the leaderboard — celestial
+   violet, distinct from the golden referral title and pink pioneer. */
+.lb-title.lb-epoch { color: #b79bff; }
 
 /* Prestige-tier badge (⭐×N) before the name. Glow scales with tier so higher
    prestige reads as more prestigious — a stand-in for the future avatar auras. */

@@ -179,6 +179,21 @@
     return null; // all unlocked
   }
 
+  // Prestige-tier milestone titles (Task #15, tiers 5 & 10). Keyed by the
+  // player-facing tier number (= ascensionCount + 1). Earning one is the "light
+  // milestone" for those tiers on top of the reskin + new cookie art. Computed
+  // purely from prestige count, so it also renders for other players in the
+  // leaderboard (from their prestigeCount) with no server change.
+  const PRESTIGE_TITLES = [
+    { tier: 5,  name: 'Небожитель',        icon: '😇' },
+    { tier: 10, name: 'Творец мироздания', icon: '🌌' },
+  ];
+  function prestigeTitleForTier(dt) {
+    let found = null;
+    for (const t of PRESTIGE_TITLES) if ((dt || 0) >= t.tier) found = t;
+    return found; // highest earned milestone title, or null
+  }
+
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
   const BACKUP_KEY = SAVE_KEY + '_backup';
   const OFFLINE_RATE = 0.1; // after the full-rate window, production drops to this fraction until the player returns
@@ -665,6 +680,9 @@
           const p = entry.prestigeCount || 0;
           const bonus = entry.crumbs || 0; // this player's real permanent bonus %
           const prestigeHtml = p > 0 ? `<span class="lb-prestige ${prestigeBadgeClass(p)}" data-prestige="${p}" data-bonus="${bonus}">⭐×${p}</span>` : '';
+          // Prestige-tier milestone title (tiers 5 & 10) from their prestige count.
+          const pTitle = prestigeTitleForTier(p + 1);
+          const prestigeTitleHtml = pTitle ? `<span class="lb-title lb-epoch">${pTitle.icon} ${escapeHtml(pTitle.name)}</span>` : '';
           // Lifetime (never resets) as the secondary figure — a just-ascended
           // player would otherwise show ~0 baked and look empty.
           const lifetime = entry.lifetimeCookies || entry.totalBaked || 0;
@@ -672,7 +690,7 @@
           <div class="leaderboard-row${myId && entry.userId === myId ? ' me' : ''}">
             <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
             <div class="leaderboard-info">
-              <div class="leaderboard-name">${prestigeHtml}${escapeHtml(entry.name)}${pioneerHtml}${refTitleHtml}</div>
+              <div class="leaderboard-name">${prestigeHtml}${escapeHtml(entry.name)}${pioneerHtml}${prestigeTitleHtml}${refTitleHtml}</div>
               <div class="leaderboard-total">🍪 ${formatNum(lifetime)} за всё время</div>
             </div>
             <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">печ/сек</span></div>
@@ -895,6 +913,7 @@
     }
 
     backupCurrentState();
+    const prevAsc = state.ascensionCount || 0; // to detect crossing a milestone tier
     const keepDailyStreak = state.dailyStreak;
     const keepLastDailyClaim = state.lastDailyClaim;
     const keepTotalCrumbs = (state.totalCrumbs || 0) + crumbsEarned;
@@ -925,6 +944,13 @@
 
     haptic('heavy');
     showToast(`⭐ Вознесение! Постоянный бонус теперь +${keepTotalCrumbs}% к производству`);
+    // Milestone tiers (5 & 10): if this ascension crossed into one, celebrate the
+    // earned title separately (a beat after the ascension toast).
+    const oldDT = prevAsc + 1, newDT = keepAscensionCount + 1;
+    const reached = PRESTIGE_TITLES.filter(t => t.tier > oldDT && t.tier <= newDT).sort((a, b) => b.tier - a.tier)[0];
+    if (reached) {
+      setTimeout(() => showToast(`${reached.icon} Новый титул: «${reached.name}» — ты достиг ${newDT}-го уровня!`, 5000), 1600);
+    }
     saveState();
     refreshAll();
   }
@@ -959,6 +985,24 @@
   function itemTier(item) { return item.tier || 0; }
   function tierUnlocked(item) { return (state.ascensionCount || 0) >= itemTier(item); }
   function tierLockText(tier) { return `Доступно после ${tier}-го вознесения`; }
+
+  // Player-facing tier number: tier 1 at ascension 0, tier 2 after the 1st
+  // ascension, … So displayTier = ascensionCount + 1.
+  function displayTier() { return (state.ascensionCount || 0) + 1; }
+
+  // Tier "reskin": from tier 4 onward the game reuses the same buildings (same
+  // balance) but re-themed per tier, so each ascension feels fresh without new
+  // economy. A building may carry explicit `tierVariants` ({ [tier]: {name,
+  // icon} }); otherwise we fall back to a tier-tagged name («Base ур.N»). Only
+  // the display changes — cost/cps come straight from the building config.
+  const RESKIN_FROM_TIER = 4;
+  function buildingDisplay(b) {
+    const dt = displayTier();
+    const v = b.tierVariants && b.tierVariants[dt];
+    if (v) return { name: v.name, icon: v.icon || b.icon };
+    if (dt >= RESKIN_FROM_TIER) return { name: `${b.name} · ур.${dt}`, icon: b.icon };
+    return { name: b.name, icon: b.icon };
+  }
 
   // An upgrade's unlock requirement, honouring the paid bypasses:
   //  - the one-time "skip the clicker" removes the click-count gate on ALL click
@@ -1504,12 +1548,13 @@
       }
       const cost = buildingCost(b, count);
       const affordable = state.cookies >= cost;
+      const disp = buildingDisplay(b);
       const card = document.createElement('button');
       card.className = 'item-card' + (affordable ? '' : ' disabled');
       card.innerHTML = `
-        <div class="item-icon">${b.icon}</div>
+        <div class="item-icon">${disp.icon}</div>
         <div class="item-info">
-          <div class="item-name">${b.name}</div>
+          <div class="item-name">${disp.name}</div>
           <div class="item-sub">${formatNum(buildingCps(b))} печ/сек за шт.</div>
         </div>
         <div class="item-count">${count}</div>
@@ -1949,7 +1994,10 @@
     const badge = cur
       ? `<span class="title-badge">${cur.icon} ${cur.name}</span>`
       : `<span class="title-badge title-badge-none">Пока без титула</span>`;
-    el.playerProfile.innerHTML = `<span class="pp-name">👤 ${escapeHtml(ownDisplayName())}</span>${badge}`;
+    // Prestige-tier milestone title (tiers 5 & 10), shown next to the referral one.
+    const pt = prestigeTitleForTier(displayTier());
+    const prestigeBadge = pt ? `<span class="title-badge title-badge-prestige">${pt.icon} ${pt.name}</span>` : '';
+    el.playerProfile.innerHTML = `<span class="pp-name">👤 ${escapeHtml(ownDisplayName())}</span>${prestigeBadge}${badge}`;
 
     const fillPct = Math.min(100, peak / lastTh * 100);
     el.titleTrack.innerHTML =
