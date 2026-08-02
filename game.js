@@ -645,17 +645,33 @@
     }
   }
 
+  // Native window.confirm() is unreliable inside Telegram Mini Apps: several
+  // clients suppress the dialog and return a truthy value, so a destructive
+  // action (ascend/reset/restore/cloud-overwrite) fires WITHOUT a real
+  // confirmation — this caused an accidental ascension. Use Telegram's own
+  // showConfirm when available; fall back to native confirm outside Telegram.
+  // Always await it (returns a Promise<boolean>).
+  function confirmDialog(message) {
+    return new Promise((resolve) => {
+      if (tg && typeof tg.showConfirm === 'function') {
+        try { tg.showConfirm(message, (ok) => resolve(!!ok)); return; }
+        catch (e) { /* fall through to native */ }
+      }
+      resolve(window.confirm(message));
+    });
+  }
+
   // One level of undo for any destructive action (pull/reset/ascend) — a
   // snapshot taken right before the action, restorable via restoreBackup().
   function backupCurrentState() {
     try { localStorage.setItem(BACKUP_KEY, JSON.stringify(state)); } catch (e) {}
   }
 
-  function restoreBackup() {
+  async function restoreBackup() {
     let raw;
     try { raw = localStorage.getItem(BACKUP_KEY); } catch (e) { raw = null; }
     if (!raw) { showToast('Резервной копии нет'); return; }
-    if (!confirm('Восстановить прогресс на этом устройстве из последней резервной копии? Текущий прогресс на этом устройстве заменится.')) return;
+    if (!(await confirmDialog('Восстановить прогресс на этом устройстве из последней резервной копии? Текущий прогресс на этом устройстве заменится.'))) return;
     if (applyLoaded(raw, { grantOfflineProgress: false })) {
       saveState();
       showToast('✅ Восстановлено из резервной копии');
@@ -666,7 +682,7 @@
 
   function pushToCloud() {
     if (!tg || !tg.CloudStorage) { showToast('CloudStorage недоступен на этом устройстве'); return; }
-    tg.CloudStorage.getItem(SAVE_KEY, (getErr, existing) => {
+    tg.CloudStorage.getItem(SAVE_KEY, async (getErr, existing) => {
       let existingBaked = 0;
       if (!getErr && existing) {
         try { existingBaked = JSON.parse(existing).totalBaked || 0; } catch (e) { /* ignore */ }
@@ -674,7 +690,7 @@
       const msg = `Здесь: всего испечено ${formatNum(state.totalBaked)} 🍪.\n`
         + `Сейчас в облаке: всего испечено ${formatNum(existingBaked)} 🍪.\n\n`
         + `Заменить сохранение в облаке данными с этого устройства?`;
-      if (!confirm(msg)) return;
+      if (!(await confirmDialog(msg))) return;
       tg.CloudStorage.setItem(SAVE_KEY, JSON.stringify(state), (err, success) => {
         if (err || success === false) { showToast('Не удалось отправить в облако'); return; }
         showToast('✅ Это сохранение отправлено в облако');
@@ -684,14 +700,14 @@
 
   function pullFromCloud() {
     if (!tg || !tg.CloudStorage) { showToast('CloudStorage недоступен на этом устройстве'); return; }
-    tg.CloudStorage.getItem(SAVE_KEY, (err, value) => {
+    tg.CloudStorage.getItem(SAVE_KEY, async (err, value) => {
       if (err || !value) { showToast('В облаке пусто или ошибка загрузки'); return; }
       let cloudData;
       try { cloudData = JSON.parse(value); } catch (e) { showToast('Сохранение в облаке повреждено'); return; }
       const msg = `Здесь: всего испечено ${formatNum(state.totalBaked)} 🍪.\n`
         + `В облаке: всего испечено ${formatNum(cloudData.totalBaked || 0)} 🍪.\n\n`
         + `Заменить прогресс на этом устройстве данными из облака? (текущее состояние сохранится как резервная копия)`;
-      if (!confirm(msg)) return;
+      if (!(await confirmDialog(msg))) return;
       backupCurrentState();
       if (applyLoaded(value, { grantOfflineProgress: false })) {
         saveState();
@@ -1194,7 +1210,7 @@
       showToast('Пока рано — испеките больше печенек, чтобы бонус вырос');
       return;
     }
-    if (!confirm(`Вознестись? Прогресс обнулится, но вы навсегда получите +${formatNum(crumbsEarned)}% к производству.`)) return;
+    if (!(await confirmDialog(`Вознестись? Прогресс обнулится, но вы навсегда получите +${formatNum(crumbsEarned)}% к производству.`))) return;
 
     // Server owns prestige_count (the leaderboard's rank key). Confirm BEFORE
     // resetting, so an anti-farm 'too_soon' reject blocks cleanly without
@@ -2913,8 +2929,8 @@
     }, 3500);
   }
 
-  function resetProgress() {
-    if (!confirm('Точно сбросить весь прогресс?')) return;
+  async function resetProgress() {
+    if (!(await confirmDialog('Точно сбросить весь прогресс?'))) return;
     backupCurrentState();
     state = defaultState();
     saveState();
