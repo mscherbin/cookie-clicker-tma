@@ -171,3 +171,11 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   ('pioneer_limit', '50'),
   ('pioneer_granted', '0'),
   ('pioneer_deadline_ts', '0');
+
+-- Rewarded ads (AdsGram, Task #25). Per-user daily counter of ad-granted boosts;
+-- resets on the UTC-day boundary (ads_reward_day = floor(now_ms / 86400000)).
+-- Migration for the existing prod DB (run once each):
+--   ALTER TABLE users ADD COLUMN ads_reward_day INTEGER NOT NULL DEFAULT 0;
+--   ALTER TABLE users ADD COLUMN ads_reward_count INTEGER NOT NULL DEFAULT 0;
+-- Secret for the reward callback lives in a Worker secret, not here:
+--   wrangler secret put ADSGRAM_REWARD_SECRET

@@ -48,6 +48,11 @@
       'shop.boost2x': '⚡ ×2 производство на 1ч · {n} ⭐', 'shop.boost2xExtend': 'Продлить ×2 ещё на 1ч · {n} ⭐',
       'shop.perm': '🌟 +10% к производству навсегда · {n} ⭐', 'shop.permOwned': '🌟 +10% навсегда · Куплено ✓',
       'shop.clickBypass': '⚡ Открыть клик-апгрейды без кликов · {n} ⭐', 'shop.clickBypassOwned': '⚡ Клик-апгрейды без кликов · Куплено ✓',
+      'shop.adNocap': '📺 +2ч без капа за рекламу', 'shop.adBoost2x': '📺 +15 мин ×2 за рекламу',
+      'shop.adLimit': '📺 Реклама на сегодня: {used}/{limit}',
+      'toast.adLoading': 'Загружаем рекламу…', 'toast.adReward': '📺 Награда за рекламу начислена!',
+      'toast.adNoReward': 'Реклама не досмотрена — награда не начислена', 'toast.adUnavailable': 'Реклама сейчас недоступна',
+      'toast.adLimitReached': 'Лимит рекламы на сегодня исчерпан ({used}/{limit})',
       // Ascension card
       'asc.title': '⭐ Вознесение',
       'asc.desc': 'Сбрасывает прогресс, но даёт постоянный бонус к производству — с каждым разом бонус растёт.',
@@ -124,6 +129,11 @@
       'shop.boost2x': '⚡ ×2 production for 1h · {n} ⭐', 'shop.boost2xExtend': 'Extend ×2 by 1h · {n} ⭐',
       'shop.perm': '🌟 +10% production forever · {n} ⭐', 'shop.permOwned': '🌟 +10% forever · Owned ✓',
       'shop.clickBypass': '⚡ Unlock click upgrades without clicks · {n} ⭐', 'shop.clickBypassOwned': '⚡ Click upgrades without clicks · Owned ✓',
+      'shop.adNocap': '📺 +2h no cap for an ad', 'shop.adBoost2x': '📺 +15 min ×2 for an ad',
+      'shop.adLimit': '📺 Ads today: {used}/{limit}',
+      'toast.adLoading': 'Loading ad…', 'toast.adReward': '📺 Ad reward granted!',
+      'toast.adNoReward': 'Ad not completed — no reward', 'toast.adUnavailable': 'Ads are unavailable right now',
+      'toast.adLimitReached': 'Daily ad limit reached ({used}/{limit})',
       'asc.title': '⭐ Ascension',
       'asc.desc': 'Resets your progress but grants a permanent production bonus — it grows every time.',
       'asc.firstTime': '✨ This will be your first ascension',
@@ -475,6 +485,12 @@
   }
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
+  const ADSGRAM_INTENT_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/adsgram-intent';
+  // ⚠️ AdsGram rewarded-video Block ID — copy from the AdsGram dashboard
+  // (Рекламные блоки → your Rewarded video block) and paste here. Ads won't load
+  // until this is set. Platform ID 38246, bot 8767577526.
+  const ADSGRAM_BLOCK_ID = 'REPLACE_WITH_ADSGRAM_BLOCK_ID';
+  const AD_DAILY_LIMIT_FALLBACK = 8; // used before the first checkin returns the real limit
   const PRESTIGE_CONFIRM_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/prestige/confirm';
   const LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/leaderboard';
   const REFERRAL_LEADERBOARD_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/referral-leaderboard';
@@ -530,6 +546,8 @@
     lifetimeBaked: 0, // cookies baked across ALL past runs (never reset on ascend); + current totalBaked = lifetime total
     paidUnlockedUpgrades: [], // upgrade ids whose progress gate was skipped via a paid Stars purchase; server-authoritative
     lang: detectLang(), // 'ru'|'en'; auto from Telegram language_code on first load, then persisted (overridable in Settings)
+    adsRewardsUsed: 0,   // rewarded-ad boosts used today (server-authoritative, from checkin)
+    adsDailyLimit: 8,    // per-day rewarded-ad cap (server-authoritative, from checkin)
   });
 
   let state = defaultState();
@@ -770,6 +788,14 @@
           saveState();
           refreshAll();
           if (!wasActive && data.boost2xExpiresAt > Date.now()) showToast('⚡ ×2 производство активно на 1 час!', 4000);
+        }
+        // Rewarded-ad daily counter (server-authoritative). Drives the shop
+        // button labels / disabled state.
+        if (data && (Number.isFinite(data.adsRewardsUsed) || Number.isFinite(data.adsDailyLimit))) {
+          const changed = data.adsRewardsUsed !== state.adsRewardsUsed || data.adsDailyLimit !== state.adsDailyLimit;
+          if (Number.isFinite(data.adsRewardsUsed)) state.adsRewardsUsed = data.adsRewardsUsed;
+          if (Number.isFinite(data.adsDailyLimit)) state.adsDailyLimit = data.adsDailyLimit;
+          if (changed) { saveState(); renderStats(); }
         }
         // Permanent +10% flag (server-authoritative, one-time).
         if (data && typeof data.hasPermProdBoost === 'boolean' && data.hasPermProdBoost !== !!state.hasPermProdBoost) {
@@ -1386,6 +1412,44 @@
     [800, 2500, 5000, 10000].forEach(ms => setTimeout(sendCheckin, ms));
   }
 
+  // ---------- Rewarded ads (AdsGram) ----------
+  let adController = null;
+  function initAdsgram() {
+    if (adController || !window.Adsgram || ADSGRAM_BLOCK_ID === 'REPLACE_WITH_ADSGRAM_BLOCK_ID') return;
+    try { adController = window.Adsgram.init({ blockId: ADSGRAM_BLOCK_ID }); } catch (e) { adController = null; }
+  }
+  function adsUsed() { return state.adsRewardsUsed || 0; }
+  function adsLimit() { return Number.isFinite(state.adsDailyLimit) ? state.adsDailyLimit : AD_DAILY_LIMIT_FALLBACK; }
+
+  // Watch a rewarded video for a smaller version of a Stars boost. The grant is
+  // server-side (AdsGram's reward callback → /adsgram-reward), verified by the
+  // secret — we never grant on the client. type ∈ {'nocap','boost2x'}.
+  async function watchAd(type) {
+    if (!tg || !tg.initData) { showToast(t('toast.onlyTelegram')); return; }
+    if (adsUsed() >= adsLimit()) { showToast(t('toast.adLimitReached', { used: adsUsed(), limit: adsLimit() })); return; }
+    initAdsgram();
+    if (!adController) { showToast(t('toast.adUnavailable')); return; }
+    // Record which boost this ad grants (server verifies + grants on the reward
+    // callback). The intent doubles as a one-shot idempotency guard server-side.
+    try {
+      await fetch(ADSGRAM_INTENT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData, type }),
+      });
+    } catch (e) { /* best-effort; if it failed the reward callback finds no intent and grants nothing */ }
+    showToast(t('toast.adLoading'), 2500);
+    adController.show().then(() => {
+      // Fully watched → AdsGram calls /adsgram-reward server-side; poll checkins
+      // to pick up the extended boost window + updated daily counter.
+      showToast(t('toast.adReward'), 3500);
+      haptic('heavy');
+      pollPaidCredit();
+    }).catch(() => {
+      showToast(t('toast.adNoReward'));
+    });
+  }
+
   async function claimOfflinePaid() {
     if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     const quote = state.offlinePending || 0;
@@ -1657,6 +1721,8 @@
     boost2xBtn: document.getElementById('boost2xBtn'),
     permProdBtn: document.getElementById('permProdBtn'),
     clickBypassBtn: document.getElementById('clickBypassBtn'),
+    adNocapBtn: document.getElementById('adNocapBtn'),
+    adBoost2xBtn: document.getElementById('adBoost2xBtn'),
     playerProfile: document.getElementById('playerProfile'),
     fsOfflineLabel: document.getElementById('fsOfflineLabel'),
     rewardBurst: document.getElementById('rewardBurst'),
@@ -2154,6 +2220,16 @@
         el.clickBypassBtn.disabled = false;
         el.clickBypassBtn.classList.remove('owned');
       }
+    }
+    // Rewarded-ad buttons: label the boost, disable both when today's cap is hit.
+    const adLimited = adsUsed() >= adsLimit();
+    if (el.adNocapBtn) {
+      el.adNocapBtn.textContent = adLimited ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adNocap');
+      el.adNocapBtn.disabled = adLimited;
+    }
+    if (el.adBoost2xBtn) {
+      el.adBoost2xBtn.textContent = adLimited ? t('shop.adLimit', { used: adsUsed(), limit: adsLimit() }) : t('shop.adBoost2x');
+      el.adBoost2xBtn.disabled = adLimited;
     }
 
     el.syncStatus.textContent = cloudStorageStatusText();
@@ -2743,6 +2819,8 @@
   if (el.boost2xBtn) el.boost2xBtn.addEventListener('click', buyBoost2x);
   if (el.permProdBtn) el.permProdBtn.addEventListener('click', buyPermProd);
   if (el.clickBypassBtn) el.clickBypassBtn.addEventListener('click', buyClickBypass);
+  if (el.adNocapBtn) el.adNocapBtn.addEventListener('click', () => watchAd('nocap'));
+  if (el.adBoost2xBtn) el.adBoost2xBtn.addEventListener('click', () => watchAd('boost2x'));
   // Tapping the backdrop = free claim (never lose offline income); ignored while
   // a payment is processing.
   el.offlineModal.addEventListener('click', (e) => {
@@ -2767,6 +2845,7 @@
   if (el.leaderboardList) el.leaderboardList.addEventListener('click', onLeaderboardBadgeTap);
   if (el.prestigeBanner) el.prestigeBanner.addEventListener('click', onPrestigeBannerClick);
 
+  initAdsgram();
   loadState();
   requestAnimationFrame(tick);
   setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); renderPrestigeBanner(); renderRewardTeaser(); updateTutorial(); updateDailyBadge(); maybeOfferReferralBuildings(); }, 3000);

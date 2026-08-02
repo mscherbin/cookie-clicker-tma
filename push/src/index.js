@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=74';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=75';
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
 const OFFLINE_FULL_RATE_SECONDS = 2 * 3600;
 const OFFLINE_RATE = 0.1;
@@ -175,6 +175,15 @@ const NOCAP_BOOST_DURATION_MS = 24 * 3600 * 1000; // 24h window per purchase
 // Paid "x2 production for 1h" boost.
 const PROD2X_BOOST_STARS = 10;              // price in Stars
 const PROD2X_BOOST_DURATION_MS = 3600 * 1000; // 1h window per purchase
+
+// Rewarded-ad (AdsGram) grants: smaller windows of the same boosts, verified
+// server-side by AdsGram's reward callback. Which boost a given ad grants is
+// recorded as a short-lived per-user "intent" (KV) when the client starts the
+// ad — one AdsGram block, one reward URL, two possible boosts.
+const AD_PROD2X_DURATION_MS = 15 * 60 * 1000; // 15 min of ×2 production (paid: 60 min)
+const AD_NOCAP_DURATION_MS = 2 * 3600 * 1000; // 2h of no offline cap (paid: 24h)
+const AD_INTENT_TTL_S = 600;                  // how long a "which boost" intent stays valid (also idempotency guard)
+const AD_DAILY_LIMIT = 8;                     // rewarded-ad boosts per user per UTC day
 
 // Paid one-time "+10% production forever" boost. The +10% itself is applied
 // client-side; the server just owns the has_permanent_production_boost flag.
@@ -909,6 +918,7 @@ async function handleCheckin(request, env) {
   let serverPrestigeCount = 0;
   let isPrestigePioneer = false;
   let paidUnlockedUpgrades = [];
+  let adsRewardsUsed = 0; // rewarded-ad boosts already used today (for the client's daily counter)
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -961,7 +971,7 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
@@ -969,6 +979,7 @@ async function handleCheckin(request, env) {
       if (boostRow && Number.isFinite(boostRow.pc)) serverPrestigeCount = boostRow.pc;
       if (boostRow && boostRow.pion) isPrestigePioneer = true;
       if (boostRow) paidUnlockedUpgrades = parseIdList(boostRow.pu);
+      if (boostRow && boostRow.ad === Math.floor(now / 86400000)) adsRewardsUsed = boostRow.ac || 0;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -1009,7 +1020,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT });
 }
 
 async function handleLeaderboard(env) {
@@ -1228,6 +1239,61 @@ async function checkAndBroadcastEvents(env) {
   }
 }
 
+// ---------- Rewarded ads (AdsGram) ----------
+// Client records which boost the about-to-be-watched ad grants (authenticated
+// by initData). Stored briefly in KV; AdsGram's reward callback consumes it.
+async function handleAdsgramIntent(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const type = (body.type === 'nocap' || body.type === 'boost2x') ? body.type : null;
+  if (!type) return jsonResponse({ ok: false, error: 'bad_type' }, 400);
+  await env.USERS.put(`adsintent:${result.user.id}`, type, { expirationTtl: AD_INTENT_TTL_S });
+  return jsonResponse({ ok: true });
+}
+
+// GET /adsgram-reward?userid=<id>&secret=<s> — called server-to-server by
+// AdsGram once the user actually finished watching. This is our proof-of-view,
+// so the boost is granted here (never trust the client for the grant itself).
+async function handleAdsgramReward(request, env) {
+  const url = new URL(request.url);
+  const userId = Number(url.searchParams.get('userid'));
+  const secret = url.searchParams.get('secret') || '';
+  // Secret gate: only AdsGram knows it. Mismatch/absent → ignore, accrue nothing.
+  if (!env.ADSGRAM_REWARD_SECRET || secret !== env.ADSGRAM_REWARD_SECRET) {
+    return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  }
+  if (!Number.isFinite(userId) || userId <= 0) return jsonResponse({ ok: false, error: 'bad_user' }, 400);
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  // The intent (set by the client when it started the ad) both selects the
+  // boost and acts as a one-shot idempotency guard: consumed on first grant, so
+  // an AdsGram retry finds no intent and does not double-grant.
+  const type = await env.USERS.get(`adsintent:${userId}`);
+  if (type !== 'nocap' && type !== 'boost2x') {
+    return jsonResponse({ ok: false, error: 'no_intent' }); // expired or already consumed
+  }
+  const now = Date.now();
+  const today = Math.floor(now / 86400000); // UTC day number (same trick as the weekly board)
+
+  await ensureUser(env, userId, now);
+  const row = await env.DB.prepare('SELECT ads_reward_day AS d, ads_reward_count AS c, boost_expires_at AS e, boost2x_expires_at AS e2 FROM users WHERE user_id = ?').bind(userId).first();
+  const count = (row && row.d === today) ? (row.c || 0) : 0; // reset on UTC-day boundary
+  if (count >= AD_DAILY_LIMIT) {
+    return jsonResponse({ ok: false, error: 'daily_limit', limit: AD_DAILY_LIMIT });
+  }
+  // Extend the matching boost from max(current expiry, now) — same as Stars boosts.
+  const col = type === 'nocap' ? 'boost_expires_at' : 'boost2x_expires_at';
+  const dur = type === 'nocap' ? AD_NOCAP_DURATION_MS : AD_PROD2X_DURATION_MS;
+  const curExp = type === 'nocap' ? (row && row.e) : (row && row.e2);
+  const base = Math.max(Number.isFinite(curExp) ? curExp : 0, now);
+  await env.DB.prepare(`UPDATE users SET ${col} = ?, ads_reward_day = ?, ads_reward_count = ? WHERE user_id = ?`)
+    .bind(base + dur, today, count + 1, userId).run();
+  await env.USERS.delete(`adsintent:${userId}`); // consume (idempotency)
+  return jsonResponse({ ok: true, granted: type, count: count + 1, limit: AD_DAILY_LIMIT });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1250,6 +1316,14 @@ export default {
 
     if (url.pathname === '/event' && request.method === 'POST') {
       return handleEvent(request, env);
+    }
+
+    if (url.pathname === '/adsgram-intent' && request.method === 'POST') {
+      return handleAdsgramIntent(request, env);
+    }
+
+    if (url.pathname === '/adsgram-reward' && request.method === 'GET') {
+      return handleAdsgramReward(request, env);
     }
 
     if (url.pathname === '/telegram-webhook' && request.method === 'POST') {

@@ -1063,6 +1063,23 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
 
 .nocap-btn:disabled { opacity: 0.5; pointer-events: none; }
 
+/* Rewarded-ad buttons — green "free / watch an ad" look, distinct from the
+   gold Stars buttons. Sit right under their paid counterpart, less prominent
+   (smaller top margin) so the paid option still leads. */
+.ad-btn {
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px;
+  background: rgba(123, 216, 143, 0.12);
+  color: #7bd88f;
+  border: 1px solid rgba(123, 216, 143, 0.6);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ad-btn:disabled { opacity: 0.55; pointer-events: none; }
+
 /* "Куплено" state for the one-time permanent boost — owned, not dimmed */
 .nocap-btn.owned {
   opacity: 1;
