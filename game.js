@@ -1406,6 +1406,9 @@
     goldenLayer: document.getElementById('goldenLayer'),
     dailyBadge: document.getElementById('dailyBadge'),
     dailyModal: document.getElementById('dailyModal'),
+    settingsBtn: document.getElementById('settingsBtn'),
+    settingsModal: document.getElementById('settingsModal'),
+    settingsCloseBtn: document.getElementById('settingsCloseBtn'),
     dailyStreakNum: document.getElementById('dailyStreakNum'),
     dailyRewardAmount: document.getElementById('dailyRewardAmount'),
     dailyClaimBtn: document.getElementById('dailyClaimBtn'),
@@ -2546,6 +2549,10 @@
     }
   });
   el.unlockModal.addEventListener('click', (e) => { if (e.target === el.unlockModal) hideUnlockModal(); });
+  // Settings (⚙️): open the modal; close via the button or backdrop tap.
+  if (el.settingsBtn) el.settingsBtn.addEventListener('click', () => el.settingsModal.classList.add('show'));
+  if (el.settingsCloseBtn) el.settingsCloseBtn.addEventListener('click', () => el.settingsModal.classList.remove('show'));
+  if (el.settingsModal) el.settingsModal.addEventListener('click', (e) => { if (e.target === el.settingsModal) el.settingsModal.classList.remove('show'); });
   el.rewardTeaser.addEventListener('click', onRewardTeaserClick);
   if (el.leaderboardList) el.leaderboardList.addEventListener('click', onLeaderboardBadgeTap);
   if (el.prestigeBanner) el.prestigeBanner.addEventListener('click', onPrestigeBannerClick);

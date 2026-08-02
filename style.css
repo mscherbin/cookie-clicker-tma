@@ -77,6 +77,24 @@ html, body {
   display: none;
 }
 
+/* ⚙️ Settings button — mirror of the daily badge, top-LEFT. Opens the settings
+   modal (cloud sync / restore / full reset), off the tab bar. */
+.settings-badge {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  font-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
 @keyframes dailyBadgePulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 209, 102, 0.5); }
   50% { box-shadow: 0 0 0 8px rgba(255, 209, 102, 0); }
@@ -221,12 +239,14 @@ html, body {
    content owns the screen. Buildings & Апгрейды (active play) keep it full. */
 body[data-active-tab="friends"] .clicker-zone,
 body[data-active-tab="leaderboard"] .clicker-zone,
+body[data-active-tab="shop"] .clicker-zone,
 body[data-active-tab="stats"] .clicker-zone {
   flex: 0 0 auto;
   min-height: 0;
 }
 body[data-active-tab="friends"] .big-cookie,
 body[data-active-tab="leaderboard"] .big-cookie,
+body[data-active-tab="shop"] .big-cookie,
 body[data-active-tab="stats"] .big-cookie {
   width: min(24vw, 96px);
   height: min(24vw, 96px);
@@ -526,18 +546,33 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   border-bottom: 1px solid var(--card-border);
   flex-shrink: 0;
   background: var(--bg-secondary);
+  /* Safety for very narrow screens (<~350px): if the 6 labels can't all fit,
+     scroll horizontally rather than clip the last tab. On 360/375 they fit. */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 
 .tab-btn {
-  flex: 1;
-  padding: 11px 3px;
+  /* grow to fill (equalise) when there's room, but DON'T shrink below content —
+     so on very narrow screens the bar scrolls (overflow-x on .tabs) instead of
+     clipping labels. On 360/375 everything fits without scrolling. */
+  flex: 1 0 auto;
+  min-width: 0;
+  /* 6 tabs on 375px: equal width (~63px) is too narrow for «Вознесение» on one
+     line, so allow wrapping after the emoji (word kept whole) into 2 lines at a
+     compact size. Single-word tabs stay one line; heights equalise via stretch. */
+  padding: 9px 2px;
   background: none;
   border: none;
   color: var(--hint);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.3px; /* shaves the ~2px «Вознесение» overhang so it fits 63px */
   border-bottom: 2px solid transparent;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
 }
 
 .tab-btn.active {
@@ -1428,6 +1463,39 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   width: 100%;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   animation: dailyPop 0.3s ease-out;
+}
+
+/* Settings modal — wider & left-aligned (holds the cloud-sync block + reset). */
+.settings-modal-card {
+  max-width: 360px;
+  text-align: left;
+  padding: 22px 20px 20px;
+}
+.settings-head {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  text-align: center;
+  margin-bottom: 14px;
+}
+/* Drop the sync card's own frame inside the modal to avoid a card-in-card look. */
+.settings-modal-card .sync-card {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.settings-close-btn {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  color: var(--text);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 @keyframes dailyPop {
