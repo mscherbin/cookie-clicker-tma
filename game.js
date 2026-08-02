@@ -16,6 +16,190 @@
     }
   }
 
+  // ---------- i18n (RU / EN) ----------
+  // Auto-detected from Telegram's language_code on first load (ru* → ru, else
+  // en — English is the safer default for a non-Russian speaker), stored in
+  // state.lang so it persists and can be overridden in Settings. Building /
+  // upgrade names (Priority 2) are intentionally NOT in the table yet — the game
+  // is playable without them (numbers + icons are language-neutral).
+  function detectLang() {
+    const code = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code) || '';
+    return /^ru/i.test(code) ? 'ru' : 'en';
+  }
+
+  const STRINGS = {
+    ru: {
+      'tab.buildings': 'Здания', 'tab.upgrades': 'Апгрейды', 'tab.shop': '🛒 Магазин',
+      'tab.ascension': '⭐ Вознесение', 'tab.top': '🏆 Топ', 'tab.friends': '🤝 Друзья',
+      'top.cookies': 'печенек',
+      'top.cps': '{n} печенек/сек', 'top.clickPower': 'Сила клика: {p} · апгрейдов клика: {a}/{total}',
+      'top.boost2x': '⚡ ×2 производство · ещё {t}',
+      'top.offlineBoost': '🚀 Офлайн без ограничений · ещё {t}', 'top.offline100': '💤 Офлайн 100%: {t}',
+      'time.h': 'ч', 'time.m': 'мин', 'time.s': 'сек', 'evt.remain': 'осталось {t}',
+      // Settings
+      'set.head': '⚙️ Настройки', 'set.lang': 'Язык', 'set.syncTitle': 'Синхронизация между устройствами',
+      'set.push': '⬆️ Отправить в облако', 'set.pull': '⬇️ Загрузить из облака',
+      'set.hint': 'Если на разных устройствах разные цифры — на том, чей прогресс хотите оставить, нажмите «Отправить», а на остальных — «Загрузить». Перед загрузкой и сбросом текущий прогресс этого устройства автоматически сохраняется в резервную копию.',
+      'set.restore': '↩️ Восстановить резервную копию (это устройство)',
+      'set.reset': 'Сбросить прогресс полностью', 'set.close': 'Закрыть',
+      // Shop
+      'shop.title': '🛒 Магазин', 'shop.desc': 'Ускорь производство за Telegram Stars ⭐',
+      'shop.nocap': '🚀 Снять кап офлайна на 24ч · {n} ⭐', 'shop.nocapExtend': 'Продлить ещё на 24ч · {n} ⭐',
+      'shop.boost2x': '⚡ ×2 производство на 1ч · {n} ⭐', 'shop.boost2xExtend': 'Продлить ×2 ещё на 1ч · {n} ⭐',
+      'shop.perm': '🌟 +10% к производству навсегда · {n} ⭐', 'shop.permOwned': '🌟 +10% навсегда · Куплено ✓',
+      'shop.clickBypass': '⚡ Открыть клик-апгрейды без кликов · {n} ⭐', 'shop.clickBypassOwned': '⚡ Клик-апгрейды без кликов · Куплено ✓',
+      // Ascension card
+      'asc.title': '⭐ Вознесение',
+      'asc.desc': 'Сбрасывает прогресс, но даёт постоянный бонус к производству — с каждым разом бонус растёт.',
+      'asc.firstTime': '✨ Это будет твоё первое вознесение',
+      'asc.bonusRow': 'Постоянный бонус', 'asc.btn': 'Вознестись',
+      'asc.heroLabelFirst': 'к производству навсегда — при первом вознесении',
+      'asc.heroLabelNext': 'к производству навсегда — при следующем вознесении',
+      'asc.locked': '🔒 Осталось: {rest}',
+      // Stats
+      'stats.head': '📊 Статистика',
+      // Daily
+      'daily.title': 'Ежедневная награда', 'daily.day': 'День {n}', 'daily.claim': 'Забрать',
+      'daily.refText': '🤝 Играешь не один? Позови друга — и ты, и он получите бонус печенек!',
+      'daily.invite': '📤 Позвать друга',
+      // Offline modal
+      'off.title': 'С возвращением!', 'off.sub': 'Пока тебя не было, напеклось:',
+      'off.claim': 'Забрать', 'off.x2main': 'Забрать ×2 за {n} ⭐', 'off.x2sub': 'получишь {n} 🍪',
+      'off.processing': 'Ожидаем подтверждение оплаты…',
+      // Friends tab
+      'fr.statHead': '🤝 Твоя отдача от друзей', 'fr.activeFriends': 'Активных друзей',
+      'fr.boost': 'Буст к производству', 'fr.offlineFull': 'Офлайн на полной скорости',
+      'fr.offlineBoost': '🚀 Офлайн без ограничений', 'fr.invite': '📤 Позвать друга',
+      'fr.rewardsHead': '🏅 Награды за друзей', 'fr.lbHead': '🏆 Топ по друзьям',
+      'fr.weekly': 'За неделю', 'fr.alltime': 'За всё время',
+      // Onboarding
+      'onb.clickHint': '👆 Нажми на печеньку!', 'onb.upgradeHint': 'Купи апгрейд — печеньки будут копиться быстрее',
+      // Unlock (referral building) modal
+      'unlock.title': 'Новое здание открыто!', 'unlock.place': 'Поставить',
+      // Events
+      'evt.happyHour': '🎉 Печеньковый час', 'evt.weekend': '🎊 Печеньковые выходные',
+      // Friend reward milestones + titles
+      'ms.skin': 'Скин печеньки', 'ms.bakery': 'Пекарня дружбы',
+      'ms.title25': 'Титул «Общительная печенька»', 'ms.title50': 'Титул «Легенда Печенек»', 'ms.title100': 'Титул «Император Печенек»',
+      'ms.open': '✓ Открыто', 'ms.left': 'ещё {n}',
+      'ms.nextReward': 'Ещё {n} {friends} до награды «{label}»', 'ms.allOpen': 'Все награды за друзей открыты! 👑',
+      'title.social': 'Общительная печенька', 'title.legend': 'Легенда Печенек', 'title.emperor': 'Император Печенек',
+      'title.none': 'Пока без титула',
+      'ptitle.celestial': 'Небожитель', 'ptitle.creator': 'Творец мироздания',
+      // Friends dynamic
+      'fr.offlineExtra': '{cap} · +{extra} за друзей',
+      // Leaderboard
+      'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Ранг: по числу перерождений, затем по скорости производства',
+      'lb.lifetime': '🍪 {n} за всё время', 'lb.perSec': 'печ/сек', 'lb.pioneer': '🚩 Пионер',
+      'lb.empty': 'Пока никого нет — станьте первым!', 'lb.loading': 'Загрузка…',
+      'lb.comingSoon': 'Лидерборд скоро появится', 'lb.loadFail': 'Не удалось загрузить лидерборд. Попробуйте позже.',
+      'lb.refActive': '🤝 активных друзей', 'lb.refWord': '{word}',
+      'refLb.emptyWeek': 'На этой неделе ещё никто не звал друзей — будь первым! 🤝',
+      'refLb.emptyAll': 'Пока никто не привёл друзей — стань первым! 🤝', 'refLb.loadFail': 'Не удалось загрузить. Попробуйте позже.',
+      // Toasts (Priority-1)
+      'toast.onlyTelegram': 'Доступно только в Telegram', 'toast.payOnlyTelegram': 'Оплата доступна только в Telegram',
+      'toast.dailyClaimed': '🎁 День {d}: +{n} 🍪', 'toast.ascended': '⭐ Вознесение! Постоянный бонус теперь +{n}% к производству',
+      'toast.boughtUpgrade': 'Куплено!', 'toast.notEnough': 'Не хватает печенек',
+      // Remaining content + prestige banner
+      'content.remain': '{b} {bw} и {u} {uw}',
+      'banner.allBought': 'Всё куплено! 🎉', 'banner.availSub': 'Пора переродиться — +{n}% к производству навсегда',
+      'banner.almostAll': 'Почти всё куплено! 🎉', 'banner.soonSub': 'Скоро откроется вознесение — осталось: {rest}',
+      'banner.cta': 'Переродиться',
+    },
+    en: {
+      'tab.buildings': 'Buildings', 'tab.upgrades': 'Upgrades', 'tab.shop': '🛒 Shop',
+      'tab.ascension': '⭐ Ascension', 'tab.top': '🏆 Top', 'tab.friends': '🤝 Friends',
+      'top.cookies': 'cookies',
+      'top.cps': '{n} cookies/sec', 'top.clickPower': 'Click power: {p} · click upgrades: {a}/{total}',
+      'top.boost2x': '⚡ ×2 production · {t} left',
+      'top.offlineBoost': '🚀 Offline uncapped · {t} left', 'top.offline100': '💤 Offline 100%: {t}',
+      'time.h': 'h', 'time.m': 'm', 'time.s': 's', 'evt.remain': '{t} left',
+      'set.head': '⚙️ Settings', 'set.lang': 'Language', 'set.syncTitle': 'Sync across devices',
+      'set.push': '⬆️ Save to cloud', 'set.pull': '⬇️ Load from cloud',
+      'set.hint': 'If your devices show different numbers, tap “Save” on the one whose progress you want to keep, and “Load” on the others. Before loading or resetting, this device’s current progress is automatically backed up.',
+      'set.restore': '↩️ Restore backup (this device)',
+      'set.reset': 'Reset all progress', 'set.close': 'Close',
+      'shop.title': '🛒 Shop', 'shop.desc': 'Speed up production with Telegram Stars ⭐',
+      'shop.nocap': '🚀 Remove offline cap for 24h · {n} ⭐', 'shop.nocapExtend': 'Extend by 24h · {n} ⭐',
+      'shop.boost2x': '⚡ ×2 production for 1h · {n} ⭐', 'shop.boost2xExtend': 'Extend ×2 by 1h · {n} ⭐',
+      'shop.perm': '🌟 +10% production forever · {n} ⭐', 'shop.permOwned': '🌟 +10% forever · Owned ✓',
+      'shop.clickBypass': '⚡ Unlock click upgrades without clicks · {n} ⭐', 'shop.clickBypassOwned': '⚡ Click upgrades without clicks · Owned ✓',
+      'asc.title': '⭐ Ascension',
+      'asc.desc': 'Resets your progress but grants a permanent production bonus — it grows every time.',
+      'asc.firstTime': '✨ This will be your first ascension',
+      'asc.bonusRow': 'Permanent bonus', 'asc.btn': 'Ascend',
+      'asc.heroLabelFirst': 'to production forever — on your first ascension',
+      'asc.heroLabelNext': 'to production forever — on your next ascension',
+      'asc.locked': '🔒 Left: {rest}',
+      'stats.head': '📊 Statistics',
+      'daily.title': 'Daily reward', 'daily.day': 'Day {n}', 'daily.claim': 'Claim',
+      'daily.refText': '🤝 Not playing alone? Invite a friend — you both get a cookie bonus!',
+      'daily.invite': '📤 Invite a friend',
+      'off.title': 'Welcome back!', 'off.sub': 'While you were away, you baked:',
+      'off.claim': 'Claim', 'off.x2main': 'Claim ×2 for {n} ⭐', 'off.x2sub': 'you get {n} 🍪',
+      'off.processing': 'Waiting for payment confirmation…',
+      'fr.statHead': '🤝 What your friends earn you', 'fr.activeFriends': 'Active friends',
+      'fr.boost': 'Production boost', 'fr.offlineFull': 'Offline at full speed',
+      'fr.offlineBoost': '🚀 Offline uncapped', 'fr.invite': '📤 Invite a friend',
+      'fr.rewardsHead': '🏅 Friend rewards', 'fr.lbHead': '🏆 Top by friends',
+      'fr.weekly': 'This week', 'fr.alltime': 'All time',
+      'onb.clickHint': '👆 Tap the cookie!', 'onb.upgradeHint': 'Buy an upgrade — cookies pile up faster',
+      'unlock.title': 'New building unlocked!', 'unlock.place': 'Place',
+      'evt.happyHour': '🎉 Cookie Hour', 'evt.weekend': '🎊 Cookie Weekend',
+      'ms.skin': 'Cookie skin', 'ms.bakery': 'Friendship Bakery',
+      'ms.title25': 'Title “Social Cookie”', 'ms.title50': 'Title “Cookie Legend”', 'ms.title100': 'Title “Cookie Emperor”',
+      'ms.open': '✓ Unlocked', 'ms.left': '{n} left',
+      'ms.nextReward': '{n} more {friends} to unlock “{label}”', 'ms.allOpen': 'All friend rewards unlocked! 👑',
+      'title.social': 'Social Cookie', 'title.legend': 'Cookie Legend', 'title.emperor': 'Cookie Emperor',
+      'title.none': 'No title yet',
+      'ptitle.celestial': 'Celestial', 'ptitle.creator': 'World Creator',
+      'fr.offlineExtra': '{cap} · +{extra} from friends',
+      'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Rank: by ascensions, then by production speed',
+      'lb.lifetime': '🍪 {n} all-time', 'lb.perSec': '/sec', 'lb.pioneer': '🚩 Pioneer',
+      'lb.empty': 'No one here yet — be the first!', 'lb.loading': 'Loading…',
+      'lb.comingSoon': 'Leaderboard coming soon', 'lb.loadFail': 'Couldn’t load the leaderboard. Try again later.',
+      'lb.refActive': '🤝 active friends', 'lb.refWord': '{word}',
+      'refLb.emptyWeek': 'No one invited friends this week — be the first! 🤝',
+      'refLb.emptyAll': 'No one has brought friends yet — be the first! 🤝', 'refLb.loadFail': 'Couldn’t load. Try again later.',
+      'toast.onlyTelegram': 'Available only in Telegram', 'toast.payOnlyTelegram': 'Payments available only in Telegram',
+      'toast.dailyClaimed': '🎁 Day {d}: +{n} 🍪', 'toast.ascended': '⭐ Ascension! Permanent bonus is now +{n}% to production',
+      'toast.boughtUpgrade': 'Purchased!', 'toast.notEnough': 'Not enough cookies',
+      'content.remain': '{b} {bw} and {u} {uw}',
+      'banner.allBought': 'All bought! 🎉', 'banner.availSub': 'Time to ascend — +{n}% to production forever',
+      'banner.almostAll': 'Almost everything bought! 🎉', 'banner.soonSub': 'Ascension unlocks soon — left: {rest}',
+      'banner.cta': 'Ascend',
+    },
+  };
+
+  function t(key, vars) {
+    const lang = (typeof state !== 'undefined' && state && state.lang) || detectLang();
+    const table = STRINGS[lang] || STRINGS.en;
+    let s = table[key];
+    if (s == null) s = STRINGS.en[key];
+    if (s == null) return key;
+    if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+    return s;
+  }
+
+  // Fill every static [data-i18n] element from the table (called on load and
+  // whenever the language changes). Dynamic strings use t() in their renderers.
+  function applyStaticI18n() {
+    document.querySelectorAll('[data-i18n]').forEach(node => {
+      node.textContent = t(node.getAttribute('data-i18n'));
+    });
+    // Highlight the active language button in Settings.
+    const lang = (state && state.lang) || detectLang();
+    document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+  }
+
+  function setLang(lang) {
+    if (lang !== 'ru' && lang !== 'en') return;
+    state.lang = lang;
+    saveState();
+    applyStaticI18n();
+    refreshAll();
+  }
+
   // ---------- Game data ----------
   // Optional `tier` on a building/upgrade = required prestige (ascension) count
   // to unlock it; 0/absent = always available. See tierUnlocked()/itemTier().
@@ -163,9 +347,9 @@
   // friend goes inactive). Ascending by threshold. Also used to render other
   // players' titles in the leaderboard from their maxActiveFriendsEver.
   const TITLES = [
-    { threshold: 25,  name: 'Общительная печенька', icon: '🍪' },
-    { threshold: 50,  name: 'Легенда Печенек',      icon: '⭐' },
-    { threshold: 100, name: 'Император Печенек',    icon: '👑' },
+    { threshold: 25,  nameKey: 'title.social',  icon: '🍪' },
+    { threshold: 50,  nameKey: 'title.legend',  icon: '⭐' },
+    { threshold: 100, nameKey: 'title.emperor', icon: '👑' },
   ];
 
   function titleFor(peak) {
@@ -185,8 +369,8 @@
   // purely from prestige count, so it also renders for other players in the
   // leaderboard (from their prestigeCount) with no server change.
   const PRESTIGE_TITLES = [
-    { tier: 5,  name: 'Небожитель',        icon: '😇' },
-    { tier: 10, name: 'Творец мироздания', icon: '🌌' },
+    { tier: 5,  nameKey: 'ptitle.celestial', icon: '😇' },
+    { tier: 10, nameKey: 'ptitle.creator',   icon: '🌌' },
   ];
   function prestigeTitleForTier(dt) {
     let found = null;
@@ -199,11 +383,11 @@
   // «Пекарня дружбы» building, 25/50/100 → titles (mirrors TITLES). Keyed off
   // peak friends so a node never re-locks when a friend goes inactive.
   const REF_MILESTONES = [
-    { n: 3,   icon: '🎨', label: 'Скин печеньки' },
-    { n: 10,  icon: '🫶', label: 'Пекарня дружбы' },
-    { n: 25,  icon: '🍪', label: 'Титул «Общительная печенька»' },
-    { n: 50,  icon: '⭐', label: 'Титул «Легенда Печенек»' },
-    { n: 100, icon: '👑', label: 'Титул «Император Печенек»' },
+    { n: 3,   icon: '🎨', labelKey: 'ms.skin' },
+    { n: 10,  icon: '🫶', labelKey: 'ms.bakery' },
+    { n: 25,  icon: '🍪', labelKey: 'ms.title25' },
+    { n: 50,  icon: '⭐', labelKey: 'ms.title50' },
+    { n: 100, icon: '👑', labelKey: 'ms.title100' },
   ];
 
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
@@ -345,6 +529,7 @@
     hasClickBypass: false, // one-time paid "skip the click-count requirement on click upgrades"; server-authoritative
     lifetimeBaked: 0, // cookies baked across ALL past runs (never reset on ascend); + current totalBaked = lifetime total
     paidUnlockedUpgrades: [], // upgrade ids whose progress gate was skipped via a paid Stars purchase; server-authoritative
+    lang: detectLang(), // 'ru'|'en'; auto from Telegram language_code on first load, then persisted (overridable in Settings)
   });
 
   let state = defaultState();
@@ -639,7 +824,7 @@
 
   function inviteFriend() {
     const myId = ownTelegramUserId();
-    if (!myId || !tg || !tg.openTelegramLink) { showToast('Доступно только в Telegram'); return; }
+    if (!myId || !tg || !tg.openTelegramLink) { showToast(t('toast.onlyTelegram')); return; }
     const deepLink = `https://t.me/${BOT_USERNAME}?start=ref${myId}`;
     const shareText = 'Залипаю в Cookie Clicker — залетай печь печеньки со мной! 🍪';
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(shareText)}`);
@@ -664,37 +849,40 @@
   // switcher (Layer 4: by friends / by production) can swap the text per mode
   // instead of showing a static line that lies for the other modes.
   function leaderboardCriterionText() {
-    return 'Ранг: по числу перерождений, затем по скорости производства';
+    return t('lb.criterion');
   }
-  function ascendWord(n) { return pluralRu(n, 'вознесение', 'вознесения', 'вознесений'); }
+  function ascendWord(n) {
+    if ((state && state.lang) === 'en') return Math.abs(n) === 1 ? 'ascension' : 'ascensions';
+    return pluralRu(n, 'вознесение', 'вознесения', 'вознесений');
+  }
 
   function loadLeaderboard() {
-    el.leaderboardList.innerHTML = '<div class="empty-hint">Загрузка…</div>';
+    el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.loading')}</div>`;
     if (!LEADERBOARD_URL) {
-      el.leaderboardList.innerHTML = '<div class="empty-hint">Лидерборд скоро появится</div>';
+      el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.comingSoon')}</div>`;
       return;
     }
     fetch(LEADERBOARD_URL)
       .then(r => r.json())
       .then(data => {
-        const explainer = `<div class="lb-explainer">🏅 ${leaderboardCriterionText()}</div>`;
+        const explainer = `<div class="lb-explainer">${t('lb.explainer', { crit: leaderboardCriterionText() })}</div>`;
         if (!data.ok || !data.entries || data.entries.length === 0) {
-          el.leaderboardList.innerHTML = explainer + '<div class="empty-hint">Пока никого нет — станьте первым!</div>';
+          el.leaderboardList.innerHTML = explainer + `<div class="empty-hint">${t('lb.empty')}</div>`;
           return;
         }
         if (Number.isFinite(data.pioneerLimit)) leaderboardPioneerLimit = data.pioneerLimit;
         const myId = ownTelegramUserId();
         const medals = ['🥇', '🥈', '🥉'];
         const rows = data.entries.map((entry, i) => {
-          const t = titleFor(entry.maxActiveFriendsEver);
-          const refTitleHtml = t ? `<span class="lb-title">${t.icon} ${escapeHtml(t.name)}</span>` : '';
-          const pioneerHtml = entry.isPioneer ? '<span class="lb-title lb-pioneer" data-pioneer="1">🚩 Пионер</span>' : '';
+          const rt = titleFor(entry.maxActiveFriendsEver);
+          const refTitleHtml = rt ? `<span class="lb-title">${rt.icon} ${escapeHtml(t(rt.nameKey))}</span>` : '';
+          const pioneerHtml = entry.isPioneer ? `<span class="lb-title lb-pioneer" data-pioneer="1">${t('lb.pioneer')}</span>` : '';
           const p = entry.prestigeCount || 0;
           const bonus = entry.crumbs || 0; // this player's real permanent bonus %
           const prestigeHtml = p > 0 ? `<span class="lb-prestige ${prestigeBadgeClass(p)}" data-prestige="${p}" data-bonus="${bonus}">⭐×${p}</span>` : '';
           // Prestige-tier milestone title (tiers 5 & 10) from their prestige count.
           const pTitle = prestigeTitleForTier(p + 1);
-          const prestigeTitleHtml = pTitle ? `<span class="lb-title lb-epoch">${pTitle.icon} ${escapeHtml(pTitle.name)}</span>` : '';
+          const prestigeTitleHtml = pTitle ? `<span class="lb-title lb-epoch">${pTitle.icon} ${escapeHtml(t(pTitle.nameKey))}</span>` : '';
           // Lifetime (never resets) as the secondary figure — a just-ascended
           // player would otherwise show ~0 baked and look empty.
           const lifetime = entry.lifetimeCookies || entry.totalBaked || 0;
@@ -703,15 +891,15 @@
             <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
             <div class="leaderboard-info">
               <div class="leaderboard-name">${prestigeHtml}${escapeHtml(entry.name)}${pioneerHtml}${prestigeTitleHtml}${refTitleHtml}</div>
-              <div class="leaderboard-total">🍪 ${formatNum(lifetime)} за всё время</div>
+              <div class="leaderboard-total">${t('lb.lifetime', { n: formatNum(lifetime) })}</div>
             </div>
-            <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">печ/сек</span></div>
+            <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">${t('lb.perSec')}</span></div>
           </div>`;
         }).join('');
         el.leaderboardList.innerHTML = explainer + rows;
       })
       .catch(() => {
-        el.leaderboardList.innerHTML = '<div class="empty-hint">Не удалось загрузить лидерборд. Попробуйте позже.</div>';
+        el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.loadFail')}</div>`;
       });
   }
 
@@ -736,7 +924,7 @@
   let refData = null;                // { weekly:[], allTime:[] } from the server
 
   function loadReferralLeaderboard() {
-    el.referralLeaderboardList.innerHTML = '<div class="empty-hint">Загрузка…</div>';
+    el.referralLeaderboardList.innerHTML = `<div class="empty-hint">${t('lb.loading')}</div>`;
     if (!REFERRAL_LEADERBOARD_URL) return;
     fetch(REFERRAL_LEADERBOARD_URL)
       .then(r => r.json())
@@ -745,7 +933,7 @@
         renderReferralLeaderboard();
       })
       .catch(() => {
-        el.referralLeaderboardList.innerHTML = '<div class="empty-hint">Не удалось загрузить. Попробуйте позже.</div>';
+        el.referralLeaderboardList.innerHTML = `<div class="empty-hint">${t('refLb.loadFail')}</div>`;
       });
   }
 
@@ -754,8 +942,8 @@
     const entries = refData ? (refPeriod === 'weekly' ? refData.weekly : refData.allTime) : [];
     if (!entries || entries.length === 0) {
       el.referralLeaderboardList.innerHTML = refPeriod === 'weekly'
-        ? '<div class="empty-hint">На этой неделе ещё никто не звал друзей — будь первым! 🤝</div>'
-        : '<div class="empty-hint">Пока никто не привёл друзей — стань первым! 🤝</div>';
+        ? `<div class="empty-hint">${t('refLb.emptyWeek')}</div>`
+        : `<div class="empty-hint">${t('refLb.emptyAll')}</div>`;
       return;
     }
     const myId = ownTelegramUserId();
@@ -767,7 +955,7 @@
           <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
           <div class="leaderboard-info">
             <div class="leaderboard-name">${escapeHtml(entry.name)}</div>
-            <div class="leaderboard-total">🤝 активных друзей</div>
+            <div class="leaderboard-total">${t('lb.refActive')}</div>
           </div>
           <div class="leaderboard-score">${formatNum(n)}<span class="leaderboard-score-unit">${friendWord(n)}</span></div>
         </div>`;
@@ -849,11 +1037,11 @@
     const events = [];
     const activeHH = getHappyHourWindows(now).find(w => now >= w.start && now < w.end);
     if (activeHH) {
-      events.push({ id: 'happyHour', label: '🎉 Печеньковый час', mult: 2, endsAt: activeHH.end.getTime() });
+      events.push({ id: 'happyHour', label: t('evt.happyHour'), mult: 2, endsAt: activeHH.end.getTime() });
     }
     const we = getWeekendWindow(now);
     if (we && now >= we.start && now < we.end) {
-      events.push({ id: 'weekend', label: '🎊 Печеньковые выходные', mult: 1.5, endsAt: we.end.getTime() });
+      events.push({ id: 'weekend', label: t('evt.weekend'), mult: 1.5, endsAt: we.end.getTime() });
     }
     return events;
   }
@@ -955,7 +1143,7 @@
     state.maxActiveFriendsEver = keepMaxFriendsEver;
 
     haptic('heavy');
-    showToast(`⭐ Вознесение! Постоянный бонус теперь +${keepTotalCrumbs}% к производству`);
+    showToast(t('toast.ascended', { n: keepTotalCrumbs }));
     // Milestone tiers (5 & 10): if this ascension crossed into one, celebrate the
     // earned title separately (a beat after the ascension toast).
     const oldDT = prevAsc + 1, newDT = keepAscensionCount + 1;
@@ -1114,16 +1302,16 @@
   function showDailyModal() {
     if (!dailyRewardAvailable()) return;
     const streak = previewDailyStreak();
-    el.dailyStreakNum.textContent = streak;
+    if (el.dailyStreak) el.dailyStreak.textContent = t('daily.day', { n: streak });
     el.dailyRewardAmount.textContent = formatNum(computeDailyReward(streak));
     // Tutorial step 3: introduce referrals on a RETURN day (lastDailyClaim != 0
     // means they've claimed before, so this modal is a comeback). Shown once —
     // by now they have progress to protect and have felt the offline mechanic,
     // so "invite a friend, both get a bonus" reads as value, not bot spam.
-    const t = tut();
-    const showRef = state.lastDailyClaim !== 0 && !t.referralIntroShown;
+    const tu = tut();
+    const showRef = state.lastDailyClaim !== 0 && !tu.referralIntroShown;
     if (el.dailyReferral) el.dailyReferral.hidden = !showRef;
-    if (showRef) { t.referralIntroShown = true; saveState(); }
+    if (showRef) { tu.referralIntroShown = true; saveState(); }
     el.dailyModal.classList.add('show');
   }
 
@@ -1141,7 +1329,7 @@
     state.lastDailyClaim = Date.now();
     hideDailyModal();
     haptic('heavy');
-    showToast(`🎁 День ${streak}: +${formatNum(reward)} 🍪`);
+    showToast(t('toast.dailyClaimed', { d: streak, n: formatNum(reward) }));
     saveState();
     refreshAll();
   }
@@ -1151,6 +1339,10 @@
     if (!el.offlineModal || !(state.offlinePending > 0)) return;
     el.offlineAmount.textContent = formatNum(state.offlinePending);
     el.offlineX2Amount.textContent = formatNum(state.offlinePending * 2);
+    const x2Main = document.getElementById('offlineX2Main');
+    if (x2Main) x2Main.textContent = t('off.x2main', { n: OFFLINE_BOOST_STARS });
+    const x2Sub = document.getElementById('offlineX2Sub');
+    if (x2Sub) x2Sub.textContent = t('off.x2sub', { n: formatNum(state.offlinePending * 2) });
     setOfflineModalProcessing(false);
     el.offlineModal.classList.add('show');
   }
@@ -1194,7 +1386,7 @@
   }
 
   async function claimOfflinePaid() {
-    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     const quote = state.offlinePending || 0;
     if (!(quote > 0)) return;
     setOfflineModalProcessing(true);
@@ -1227,7 +1419,7 @@
   // Paid "remove offline cap for 24h" boost. No amount to freeze — the effect
   // is a server-owned time window; boostExpiresAt arrives back on checkin.
   async function buyNocapBoost() {
-    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     if (el.nocapBtn) el.nocapBtn.disabled = true;
     try {
       const resp = await fetch(CREATE_NOCAP_INVOICE_URL, {
@@ -1255,7 +1447,7 @@
   // Paid "x2 production for 1h" boost. Server-owned window; boost2xExpiresAt
   // lands on checkin, then online x2 + timer kick in.
   async function buyBoost2x() {
-    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     if (el.boost2xBtn) el.boost2xBtn.disabled = true;
     try {
       const resp = await fetch(CREATE_BOOST2X_INVOICE_URL, {
@@ -1284,7 +1476,7 @@
   // success the flag arrives via checkin and getCps/getClickPower pick up +10%.
   async function buyPermProd() {
     if (state.hasPermProdBoost) { showToast('Уже куплено ✓'); return; }
-    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     if (el.permProdBtn) el.permProdBtn.disabled = true;
     try {
       const resp = await fetch(CREATE_PERM_INVOICE_URL, {
@@ -1320,7 +1512,7 @@
   // click upgrades. Server owns the has_click_bypass flag (mirrors buyPermProd).
   async function buyClickBypass() {
     if (state.hasClickBypass) { showToast('Уже куплено ✓'); return; }
-    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     if (el.clickBypassBtn) el.clickBypassBtn.disabled = true;
     try {
       const resp = await fetch(CREATE_CLICKSKIP_INVOICE_URL, {
@@ -1364,7 +1556,7 @@
   // organically (enough clicks) between render and tap.
   async function buyUpgradeSkip(u) {
     if (upgradeUnlocked(u)) { showToast('Уже разблокировано ✓'); refreshAll(); return; }
-    if (!tg || !tg.openInvoice || !tg.initData) { showToast('Оплата доступна только в Telegram'); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
     try {
       const resp = await fetch(CREATE_UPGRADE_SKIP_INVOICE_URL, {
         method: 'POST',
@@ -1409,7 +1601,10 @@
     settingsBtn: document.getElementById('settingsBtn'),
     settingsModal: document.getElementById('settingsModal'),
     settingsCloseBtn: document.getElementById('settingsCloseBtn'),
+    langRuBtn: document.getElementById('langRuBtn'),
+    langEnBtn: document.getElementById('langEnBtn'),
     dailyStreakNum: document.getElementById('dailyStreakNum'),
+    dailyStreak: document.getElementById('dailyStreak'),
     dailyRewardAmount: document.getElementById('dailyRewardAmount'),
     dailyClaimBtn: document.getElementById('dailyClaimBtn'),
     dailyReferral: document.getElementById('dailyReferral'),
@@ -1474,10 +1669,10 @@
   function renderTopbar() {
     el.cookieCount.textContent = formatNum(state.cookies);
     const p2 = prod2xMultiplier();
-    el.cps.textContent = `${formatNum(getCps() * p2)} печенек/сек${p2 > 1 ? ' ⚡×2' : ''}`;
+    el.cps.textContent = t('top.cps', { n: formatNum(getCps() * p2) }) + (p2 > 1 ? ' ⚡×2' : '');
     el.cps.classList.toggle('boosted', p2 > 1);
     const clickUpgradesOwned = countBoughtUpgrades('click');
-    el.clickPowerLine.textContent = `Сила клика: ${formatNum(getClickPower())} · апгрейдов клика: ${clickUpgradesOwned}/${CLICK_UPGRADES_TOTAL}`;
+    el.clickPowerLine.textContent = t('top.clickPower', { p: formatNum(getClickPower()), a: clickUpgradesOwned, total: CLICK_UPGRADES_TOTAL });
     renderOfflineInfo();
     renderBoost2xInfo();
   }
@@ -1488,7 +1683,7 @@
     const left = (state.boost2xExpiresAt || 0) - Date.now();
     if (left > 0) {
       el.boost2xLine.hidden = false;
-      el.boost2xLine.textContent = `⚡ ×2 производство · ещё ${fmtDur(left)}`;
+      el.boost2xLine.textContent = t('top.boost2x', { t: fmtDur(left) });
     } else {
       el.boost2xLine.hidden = true;
     }
@@ -1500,11 +1695,11 @@
     if (!el.offlineInfoLine) return;
     const boostLeft = (state.boostExpiresAt || 0) - Date.now();
     if (boostLeft > 0) {
-      el.offlineInfoLine.textContent = `🚀 Офлайн без ограничений · ещё ${fmtHM(boostLeft)}`;
+      el.offlineInfoLine.textContent = t('top.offlineBoost', { t: fmtHM(boostLeft) });
       el.offlineInfoLine.classList.add('boost');
     } else {
       const capMin = Math.round(getOfflineCapHours(state.activeReferrals || 0) * 60);
-      el.offlineInfoLine.textContent = `💤 Офлайн 100%: ${Math.floor(capMin / 60)}ч ${capMin % 60}мин`;
+      el.offlineInfoLine.textContent = t('top.offline100', { t: fmtHMText(capMin) });
       el.offlineInfoLine.classList.remove('boost');
     }
   }
@@ -1522,7 +1717,7 @@
     const hh = String(Math.floor(remain / 3600000)).padStart(2, '0');
     const mm = String(Math.floor((remain % 3600000) / 60000)).padStart(2, '0');
     const ss = String(Math.floor((remain % 60000) / 1000)).padStart(2, '0');
-    el.eventBannerText.textContent = `${label} · x${totalMult} · осталось ${hh}:${mm}:${ss}`;
+    el.eventBannerText.textContent = `${label} · x${totalMult} · ${t('evt.remain', { t: `${hh}:${mm}:${ss}` })}`;
     el.eventBanner.hidden = false;
   }
 
@@ -1908,8 +2103,8 @@
     const ascended = (state.ascensionCount || 0) >= 1;
     el.ascendPreview.textContent = `+${formatNum(potentialCrumbs())}%`;
     if (el.ascendPreviewLabel) el.ascendPreviewLabel.textContent = ascended
-      ? 'к производству навсегда — при следующем вознесении'
-      : 'к производству навсегда — при первом вознесении';
+      ? t('asc.heroLabelNext')
+      : t('asc.heroLabelFirst');
     if (el.ascendFirstTime) el.ascendFirstTime.hidden = ascended;
     if (el.ascendRows) el.ascendRows.hidden = !ascended;
     el.ascendBonus.textContent = `+${state.totalCrumbs || 0}%`;
@@ -1921,9 +2116,9 @@
       el.ascendBtn.disabled = !ready;
       el.ascendBtn.classList.toggle('locked', !ready);
       if (ready) {
-        el.ascendBtn.textContent = 'Вознестись';
+        el.ascendBtn.textContent = t('asc.btn');
       } else {
-        el.ascendBtn.textContent = `🔒 Осталось: ${remainingContentLabel()}`;
+        el.ascendBtn.textContent = t('asc.locked', { rest: remainingContentLabel() });
       }
     }
 
@@ -1932,29 +2127,29 @@
     // countdown to label its button.
     const boostLeft = (state.boostExpiresAt || 0) - Date.now();
     if (el.nocapBtn) el.nocapBtn.textContent = boostLeft > 0
-      ? `Продлить ещё на 24ч · ${NOCAP_BOOST_STARS} ⭐`
-      : `🚀 Снять кап офлайна на 24ч · ${NOCAP_BOOST_STARS} ⭐`;
+      ? t('shop.nocapExtend', { n: NOCAP_BOOST_STARS })
+      : t('shop.nocap', { n: NOCAP_BOOST_STARS });
     if (el.boost2xBtn) el.boost2xBtn.textContent = (state.boost2xExpiresAt || 0) > Date.now()
-      ? `Продлить ×2 ещё на 1ч · ${PROD2X_BOOST_STARS} ⭐`
-      : `⚡ ×2 производство на 1ч · ${PROD2X_BOOST_STARS} ⭐`;
+      ? t('shop.boost2xExtend', { n: PROD2X_BOOST_STARS })
+      : t('shop.boost2x', { n: PROD2X_BOOST_STARS });
     if (el.permProdBtn) {
       if (state.hasPermProdBoost) {
-        el.permProdBtn.textContent = '🌟 +10% навсегда · Куплено ✓';
+        el.permProdBtn.textContent = t('shop.permOwned');
         el.permProdBtn.disabled = true;
         el.permProdBtn.classList.add('owned');
       } else {
-        el.permProdBtn.textContent = `🌟 +10% к производству навсегда · ${PERM_PROD_STARS} ⭐`;
+        el.permProdBtn.textContent = t('shop.perm', { n: PERM_PROD_STARS });
         el.permProdBtn.disabled = false;
         el.permProdBtn.classList.remove('owned');
       }
     }
     if (el.clickBypassBtn) {
       if (state.hasClickBypass) {
-        el.clickBypassBtn.textContent = '⚡ Клик-апгрейды без кликов · Куплено ✓';
+        el.clickBypassBtn.textContent = t('shop.clickBypassOwned');
         el.clickBypassBtn.disabled = true;
         el.clickBypassBtn.classList.add('owned');
       } else {
-        el.clickBypassBtn.textContent = `⚡ Открыть клик-апгрейды без кликов · ${CLICK_BYPASS_STARS} ⭐`;
+        el.clickBypassBtn.textContent = t('shop.clickBypass', { n: CLICK_BYPASS_STARS });
         el.clickBypassBtn.disabled = false;
         el.clickBypassBtn.classList.remove('owned');
       }
@@ -1963,22 +2158,26 @@
     el.syncStatus.textContent = cloudStorageStatusText();
   }
 
+  // Language-aware "Xh Ym" from a minute count (units from the i18n table).
+  function fmtHMText(totalMin) {
+    return `${Math.floor(totalMin / 60)}${t('time.h')} ${totalMin % 60}${t('time.m')}`;
+  }
   function fmtHM(ms) {
-    const totalMin = Math.max(0, Math.round(ms / 60000));
-    return `${Math.floor(totalMin / 60)}ч ${totalMin % 60}мин`;
+    return fmtHMText(Math.max(0, Math.round(ms / 60000)));
   }
 
   // Compact duration: drops the hours part when zero (good for the ≤1h x2 boost).
   function fmtDur(ms) {
-    const t = Math.max(0, Math.round(ms / 1000));
-    const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
-    if (h > 0) return `${h}ч ${m}мин`;
-    if (m > 0) return `${m} мин`;
-    return `${s} сек`;
+    const secs = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+    if (h > 0) return `${h}${t('time.h')} ${m}${t('time.m')}`;
+    if (m > 0) return `${m} ${t('time.m')}`;
+    return `${s} ${t('time.s')}`;
   }
 
   // Russian count agreement for "друг": 1 друг, 2 друга, 5 друзей.
   function friendWord(n) {
+    if ((state && state.lang) === 'en') return Math.abs(n) === 1 ? 'friend' : 'friends';
     const a = Math.abs(n) % 100, b = a % 10;
     if (a >= 11 && a <= 14) return 'друзей';
     if (b === 1) return 'друг';
@@ -1994,8 +2193,14 @@
     if (b >= 2 && b <= 4) return few;
     return many;
   }
-  function buildingWord(n) { return pluralRu(n, 'здание', 'здания', 'зданий'); }
-  function upgradeWord(n) { return pluralRu(n, 'апгрейд', 'апгрейда', 'апгрейдов'); }
+  function buildingWord(n) {
+    if ((state && state.lang) === 'en') return Math.abs(n) === 1 ? 'building' : 'buildings';
+    return pluralRu(n, 'здание', 'здания', 'зданий');
+  }
+  function upgradeWord(n) {
+    if ((state && state.lang) === 'en') return Math.abs(n) === 1 ? 'upgrade' : 'upgrades';
+    return pluralRu(n, 'апгрейд', 'апгрейда', 'апгрейдов');
+  }
 
   // "Друзья" tab: player profile (name + titles, moved here from the old army
   // card) + personal referral payoff (Priority 1) + the full milestone track
@@ -2010,10 +2215,10 @@
     if (el.playerProfile) {
       const cur = titleFor(peak);
       const refBadge = cur
-        ? `<span class="title-badge">${cur.icon} ${cur.name}</span>`
-        : `<span class="title-badge title-badge-none">Пока без титула</span>`;
+        ? `<span class="title-badge">${cur.icon} ${t(cur.nameKey)}</span>`
+        : `<span class="title-badge title-badge-none">${t('title.none')}</span>`;
       const pt = prestigeTitleForTier(displayTier());
-      const prestigeBadge = pt ? `<span class="title-badge title-badge-prestige">${pt.icon} ${pt.name}</span>` : '';
+      const prestigeBadge = pt ? `<span class="title-badge title-badge-prestige">${pt.icon} ${t(pt.nameKey)}</span>` : '';
       el.playerProfile.innerHTML = `<span class="pp-name">👤 ${escapeHtml(ownDisplayName())}</span>${prestigeBadge}${refBadge}`;
     }
 
@@ -2024,16 +2229,16 @@
     // (moved from the army card), otherwise the friend-extended full-rate cap.
     const boostLeft = (state.boostExpiresAt || 0) - Date.now();
     if (boostLeft > 0) {
-      if (el.fsOfflineLabel) el.fsOfflineLabel.textContent = '🚀 Офлайн без ограничений';
-      el.fsOffline.textContent = `ещё ${fmtHM(boostLeft)}`;
+      if (el.fsOfflineLabel) el.fsOfflineLabel.textContent = t('fr.offlineBoost');
+      el.fsOffline.textContent = t('evt.remain', { t: fmtHM(boostLeft) });
     } else {
-      if (el.fsOfflineLabel) el.fsOfflineLabel.textContent = 'Офлайн на полной скорости';
+      if (el.fsOfflineLabel) el.fsOfflineLabel.textContent = t('fr.offlineFull');
       const capMin = Math.round(getOfflineCapHours(army) * 60);
       const baseMin = Math.round((Number.isFinite(state.offlineBaseHours) ? state.offlineBaseHours : OFFLINE_BASE_HOURS_DEFAULT) * 60);
       const extraMin = Math.max(0, capMin - baseMin);
-      const capStr = `${Math.floor(capMin / 60)}ч ${capMin % 60}мин`;
-      const extraStr = extraMin >= 60 ? `${Math.floor(extraMin / 60)}ч ${extraMin % 60}мин` : `${extraMin}мин`;
-      el.fsOffline.textContent = extraMin > 0 ? `${capStr} · +${extraStr} за друзей` : capStr;
+      const capStr = fmtHMText(capMin);
+      const extraStr = extraMin >= 60 ? fmtHMText(extraMin) : `${extraMin}${t('time.m')}`;
+      el.fsOffline.textContent = extraMin > 0 ? t('fr.offlineExtra', { cap: capStr, extra: extraStr }) : capStr;
     }
 
     // Priority 2 — full milestone track, current position + next threshold.
@@ -2041,19 +2246,20 @@
     el.friendsMilestones.innerHTML = REF_MILESTONES.map(m => {
       const done = peak >= m.n;
       const isNext = next && next.n === m.n;
-      const status = done ? '✓ Открыто' : (isNext ? `ещё ${m.n - peak}` : '🔒');
+      const status = done ? t('ms.open') : (isNext ? t('ms.left', { n: m.n - peak }) : '🔒');
       return `<div class="ms-row${done ? ' done' : ''}${isNext ? ' next' : ''}">
         <span class="ms-icon">${done ? m.icon : '🔒'}</span>
-        <span class="ms-info"><span class="ms-n">${m.n} ${friendWord(m.n)}</span><span class="ms-label">${m.label}</span></span>
+        <span class="ms-info"><span class="ms-n">${m.n} ${friendWord(m.n)}</span><span class="ms-label">${t(m.labelKey)}</span></span>
         <span class="ms-status">${status}</span>
       </div>`;
     }).join('');
     el.friendsMsNext.textContent = next
-      ? `Ещё ${next.n - peak} ${friendWord(next.n - peak)} до награды «${next.label}»`
-      : 'Все награды за друзей открыты! 👑';
+      ? t('ms.nextReward', { n: next.n - peak, friends: friendWord(next.n - peak), label: t(next.labelKey) })
+      : t('ms.allOpen');
   }
 
   function refreshAll() {
+    applyStaticI18n();
     renderTopbar();
     renderBuildings();
     renderUpgrades();
@@ -2257,7 +2463,7 @@
     if (items.length === 0) return '';
     if (items.length <= 3) return items.map(it => it.name).join(', ');
     const b = unboughtBuildingCount(), u = unboughtUpgradeCount();
-    return `${b} ${buildingWord(b)} и ${u} ${upgradeWord(u)}`;
+    return t('content.remain', { b, bw: buildingWord(b), u, uw: upgradeWord(u) });
   }
 
   // Banner has two states: 'available' (everything bought — ascend now) and
@@ -2275,13 +2481,14 @@
     el.prestigeBanner.hidden = false;
     el.prestigeBanner.classList.toggle('available', st === 'available');
     el.prestigeBanner.classList.toggle('soon', st === 'soon');
+    el.prestigeBannerCta.textContent = t('banner.cta');
     if (st === 'available') {
-      el.prestigeBannerTitle.textContent = 'Всё куплено! 🎉';
-      el.prestigeBannerSub.textContent = `Пора переродиться — +${formatNum(potentialCrumbs())}% к производству навсегда`;
+      el.prestigeBannerTitle.textContent = t('banner.allBought');
+      el.prestigeBannerSub.textContent = t('banner.availSub', { n: formatNum(potentialCrumbs()) });
       el.prestigeBannerCta.hidden = false;
     } else {
-      el.prestigeBannerTitle.textContent = 'Почти всё куплено! 🎉';
-      el.prestigeBannerSub.textContent = `Скоро откроется вознесение — осталось: ${remainingContentLabel()}`;
+      el.prestigeBannerTitle.textContent = t('banner.almostAll');
+      el.prestigeBannerSub.textContent = t('banner.soonSub', { rest: remainingContentLabel() });
       el.prestigeBannerCta.hidden = true;
     }
   }
@@ -2551,6 +2758,8 @@
   el.unlockModal.addEventListener('click', (e) => { if (e.target === el.unlockModal) hideUnlockModal(); });
   // Settings (⚙️): open the modal; close via the button or backdrop tap.
   if (el.settingsBtn) el.settingsBtn.addEventListener('click', () => el.settingsModal.classList.add('show'));
+  if (el.langRuBtn) el.langRuBtn.addEventListener('click', () => setLang('ru'));
+  if (el.langEnBtn) el.langEnBtn.addEventListener('click', () => setLang('en'));
   if (el.settingsCloseBtn) el.settingsCloseBtn.addEventListener('click', () => el.settingsModal.classList.remove('show'));
   if (el.settingsModal) el.settingsModal.addEventListener('click', (e) => { if (e.target === el.settingsModal) el.settingsModal.classList.remove('show'); });
   el.rewardTeaser.addEventListener('click', onRewardTeaserClick);

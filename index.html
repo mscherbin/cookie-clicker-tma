@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=73" />
+<link rel="stylesheet" href="style.css?v=74" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -13,7 +13,7 @@
   <header class="topbar">
     <div class="count-block">
       <div id="cookieCount" class="cookie-count">0</div>
-      <div class="cookie-label">печенек</div>
+      <div class="cookie-label" data-i18n="top.cookies">печенек</div>
       <div id="cps" class="cps">0 печенек/сек</div>
       <div id="boost2xLine" class="boost2x-line" hidden>⚡ ×2 производство · ещё 1ч</div>
       <div id="clickPowerLine" class="click-power">Сила клика: 1 &middot; апгрейдов клика: 0/0</div>
@@ -59,16 +59,16 @@
         <div class="reward-burst-text">+<span id="rewardBurstAmount">0</span> 🍪</div>
         <div class="reward-burst-label">Реферальный бонус</div>
       </div>
-      <div id="clickHint" class="click-hint" hidden>👆 Нажми на печеньку!</div>
+      <div id="clickHint" class="click-hint" hidden data-i18n="onb.clickHint">👆 Нажми на печеньку!</div>
     </section>
 
     <nav class="tabs">
-      <button class="tab-btn active" data-tab="buildings">Здания</button>
-      <button class="tab-btn" data-tab="upgrades">Апгрейды</button>
-      <button class="tab-btn" data-tab="shop">🛒 Магазин</button>
-      <button class="tab-btn" data-tab="stats">⭐ Вознесение</button>
-      <button class="tab-btn" data-tab="leaderboard">🏆 Топ</button>
-      <button class="tab-btn" data-tab="friends">🤝 Друзья</button>
+      <button class="tab-btn active" data-tab="buildings" data-i18n="tab.buildings">Здания</button>
+      <button class="tab-btn" data-tab="upgrades" data-i18n="tab.upgrades">Апгрейды</button>
+      <button class="tab-btn" data-tab="shop" data-i18n="tab.shop">🛒 Магазин</button>
+      <button class="tab-btn" data-tab="stats" data-i18n="tab.ascension">⭐ Вознесение</button>
+      <button class="tab-btn" data-tab="leaderboard" data-i18n="tab.top">🏆 Топ</button>
+      <button class="tab-btn" data-tab="friends" data-i18n="tab.friends">🤝 Друзья</button>
     </nav>
 
     <section id="tab-buildings" class="tab-panel active">
@@ -82,8 +82,8 @@
     <!-- «Магазин» — чистая коммерция: только платные бусты за Stars. -->
     <section id="tab-shop" class="tab-panel">
       <div class="shop-card">
-        <div class="shop-title">🛒 Магазин</div>
-        <div class="shop-desc">Ускорь производство за Telegram Stars ⭐</div>
+        <div class="shop-title" data-i18n="shop.title">🛒 Магазин</div>
+        <div class="shop-desc" data-i18n="shop.desc">Ускорь производство за Telegram Stars ⭐</div>
         <button id="nocapBtn" class="nocap-btn">🚀 Снять кап офлайна на 24ч · 30 ⭐</button>
         <button id="boost2xBtn" class="nocap-btn">⚡ ×2 производство на 1ч · 10 ⭐</button>
         <button id="permProdBtn" class="nocap-btn">🌟 +10% к производству навсегда · 200 ⭐</button>
@@ -94,21 +94,21 @@
     <!-- «⭐ Вознесение» — core-луп + статистика рядом с решением о перерождении. -->
     <section id="tab-stats" class="tab-panel">
       <div class="ascend-card">
-        <div class="ascend-title">⭐ Вознесение</div>
-        <div class="ascend-desc">Сбрасывает прогресс, но даёт постоянный бонус к производству — с каждым разом бонус растёт.</div>
+        <div class="ascend-title" data-i18n="asc.title">⭐ Вознесение</div>
+        <div class="ascend-desc" data-i18n="asc.desc">Сбрасывает прогресс, но даёт постоянный бонус к производству — с каждым разом бонус растёт.</div>
         <div class="ascend-hero">
           <div class="ascend-hero-num" id="ascendPreview">+0%</div>
           <div class="ascend-hero-label" id="ascendPreviewLabel">к производству навсегда — при первом вознесении</div>
         </div>
-        <div class="ascend-firsttime" id="ascendFirstTime">✨ Это будет твоё первое вознесение</div>
+        <div class="ascend-firsttime" id="ascendFirstTime" data-i18n="asc.firstTime">✨ Это будет твоё первое вознесение</div>
         <div class="ascend-rows" id="ascendRows" hidden>
-          <div class="ascend-row"><span>Постоянный бонус</span><span id="ascendBonus">+0%</span></div>
+          <div class="ascend-row"><span data-i18n="asc.bonusRow">Постоянный бонус</span><span id="ascendBonus">+0%</span></div>
         </div>
         <button id="ascendBtn" class="ascend-btn">Вознестись</button>
       </div>
 
       <div class="stats-card">
-        <div class="shop-title">📊 Статистика</div>
+        <div class="shop-title" data-i18n="stats.head">📊 Статистика</div>
         <div id="statsList" class="stats-list"></div>
       </div>
     </section>
@@ -120,25 +120,25 @@
     <section id="tab-friends" class="tab-panel">
       <!-- Priority 1: personal referral payoff — what the player already gets. -->
       <div class="friends-stats-card">
-        <div class="fs-head">🤝 Твоя отдача от друзей</div>
+        <div class="fs-head" data-i18n="fr.statHead">🤝 Твоя отдача от друзей</div>
         <div id="playerProfile" class="player-profile"></div>
-        <div class="fs-row"><span class="fs-label">Активных друзей</span><span class="fs-val" id="fsFriends">0</span></div>
-        <div class="fs-row"><span class="fs-label">Буст к производству</span><span class="fs-val fs-accent" id="fsBoost">+0%</span></div>
+        <div class="fs-row"><span class="fs-label" data-i18n="fr.activeFriends">Активных друзей</span><span class="fs-val" id="fsFriends">0</span></div>
+        <div class="fs-row"><span class="fs-label" data-i18n="fr.boost">Буст к производству</span><span class="fs-val fs-accent" id="fsBoost">+0%</span></div>
         <div class="fs-row"><span class="fs-label" id="fsOfflineLabel">Офлайн на полной скорости</span><span class="fs-val" id="fsOffline">2ч 0мин</span></div>
-        <button id="fsInviteBtn" class="invite-btn">📤 Позвать друга</button>
+        <button id="fsInviteBtn" class="invite-btn" data-i18n="fr.invite">📤 Позвать друга</button>
       </div>
 
       <!-- Priority 2: full milestone track (3 skin → 10 building → 25/50/100 titles). -->
       <div class="friends-milestones-card">
-        <div class="fs-head">🏅 Награды за друзей</div>
+        <div class="fs-head" data-i18n="fr.rewardsHead">🏅 Награды за друзей</div>
         <div id="friendsMilestones" class="milestone-list"></div>
         <div id="friendsMsNext" class="ms-next"></div>
       </div>
 
-      <div class="fs-head fs-head-lb">🏆 Топ по друзьям</div>
+      <div class="fs-head fs-head-lb" data-i18n="fr.lbHead">🏆 Топ по друзьям</div>
       <div class="ref-toggle">
-        <button id="refToggleWeekly" class="ref-toggle-btn active" data-period="weekly">За неделю</button>
-        <button id="refToggleAll" class="ref-toggle-btn" data-period="alltime">За всё время</button>
+        <button id="refToggleWeekly" class="ref-toggle-btn active" data-period="weekly" data-i18n="fr.weekly">За неделю</button>
+        <button id="refToggleAll" class="ref-toggle-btn" data-period="alltime" data-i18n="fr.alltime">За всё время</button>
       </div>
       <div id="referralLeaderboardList" class="list"></div>
     </section>
@@ -146,18 +146,18 @@
 
   <div id="goldenLayer"></div>
   <div id="toast" class="toast"></div>
-  <div id="upgradeHint" class="upgrade-hint" hidden>Купи апгрейд — печеньки будут копиться быстрее</div>
+  <div id="upgradeHint" class="upgrade-hint" hidden data-i18n="onb.upgradeHint">Купи апгрейд — печеньки будут копиться быстрее</div>
 
   <div id="dailyModal" class="daily-modal">
     <div class="daily-modal-card">
       <div class="daily-gift-icon">🎁</div>
-      <div class="daily-title">Ежедневная награда</div>
-      <div class="daily-streak">День <span id="dailyStreakNum">1</span></div>
+      <div class="daily-title" data-i18n="daily.title">Ежедневная награда</div>
+      <div class="daily-streak" id="dailyStreak">День <span id="dailyStreakNum">1</span></div>
       <div class="daily-reward-amount">+<span id="dailyRewardAmount">0</span> 🍪</div>
-      <button id="dailyClaimBtn" class="daily-claim-btn">Забрать</button>
+      <button id="dailyClaimBtn" class="daily-claim-btn" data-i18n="daily.claim">Забрать</button>
       <div id="dailyReferral" class="daily-referral" hidden>
-        <div class="daily-referral-text">🤝 Играешь не один? Позови друга — и ты, и он получите бонус печенек!</div>
-        <button id="dailyInviteBtn" class="daily-invite-btn">📤 Позвать друга</button>
+        <div class="daily-referral-text" data-i18n="daily.refText">🤝 Играешь не один? Позови друга — и ты, и он получите бонус печенек!</div>
+        <button id="dailyInviteBtn" class="daily-invite-btn" data-i18n="daily.invite">📤 Позвать друга</button>
       </div>
     </div>
   </div>
@@ -165,48 +165,55 @@
   <div id="offlineModal" class="daily-modal">
     <div class="daily-modal-card">
       <div class="daily-gift-icon">💤</div>
-      <div class="daily-title">С возвращением!</div>
-      <div class="daily-streak">Пока тебя не было, напеклось:</div>
+      <div class="daily-title" data-i18n="off.title">С возвращением!</div>
+      <div class="daily-streak" data-i18n="off.sub">Пока тебя не было, напеклось:</div>
       <div class="daily-reward-amount"><span id="offlineAmount">0</span> 🍪</div>
-      <button id="offlineClaimBtn" class="daily-claim-btn">Забрать</button>
+      <button id="offlineClaimBtn" class="daily-claim-btn" data-i18n="off.claim">Забрать</button>
       <button id="offlineX2Btn" class="offline-x2-btn">
-        <span class="offline-x2-main">Забрать ×2 за 15 ⭐</span>
-        <span class="offline-x2-sub">получишь <span id="offlineX2Amount">0</span> 🍪</span>
+        <span class="offline-x2-main" id="offlineX2Main">Забрать ×2 за 15 ⭐</span>
+        <span class="offline-x2-sub" id="offlineX2Sub">получишь <span id="offlineX2Amount">0</span> 🍪</span>
       </button>
-      <div class="offline-processing-note">Ожидаем подтверждение оплаты…</div>
+      <div class="offline-processing-note" data-i18n="off.processing">Ожидаем подтверждение оплаты…</div>
     </div>
   </div>
 
   <div id="unlockModal" class="daily-modal">
     <div class="daily-modal-card">
       <div class="daily-gift-icon" id="unlockIcon">🫶</div>
-      <div class="daily-title">Новое здание открыто!</div>
+      <div class="daily-title" data-i18n="unlock.title">Новое здание открыто!</div>
       <div class="daily-streak" id="unlockName">Пекарня дружбы</div>
       <div class="unlock-desc" id="unlockDesc"></div>
-      <button id="unlockPlaceBtn" class="daily-claim-btn">Поставить</button>
+      <button id="unlockPlaceBtn" class="daily-claim-btn" data-i18n="unlock.place">Поставить</button>
     </div>
   </div>
 
   <!-- Settings (⚙️): rare / technical / destructive actions — off the tab bar. -->
   <div id="settingsModal" class="daily-modal">
     <div class="daily-modal-card settings-modal-card">
-      <div class="settings-head">⚙️ Настройки</div>
+      <div class="settings-head" data-i18n="set.head">⚙️ Настройки</div>
       <div class="sync-card">
-        <div class="sync-title">Синхронизация между устройствами</div>
+        <div class="sync-title" data-i18n="set.lang">Язык</div>
+        <div class="lang-toggle">
+          <button id="langRuBtn" class="lang-btn" data-lang="ru">Русский</button>
+          <button id="langEnBtn" class="lang-btn" data-lang="en">English</button>
+        </div>
+      </div>
+      <div class="sync-card">
+        <div class="sync-title" data-i18n="set.syncTitle">Синхронизация между устройствами</div>
         <div id="syncStatus" class="sync-status">—</div>
         <div class="sync-buttons">
-          <button id="pushCloudBtn" class="sync-btn">⬆️ Отправить в облако</button>
-          <button id="pullCloudBtn" class="sync-btn">⬇️ Загрузить из облака</button>
+          <button id="pushCloudBtn" class="sync-btn" data-i18n="set.push">⬆️ Отправить в облако</button>
+          <button id="pullCloudBtn" class="sync-btn" data-i18n="set.pull">⬇️ Загрузить из облака</button>
         </div>
-        <div class="sync-hint">Если на разных устройствах разные цифры — на том, чей прогресс хотите оставить, нажмите «Отправить», а на остальных — «Загрузить». Перед загрузкой и сбросом текущий прогресс этого устройства автоматически сохраняется в резервную копию.</div>
-        <button id="restoreBackupBtn" class="sync-btn restore-btn">↩️ Восстановить резервную копию (это устройство)</button>
+        <div class="sync-hint" data-i18n="set.hint">Если на разных устройствах разные цифры — на том, чей прогресс хотите оставить, нажмите «Отправить», а на остальных — «Загрузить». Перед загрузкой и сбросом текущий прогресс этого устройства автоматически сохраняется в резервную копию.</div>
+        <button id="restoreBackupBtn" class="sync-btn restore-btn" data-i18n="set.restore">↩️ Восстановить резервную копию (это устройство)</button>
       </div>
-      <button id="resetBtn" class="reset-btn">Сбросить прогресс полностью</button>
-      <button id="settingsCloseBtn" class="settings-close-btn">Закрыть</button>
+      <button id="resetBtn" class="reset-btn" data-i18n="set.reset">Сбросить прогресс полностью</button>
+      <button id="settingsCloseBtn" class="settings-close-btn" data-i18n="set.close">Закрыть</button>
     </div>
   </div>
 </div>
 
-<script src="game.js?v=73"></script>
+<script src="game.js?v=74"></script>
 </body>
 </html>

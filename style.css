@@ -1498,6 +1498,25 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   cursor: pointer;
 }
 
+/* Language toggle (RU / EN) in Settings. */
+.lang-toggle { display: flex; gap: 8px; margin-top: 4px; }
+.lang-btn {
+  flex: 1;
+  padding: 9px;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  background: var(--bg-secondary);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.lang-btn.active {
+  border-color: var(--gold);
+  background: rgba(255, 209, 102, 0.14);
+  color: var(--gold);
+}
+
 @keyframes dailyPop {
   from { transform: scale(0.85); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
