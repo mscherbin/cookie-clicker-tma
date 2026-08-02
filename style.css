@@ -214,6 +214,27 @@ html, body {
   transform: scale(0.92);
 }
 
+/* Layout: the cookie's .clicker-zone and the active .tab-panel are both flex:1,
+   so on info tabs they'd split the screen ~50/50 and the tab content gets
+   cramped. On the info tabs (Друзья/Топ/Статистика — the cookie isn't the main
+   action there) collapse the cookie to a small tappable badge so the tab
+   content owns the screen. Buildings & Апгрейды (active play) keep it full. */
+body[data-active-tab="friends"] .clicker-zone,
+body[data-active-tab="leaderboard"] .clicker-zone,
+body[data-active-tab="stats"] .clicker-zone {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+body[data-active-tab="friends"] .big-cookie,
+body[data-active-tab="leaderboard"] .big-cookie,
+body[data-active-tab="stats"] .big-cookie {
+  width: min(24vw, 96px);
+  height: min(24vw, 96px);
+}
+/* On the Друзья tab the «Пекарня дружбы» teaser duplicates the milestone track
+   below — hide it to free the top area. */
+body[data-active-tab="friends"] #rewardTeaser { display: none; }
+
 /* Onboarding step 0: gentle glow pulse to draw the eye to the cookie. Uses a
    drop-shadow (not transform) so it never fights the tap :active scale. */
 .big-cookie.tutorial-pulse {
@@ -921,6 +942,60 @@ html, body {
   color: var(--gold);
   font-weight: 700;
 }
+
+/* === "Друзья" tab: personal payoff card (P1) + milestone track (P2) === */
+.friends-stats-card, .friends-milestones-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.fs-head {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.fs-head-lb { margin: 4px 2px 8px; }
+.fs-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  padding: 5px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+.fs-row:first-of-type { border-top: none; }
+.fs-label { color: var(--hint); }
+.fs-val { color: var(--text); font-weight: 700; text-align: right; }
+.fs-val.fs-accent { color: var(--gold); font-weight: 800; }
+
+.milestone-list { display: flex; flex-direction: column; gap: 6px; }
+.ms-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--card-border);
+  opacity: 0.72;
+}
+.ms-row.done { opacity: 1; border-color: rgba(255, 209, 102, 0.4); }
+.ms-row.next {
+  opacity: 1;
+  border-color: var(--gold);
+  box-shadow: 0 0 10px rgba(255, 209, 102, 0.25);
+}
+.ms-icon { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; }
+.ms-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ms-n { font-size: 13px; font-weight: 800; color: var(--text); }
+.ms-label { font-size: 11px; color: var(--hint); }
+.ms-status { font-size: 12px; font-weight: 700; color: var(--gold); white-space: nowrap; flex-shrink: 0; }
+.ms-row.done .ms-status { color: #7bd88f; }
+.ms-next { font-size: 12px; color: var(--hint); margin-top: 10px; text-align: center; }
 
 /* Paid "remove offline cap 24h" boost button (in the army/offline card) */
 .nocap-btn {

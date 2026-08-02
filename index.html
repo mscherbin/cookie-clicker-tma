@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=69" />
+<link rel="stylesheet" href="style.css?v=70" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -132,6 +132,23 @@
     </section>
 
     <section id="tab-friends" class="tab-panel">
+      <!-- Priority 1: personal referral payoff — what the player already gets. -->
+      <div class="friends-stats-card">
+        <div class="fs-head">🤝 Твоя отдача от друзей</div>
+        <div class="fs-row"><span class="fs-label">Активных друзей</span><span class="fs-val" id="fsFriends">0</span></div>
+        <div class="fs-row"><span class="fs-label">Буст к производству</span><span class="fs-val fs-accent" id="fsBoost">+0%</span></div>
+        <div class="fs-row"><span class="fs-label">Офлайн на полной скорости</span><span class="fs-val" id="fsOffline">2ч 0мин</span></div>
+        <button id="fsInviteBtn" class="invite-btn">📤 Позвать друга</button>
+      </div>
+
+      <!-- Priority 2: full milestone track (3 skin → 10 building → 25/50/100 titles). -->
+      <div class="friends-milestones-card">
+        <div class="fs-head">🏅 Награды за друзей</div>
+        <div id="friendsMilestones" class="milestone-list"></div>
+        <div id="friendsMsNext" class="ms-next"></div>
+      </div>
+
+      <div class="fs-head fs-head-lb">🏆 Топ по друзьям</div>
       <div class="ref-toggle">
         <button id="refToggleWeekly" class="ref-toggle-btn active" data-period="weekly">За неделю</button>
         <button id="refToggleAll" class="ref-toggle-btn" data-period="alltime">За всё время</button>
@@ -184,6 +201,6 @@
   </div>
 </div>
 
-<script src="game.js?v=69"></script>
+<script src="game.js?v=70"></script>
 </body>
 </html>

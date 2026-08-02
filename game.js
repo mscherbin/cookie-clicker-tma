@@ -194,6 +194,18 @@
     return found; // highest earned milestone title, or null
   }
 
+  // Full referral reward track (Layer 3a, Task #3): every friend milestone in
+  // one place. 3 → cookie skin (Layer 3c, art pending — shown as a goal), 10 →
+  // «Пекарня дружбы» building, 25/50/100 → titles (mirrors TITLES). Keyed off
+  // peak friends so a node never re-locks when a friend goes inactive.
+  const REF_MILESTONES = [
+    { n: 3,   icon: '🎨', label: 'Скин печеньки' },
+    { n: 10,  icon: '🫶', label: 'Пекарня дружбы' },
+    { n: 25,  icon: '🍪', label: 'Титул «Общительная печенька»' },
+    { n: 50,  icon: '⭐', label: 'Титул «Легенда Печенек»' },
+    { n: 100, icon: '👑', label: 'Титул «Император Печенек»' },
+  ];
+
   const SAVE_KEY = 'cookie_clicker_tma_save_v1';
   const BACKUP_KEY = SAVE_KEY + '_backup';
   const OFFLINE_RATE = 0.1; // after the full-rate window, production drops to this fraction until the player returns
@@ -1424,6 +1436,12 @@
     refEventBannerText: document.getElementById('refEventBannerText'),
     leaderboardList: document.getElementById('leaderboardList'),
     referralLeaderboardList: document.getElementById('referralLeaderboardList'),
+    fsFriends: document.getElementById('fsFriends'),
+    fsBoost: document.getElementById('fsBoost'),
+    fsOffline: document.getElementById('fsOffline'),
+    fsInviteBtn: document.getElementById('fsInviteBtn'),
+    friendsMilestones: document.getElementById('friendsMilestones'),
+    friendsMsNext: document.getElementById('friendsMsNext'),
     refToggleWeekly: document.getElementById('refToggleWeekly'),
     refToggleAll: document.getElementById('refToggleAll'),
     ascendBonus: document.getElementById('ascendBonus'),
@@ -2016,11 +2034,47 @@
       : 'Все титулы открыты! 👑';
   }
 
+  // "Друзья" tab: the player's personal referral payoff (Priority 1) + the full
+  // milestone track (Priority 2). Live figures come straight from state/formulas
+  // so it matches the "Печенькина армия" card on the stats tab.
+  function renderFriendsTab() {
+    if (!el.fsFriends) return;
+    const army = state.activeReferrals || 0;
+    const peak = state.maxActiveFriendsEver || 0;
+
+    // Priority 1 — what you already get from invited friends.
+    el.fsFriends.textContent = formatNum(army);
+    el.fsBoost.textContent = `+${(referralBoost(army) * 100).toFixed(1).replace(/\.0$/, '')}%`;
+    const capMin = Math.round(getOfflineCapHours(army) * 60);
+    const baseMin = Math.round((Number.isFinite(state.offlineBaseHours) ? state.offlineBaseHours : OFFLINE_BASE_HOURS_DEFAULT) * 60);
+    const extraMin = Math.max(0, capMin - baseMin);
+    const capStr = `${Math.floor(capMin / 60)}ч ${capMin % 60}мин`;
+    const extraStr = extraMin >= 60 ? `${Math.floor(extraMin / 60)}ч ${extraMin % 60}мин` : `${extraMin}мин`;
+    el.fsOffline.textContent = extraMin > 0 ? `${capStr} · +${extraStr} за друзей` : capStr;
+
+    // Priority 2 — full milestone track, current position + next threshold.
+    const next = REF_MILESTONES.find(m => peak < m.n);
+    el.friendsMilestones.innerHTML = REF_MILESTONES.map(m => {
+      const done = peak >= m.n;
+      const isNext = next && next.n === m.n;
+      const status = done ? '✓ Открыто' : (isNext ? `ещё ${m.n - peak}` : '🔒');
+      return `<div class="ms-row${done ? ' done' : ''}${isNext ? ' next' : ''}">
+        <span class="ms-icon">${done ? m.icon : '🔒'}</span>
+        <span class="ms-info"><span class="ms-n">${m.n} ${friendWord(m.n)}</span><span class="ms-label">${m.label}</span></span>
+        <span class="ms-status">${status}</span>
+      </div>`;
+    }).join('');
+    el.friendsMsNext.textContent = next
+      ? `Ещё ${next.n - peak} ${friendWord(next.n - peak)} до награды «${next.label}»`
+      : 'Все награды за друзей открыты! 👑';
+  }
+
   function refreshAll() {
     renderTopbar();
     renderBuildings();
     renderUpgrades();
     renderStats();
+    renderFriendsTab();
     renderPrestigeBanner();
     renderRewardTeaser();
     updateTutorial();
@@ -2448,11 +2502,15 @@
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      // Drives the layout shrink: on non-buildings tabs the decorative cookie
+      // collapses (CSS body[data-active-tab]) so the tab content gets the room.
+      document.body.dataset.activeTab = btn.dataset.tab;
       if (btn.dataset.tab === 'leaderboard') { sendCheckin(); loadLeaderboard(); }
-      if (btn.dataset.tab === 'friends') { sendCheckin(); loadReferralLeaderboard(); }
+      if (btn.dataset.tab === 'friends') { sendCheckin(); loadReferralLeaderboard(); renderFriendsTab(); }
       if (btn.dataset.tab === 'upgrades') markUpgradeHintSeen(); // they followed the step-1 nudge
     });
   });
+  document.body.dataset.activeTab = 'buildings'; // initial active tab (drives layout)
 
   el.refToggleWeekly.addEventListener('click', () => setRefPeriod('weekly'));
   el.refToggleAll.addEventListener('click', () => setRefPeriod('alltime'));
@@ -2484,6 +2542,7 @@
   el.pullCloudBtn.addEventListener('click', pullFromCloud);
   el.restoreBackupBtn.addEventListener('click', restoreBackup);
   el.inviteBtn.addEventListener('click', inviteFriend);
+  if (el.fsInviteBtn) el.fsInviteBtn.addEventListener('click', inviteFriend);
   el.dailyBadge.addEventListener('click', showDailyModal);
   el.dailyClaimBtn.addEventListener('click', claimDailyReward);
   el.dailyInviteBtn.addEventListener('click', inviteFriend);
