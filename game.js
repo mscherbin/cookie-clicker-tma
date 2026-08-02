@@ -1651,16 +1651,24 @@
   function renderUpgrades() {
     el.upgradesList.innerHTML = '';
 
-    const totalCount = UPGRADES.length;
-    const boughtAll = UPGRADES.filter(u => state.upgrades[u.id]);
+    // Count ONLY upgrades available at the current prestige tier — the
+    // denominator must not include future-tier upgrades the player can't buy
+    // yet, otherwise "13/47" never reaches "all bought" and hides the sense of
+    // completion (and misreads the ascension gate). Bought upgrades are always
+    // tier-unlocked (locked ones can't be bought; upgrades reset on ascend), so
+    // this only really trims the denominator.
+    const availableUpgrades = UPGRADES.filter(u => tierUnlocked(u));
+    const totalCount = availableUpgrades.length;
+    const boughtAll = availableUpgrades.filter(u => state.upgrades[u.id]);
     const boughtTotal = boughtAll.length;
 
     // Overall progress counter — pinned at the top, always visible regardless of
     // the collapsed section or how many upgrades are still available (stays put
-    // even at 17/17 when the "Доступно" list is empty).
+    // even at 17/17 when the "Доступно" list is empty). Tier number in the label
+    // explains why the denominator jumps after an ascension (new tier unlocked).
     const progress = document.createElement('div');
     progress.className = 'upgrade-progress';
-    progress.innerHTML = `🏆 Куплено апгрейдов: <b>${boughtTotal}</b> / ${totalCount}`;
+    progress.innerHTML = `🏆 Апгрейды (тир ${displayTier()}): <b>${boughtTotal}</b> / ${totalCount}`;
     el.upgradesList.appendChild(progress);
 
     // --- "Доступно" — только НЕ купленные апгрейды, сгруппированы по категориям.
@@ -1701,10 +1709,14 @@
       if (items.length === 0) continue;
       anyAvailable = true;
 
-      const boughtCount = categoryAll.length - notBought.length;
+      // Category counter is tier-scoped too (denominator = only upgrades
+      // available at the current tier), consistent with the main counter — so
+      // "(4/8)" doesn't count locked future-tier upgrades the player can't buy.
+      const categoryAvailableTotal = categoryAll.filter(u => tierUnlocked(u)).length;
+      const boughtCount = categoryAll.filter(u => state.upgrades[u.id]).length;
       const header = document.createElement('div');
       header.className = 'section-header';
-      header.textContent = `${CATEGORY_LABELS[category]} (${boughtCount}/${categoryAll.length})`;
+      header.textContent = `${CATEGORY_LABELS[category]} (${boughtCount}/${categoryAvailableTotal})`;
       el.upgradesList.appendChild(header);
 
       for (const u of items) {
