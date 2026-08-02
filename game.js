@@ -70,6 +70,11 @@
       'daily.title': 'Ежедневная награда', 'daily.day': 'День {n}', 'daily.claim': 'Забрать',
       'daily.refText': '🤝 Играешь не один? Позови друга — и ты, и он получите бонус печенек!',
       'daily.invite': '📤 Позвать друга',
+      'chan.head': '📢 Наш канал', 'chan.desc': 'Подпишись на канал — анонсы событий, тиров и апдейтов + разовый бонус печенек.',
+      'chan.dailyText': '📢 Подпишись на наш канал — анонсы событий и разовый бонус печенек!',
+      'chan.subscribe': '📢 Подписаться на канал', 'chan.claim': 'Проверить и забрать бонус',
+      'chan.checking': 'Проверяем подписку…', 'chan.claimed': '🎉 Бонус за подписку: +{n} 🍪',
+      'chan.already': 'Бонус за подписку уже получен ✓', 'chan.notSub': 'Подписка не найдена — подпишись и нажми «Проверить»',
       // Offline modal
       'off.title': 'С возвращением!', 'off.sub': 'Пока тебя не было, напеклось:',
       'off.claim': 'Забрать', 'off.x2main': 'Забрать ×2 за {n} ⭐', 'off.x2sub': 'получишь {n} 🍪',
@@ -151,6 +156,11 @@
       'daily.title': 'Daily reward', 'daily.day': 'Day {n}', 'daily.claim': 'Claim',
       'daily.refText': '🤝 Not playing alone? Invite a friend — you both get a cookie bonus!',
       'daily.invite': '📤 Invite a friend',
+      'chan.head': '📢 Our channel', 'chan.desc': 'Subscribe for event, tier & update announcements + a one-time cookie bonus.',
+      'chan.dailyText': '📢 Subscribe to our channel — announcements and a one-time cookie bonus!',
+      'chan.subscribe': '📢 Subscribe to the channel', 'chan.claim': 'Check & claim bonus',
+      'chan.checking': 'Checking subscription…', 'chan.claimed': '🎉 Subscription bonus: +{n} 🍪',
+      'chan.already': 'Subscription bonus already claimed ✓', 'chan.notSub': 'Subscription not found — subscribe, then tap "Check"',
       'off.title': 'Welcome back!', 'off.sub': 'While you were away, you baked:',
       'off.claim': 'Claim', 'off.x2main': 'Claim ×2 for {n} ⭐', 'off.x2sub': 'you get {n} 🍪',
       'off.processing': 'Waiting for payment confirmation…',
@@ -513,6 +523,8 @@
   const CLICK_BYPASS_STARS = 100; // must match CLICK_BYPASS_STARS in push/src/index.js
   const CREATE_UPGRADE_SKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-upgrade-skip-invoice';
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
+  const CLAIM_CHANNEL_BONUS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/claim-channel-bonus';
+  const CHANNEL_URL = 'https://t.me/bestcookieclicker'; // our channel (bonus for subscribing)
 
   // Offline claim: below this, offline income auto-applies silently (as before);
   // at/above it we show the claim card with the free x1 / paid x2 choice.
@@ -557,6 +569,7 @@
     adsDailyLimit: 8,    // per-day rewarded-ad cap (server-authoritative, from checkin)
     adClickBypassViews: 0,   // ad views accumulated toward the free click-bypass (server-authoritative)
     adClickBypassTarget: 30, // views needed to unlock the click-bypass (server-authoritative)
+    channelBonusClaimed: false, // one-time channel-subscription bonus taken (server-authoritative)
   });
 
   let state = defaultState();
@@ -813,6 +826,13 @@
           if (Number.isFinite(data.adClickBypassTarget)) state.adClickBypassTarget = data.adClickBypassTarget;
           if (changed) { saveState(); renderStats(); }
         }
+        // Channel-subscription bonus flag (server-authoritative, one-time): hides
+        // the offer everywhere once claimed (or if claimed on another device).
+        if (data && typeof data.channelBonusClaimed === 'boolean' && data.channelBonusClaimed !== !!state.channelBonusClaimed) {
+          state.channelBonusClaimed = data.channelBonusClaimed;
+          saveState();
+          refreshAll();
+        }
         // Permanent +10% flag (server-authoritative, one-time).
         if (data && typeof data.hasPermProdBoost === 'boolean' && data.hasPermProdBoost !== !!state.hasPermProdBoost) {
           const wasOwned = !!state.hasPermProdBoost;
@@ -871,6 +891,49 @@
     const deepLink = `https://t.me/${BOT_USERNAME}?start=ref${myId}`;
     const shareText = 'Залипаю в Cookie Clicker — залетай печь печеньки со мной! 🍪';
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(shareText)}`);
+  }
+
+  // Open our channel (subscribing happens outside the mini-app, so we can't
+  // detect it automatically — the player taps "Check & claim" on return).
+  function openChannel() {
+    if (tg && tg.openTelegramLink) tg.openTelegramLink(CHANNEL_URL);
+    else window.open(CHANNEL_URL, '_blank');
+  }
+
+  // Verify subscription + claim the one-time bonus. The server checks membership
+  // (getChatMember) and credits once (idempotent); we just react to the status.
+  // Shared by the Friends-tab card and the daily-modal offer — one code path.
+  let channelClaimInFlight = false;
+  async function claimChannelBonus() {
+    if (state.channelBonusClaimed) { showToast(t('chan.already')); return; }
+    if (!tg || !tg.initData) { showToast(t('toast.onlyTelegram')); return; }
+    if (channelClaimInFlight) return;
+    channelClaimInFlight = true;
+    showToast(t('chan.checking'), 2000);
+    try {
+      const resp = await fetch(CLAIM_CHANNEL_BONUS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
+      const data = await resp.json();
+      if (data && data.status === 'claimed') {
+        state.channelBonusClaimed = true; saveState();
+        showToast(t('chan.claimed', { n: formatNum(data.bonus || 0) }), 4000);
+        haptic('heavy');
+        sendCheckin(); // pulls pending_reward → cookies (+ reward burst)
+        refreshAll();
+      } else if (data && data.status === 'already_claimed') {
+        state.channelBonusClaimed = true; saveState();
+        showToast(t('chan.already')); refreshAll();
+      } else { // not_subscribed / not_configured / error
+        showToast(t('chan.notSub'), 4000);
+      }
+    } catch (e) {
+      showToast(t('chan.notSub'), 4000);
+    } finally {
+      channelClaimInFlight = false;
+    }
   }
 
   // Prestige tier badge intensity — the visual scales with prestige count so
@@ -1355,6 +1418,13 @@
     const showRef = state.lastDailyClaim !== 0 && !tu.referralIntroShown;
     if (el.dailyReferral) el.dailyReferral.hidden = !showRef;
     if (showRef) { tu.referralIntroShown = true; saveState(); }
+    // Channel offer, same one-time-on-return pattern as the referral intro. Shown
+    // once (channelHintShown), only on a comeback, not if already claimed, and NOT
+    // in the same modal as the referral intro (stagger: ref first, channel next).
+    const showChan = state.lastDailyClaim !== 0 && !tu.channelHintShown
+      && !state.channelBonusClaimed && !showRef;
+    if (el.dailyChannel) el.dailyChannel.hidden = !showChan;
+    if (showChan) { tu.channelHintShown = true; saveState(); }
     el.dailyModal.classList.add('show');
   }
 
@@ -1777,6 +1847,12 @@
     dailyClaimBtn: document.getElementById('dailyClaimBtn'),
     dailyReferral: document.getElementById('dailyReferral'),
     dailyInviteBtn: document.getElementById('dailyInviteBtn'),
+    dailyChannel: document.getElementById('dailyChannel'),
+    dailyChannelSubBtn: document.getElementById('dailyChannelSubBtn'),
+    dailyChannelClaimBtn: document.getElementById('dailyChannelClaimBtn'),
+    channelCard: document.getElementById('channelCard'),
+    channelSubBtn: document.getElementById('channelSubBtn'),
+    channelClaimBtn: document.getElementById('channelClaimBtn'),
     offlineModal: document.getElementById('offlineModal'),
     offlineAmount: document.getElementById('offlineAmount'),
     offlineX2Amount: document.getElementById('offlineX2Amount'),
@@ -2413,6 +2489,9 @@
   // (Priority 2). Figures come straight from state/formulas.
   function renderFriendsTab() {
     if (!el.fsFriends) return;
+    // Channel-subscription card: persistent here, hidden once the bonus is
+    // claimed (by any path). Non-blocking — this tab is never the first screen.
+    if (el.channelCard) el.channelCard.hidden = !!state.channelBonusClaimed;
     const army = state.activeReferrals || 0;
     const peak = state.maxActiveFriendsEver || 0;
 
@@ -2939,6 +3018,10 @@
   el.pullCloudBtn.addEventListener('click', pullFromCloud);
   el.restoreBackupBtn.addEventListener('click', restoreBackup);
   if (el.fsInviteBtn) el.fsInviteBtn.addEventListener('click', inviteFriend);
+  if (el.channelSubBtn) el.channelSubBtn.addEventListener('click', openChannel);
+  if (el.channelClaimBtn) el.channelClaimBtn.addEventListener('click', claimChannelBonus);
+  if (el.dailyChannelSubBtn) el.dailyChannelSubBtn.addEventListener('click', openChannel);
+  if (el.dailyChannelClaimBtn) el.dailyChannelClaimBtn.addEventListener('click', claimChannelBonus);
   el.dailyBadge.addEventListener('click', showDailyModal);
   el.dailyClaimBtn.addEventListener('click', claimDailyReward);
   el.dailyInviteBtn.addEventListener('click', inviteFriend);

@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=80';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=81';
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
 const OFFLINE_FULL_RATE_SECONDS = 2 * 3600;
 const OFFLINE_RATE = 0.1;
@@ -152,6 +152,16 @@ const REFEREE_WELCOME_BONUS = 300; // flat starter gift for whoever clicked the 
 const REFERRER_BONUS_SECONDS = 600; // 10 min of the referrer's own cps
 const REFERRER_BONUS_MIN = 200; // floor, for referrers with ~0 cps so far
 
+// One-time "subscribe to our Telegram channel" bonus. Sized like the referrer
+// bonus (cps × minutes, floored) so it stays meaningful across progression, and
+// tunable via the D1 `config` table (channel_bonus_chat / _seconds / _min).
+// Defaults below are the fallback if those rows are missing.
+const CHANNEL_BONUS_CHAT_DEFAULT = '@bestcookieclicker'; // channel to verify membership of
+const CHANNEL_BONUS_SECONDS_DEFAULT = 600; // cps × 10 min
+const CHANNEL_BONUS_MIN_DEFAULT = 500;     // flat floor for low-cps players
+// getChatMember statuses that count as "subscribed".
+const CHANNEL_MEMBER_OK = ['member', 'administrator', 'creator'];
+
 // Cookie-army boost curve knobs, read from the D1 `config` table so they can
 // be retuned by editing a row instead of shipping a release. These are only
 // the fallback if the table/rows are missing or unreadable; the client keeps
@@ -248,14 +258,19 @@ async function getEconomyConfig(env) {
     refEventMultiplier: 1,
     refEventStart: 0, // ms epoch; 0 = no lower bound
     refEventEnd: 0,   // ms epoch; 0 = no upper bound
+    // One-time channel-subscription bonus (see CHANNEL_BONUS_* defaults).
+    channelBonusChat: CHANNEL_BONUS_CHAT_DEFAULT,
+    channelBonusSeconds: CHANNEL_BONUS_SECONDS_DEFAULT,
+    channelBonusMin: CHANNEL_BONUS_MIN_DEFAULT,
   };
   if (env.DB) {
     try {
       const rows = await env.DB.prepare(
-        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end')"
+        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end', 'channel_bonus_chat', 'channel_bonus_seconds', 'channel_bonus_min')"
       ).all();
       const map = {};
-      for (const r of (rows.results || [])) map[r.key] = Number(r.value);
+      const rawMap = {};
+      for (const r of (rows.results || [])) { map[r.key] = Number(r.value); rawMap[r.key] = r.value; }
       if (Number.isFinite(map.ref_boost_max)) cfg.refBoostMax = map.ref_boost_max;
       if (Number.isFinite(map.ref_boost_tau) && map.ref_boost_tau > 0) cfg.refBoostTau = map.ref_boost_tau;
       if (Number.isFinite(map.offline_base_hours)) cfg.offlineBaseHours = map.offline_base_hours;
@@ -265,6 +280,9 @@ async function getEconomyConfig(env) {
       if (Number.isFinite(map.ref_event_multiplier) && map.ref_event_multiplier > 0) cfg.refEventMultiplier = map.ref_event_multiplier;
       if (Number.isFinite(map.ref_event_start)) cfg.refEventStart = map.ref_event_start;
       if (Number.isFinite(map.ref_event_end)) cfg.refEventEnd = map.ref_event_end;
+      if (typeof rawMap.channel_bonus_chat === 'string' && rawMap.channel_bonus_chat.trim()) cfg.channelBonusChat = rawMap.channel_bonus_chat.trim();
+      if (Number.isFinite(map.channel_bonus_seconds) && map.channel_bonus_seconds >= 0) cfg.channelBonusSeconds = map.channel_bonus_seconds;
+      if (Number.isFinite(map.channel_bonus_min) && map.channel_bonus_min >= 0) cfg.channelBonusMin = map.channel_bonus_min;
     } catch (e) { /* table may not exist yet — fall back to defaults */ }
   }
   _configCache = cfg;
@@ -632,6 +650,57 @@ async function handleCreateBoost2xInvoice(request, env) {
 // they can never be charged a second, real payment for something they have.
 // (charge_id idempotency wouldn't help here — a second purchase is a separate
 // genuine payment.)
+// POST /claim-channel-bonus { initData } — one-time bonus for subscribing to our
+// Telegram channel. Verifies membership via getChatMember (no payment). The
+// channel is our own distribution channel, independent of the referral network.
+// Idempotent: a flag (channel_bonus_claimed) + a conditional UPDATE mean a repeat
+// tap after a successful claim is a no-op, and un-subscribing later never claws
+// the bonus back (no background re-checks).
+async function handleClaimChannelBonus(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    const row = await env.DB.prepare('SELECT channel_bonus_claimed AS c FROM users WHERE user_id = ?').bind(userId).first();
+    if (row && row.c) return jsonResponse({ ok: true, status: 'already_claimed' });
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const cfg = await getEconomyConfig(env);
+  const chat = cfg.channelBonusChat;
+  if (!chat) return jsonResponse({ ok: true, status: 'not_configured' });
+
+  // Membership check. For a PUBLIC channel getChatMember works with @username;
+  // NOTE: in practice the bot usually must be an admin of the channel for this
+  // call to see arbitrary members (we make it admin anyway for auto-posting). If
+  // the call errors or returns left/kicked, we treat it as "not subscribed" and
+  // credit nothing.
+  const mem = await tgCall(env, 'getChatMember', { chat_id: chat, user_id: userId });
+  const status = mem && mem.ok && mem.result ? mem.result.status : null;
+  if (!CHANNEL_MEMBER_OK.includes(status)) {
+    return jsonResponse({ ok: true, status: 'not_subscribed' });
+  }
+
+  // Subscribed → credit once. cps × minutes, floored (mirrors the referrer
+  // bonus). The conditional UPDATE (WHERE channel_bonus_claimed = 0) is the
+  // idempotency guard: only the first concurrent tap flips the flag + credits;
+  // delivery rides pending_reward on the next /checkin, like referral rewards.
+  const cps = await getKnownCps(env, userId);
+  const bonus = Math.max(cfg.channelBonusMin, Math.floor(cps * cfg.channelBonusSeconds));
+  try {
+    const upd = await env.DB.prepare(
+      'UPDATE users SET channel_bonus_claimed = 1, pending_reward = pending_reward + ? WHERE user_id = ? AND channel_bonus_claimed = 0'
+    ).bind(bonus, userId).run();
+    if (!upd.meta || !upd.meta.changes) return jsonResponse({ ok: true, status: 'already_claimed' });
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+  return jsonResponse({ ok: true, status: 'claimed', bonus });
+}
+
 async function handleCreatePermInvoice(request, env) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
@@ -924,6 +993,7 @@ async function handleCheckin(request, env) {
   let paidUnlockedUpgrades = [];
   let adsRewardsUsed = 0; // rewarded-ad boosts already used today (for the client's daily counter)
   let adClickBypassViews = 0; // ad views accumulated toward the free click-bypass unlock
+  let channelBonusClaimed = false; // one-time channel-subscription bonus already taken
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -976,7 +1046,7 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv, channel_bonus_claimed AS chan FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
@@ -986,6 +1056,7 @@ async function handleCheckin(request, env) {
       if (boostRow) paidUnlockedUpgrades = parseIdList(boostRow.pu);
       if (boostRow && boostRow.ad === Math.floor(now / 86400000)) adsRewardsUsed = boostRow.ac || 0;
       if (boostRow && Number.isFinite(boostRow.abv)) adClickBypassViews = boostRow.abv;
+      if (boostRow && boostRow.chan) channelBonusClaimed = true;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -1026,7 +1097,7 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed });
 }
 
 async function handleLeaderboard(env) {
@@ -1398,6 +1469,10 @@ export default {
 
     if (url.pathname === '/fix-webhook' && request.method === 'POST') {
       return handleFixWebhook(request, env);
+    }
+
+    if (url.pathname === '/claim-channel-bonus' && request.method === 'POST') {
+      return handleClaimChannelBonus(request, env);
     }
 
     return jsonResponse({ ok: false, error: 'not_found' }, 404);

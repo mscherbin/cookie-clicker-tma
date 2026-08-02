@@ -72,7 +72,11 @@ CREATE TABLE IF NOT EXISTS users (
   -- AD_CLICK_BYPASS_TARGET (30) ad views accumulate here and, at the target, set
   -- the SAME has_click_bypass flag the 100⭐ purchase sets. Views share the
   -- rewarded-ad daily limit (ads_reward_count). Server-authoritative.
-  ad_click_bypass_views INTEGER NOT NULL DEFAULT 0
+  ad_click_bypass_views INTEGER NOT NULL DEFAULT 0,
+  -- channel_bonus_claimed: 1 once the user claimed the one-time bonus for
+  -- subscribing to our Telegram channel (verified via getChatMember). Never
+  -- clawed back if they later unsubscribe.
+  channel_bonus_claimed INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
@@ -175,7 +179,14 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   -- window by time as well. Not re-granted once the window is closed.
   ('pioneer_limit', '50'),
   ('pioneer_granted', '0'),
-  ('pioneer_deadline_ts', '0');
+  ('pioneer_deadline_ts', '0'),
+  -- One-time channel-subscription bonus (Task #29). channel_bonus_chat: the
+  -- channel to verify via getChatMember (@username or -100… id). Bonus size =
+  -- max(channel_bonus_min, cps × channel_bonus_seconds), mirroring the referrer
+  -- bonus. Code defaults apply if these rows are missing.
+  ('channel_bonus_chat', '@bestcookieclicker'),
+  ('channel_bonus_seconds', '600'),
+  ('channel_bonus_min', '500');
 
 -- Rewarded ads (AdsGram, Task #25). Per-user daily counter of ad-granted boosts;
 -- resets on the UTC-day boundary (ads_reward_day = floor(now_ms / 86400000)).
@@ -184,6 +195,10 @@ INSERT OR IGNORE INTO config (key, value) VALUES
 --   ALTER TABLE users ADD COLUMN ads_reward_count INTEGER NOT NULL DEFAULT 0;
 -- Free ad-view path to the click-bypass (30 views = has_click_bypass). Migration:
 --   ALTER TABLE users ADD COLUMN ad_click_bypass_views INTEGER NOT NULL DEFAULT 0;
+-- One-time channel-subscription bonus (Task #29). Migration:
+--   ALTER TABLE users ADD COLUMN channel_bonus_claimed INTEGER NOT NULL DEFAULT 0;
+--   (config rows channel_bonus_* are added by the INSERT OR IGNORE block above;
+--    re-run that or add them manually — code defaults apply if absent.)
 -- Secret for the reward callback lives in a Worker secret, not here:
 --   wrangler secret put ADSGRAM_REWARD_SECRET
 

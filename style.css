@@ -1328,6 +1328,28 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   font-weight: 800;
 }
 
+/* Channel-subscription card: description + secondary "check & claim" button
+   (the primary "subscribe" reuses .invite-btn). */
+.channel-desc {
+  font-size: 13px;
+  color: var(--muted, #b9a888);
+  line-height: 1.4;
+  margin: 2px 0 2px;
+}
+.channel-claim-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px;
+  background: rgba(255, 209, 102, 0.12);
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.channel-claim-btn:disabled { opacity: 0.5; pointer-events: none; }
+
 .ascend-card {
   background: linear-gradient(160deg, #33280f, var(--card));
   border: 1px solid var(--accent);

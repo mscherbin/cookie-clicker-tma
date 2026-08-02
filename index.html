@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=80" />
+<link rel="stylesheet" href="style.css?v=81" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 </head>
@@ -139,6 +139,15 @@
         <button id="fsInviteBtn" class="invite-btn" data-i18n="fr.invite">📤 Позвать друга</button>
       </div>
 
+      <!-- Channel-subscription bonus: our own distribution channel, independent of
+           referrals. Non-blocking (never on the first screen). Hidden once claimed. -->
+      <div id="channelCard" class="friends-stats-card channel-card" hidden>
+        <div class="fs-head" data-i18n="chan.head">📢 Наш канал</div>
+        <div class="channel-desc" data-i18n="chan.desc">Подпишись на канал — анонсы событий, тиров и апдейтов + разовый бонус печенек.</div>
+        <button id="channelSubBtn" class="invite-btn" data-i18n="chan.subscribe">📢 Подписаться на канал</button>
+        <button id="channelClaimBtn" class="channel-claim-btn" data-i18n="chan.claim">Проверить и забрать бонус</button>
+      </div>
+
       <!-- Priority 2: full milestone track (3 skin → 10 building → 25/50/100 titles). -->
       <div class="friends-milestones-card">
         <div class="fs-head" data-i18n="fr.rewardsHead">🏅 Награды за друзей</div>
@@ -169,6 +178,11 @@
       <div id="dailyReferral" class="daily-referral" hidden>
         <div class="daily-referral-text" data-i18n="daily.refText">🤝 Играешь не один? Позови друга — и ты, и он получите бонус печенек!</div>
         <button id="dailyInviteBtn" class="daily-invite-btn" data-i18n="daily.invite">📤 Позвать друга</button>
+      </div>
+      <div id="dailyChannel" class="daily-referral" hidden>
+        <div class="daily-referral-text" data-i18n="chan.dailyText">📢 Подпишись на наш канал — анонсы событий и разовый бонус печенек!</div>
+        <button id="dailyChannelSubBtn" class="daily-invite-btn" data-i18n="chan.subscribe">📢 Подписаться на канал</button>
+        <button id="dailyChannelClaimBtn" class="daily-invite-btn" data-i18n="chan.claim">Проверить и забрать бонус</button>
       </div>
     </div>
   </div>
@@ -235,6 +249,6 @@
   </div>
 </div>
 
-<script src="game.js?v=80"></script>
+<script src="game.js?v=81"></script>
 </body>
 </html>

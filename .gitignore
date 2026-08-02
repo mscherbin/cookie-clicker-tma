@@ -1,2 +1,4 @@
 SESSION_CONTEXT.md
 _backups/
+.wrangler/
+node_modules/
