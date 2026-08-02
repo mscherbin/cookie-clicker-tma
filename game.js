@@ -53,6 +53,19 @@
     { id: 'goldenArk',      name: 'Золотой ковчег',      icon: '⚜️', baseCost: 9.5e24, baseCps: 2.0e18, tier: 1 },
     { id: 'cocoaTemple',    name: 'Храм какао',          icon: '🛕', baseCost: 9.0e25, baseCps: 1.3e19, tier: 1 },
     { id: 'midasThrone',    name: 'Трон Мидаса',         icon: '🪙', baseCost: 8.5e26, baseCps: 8.0e19, tier: 1 },
+    // --- Tier 3 (Небесная эпоха): unlocked after the 2nd ascension (tier: 2).
+    // Celestial/astral lineup continuing the cost×9.4 / cps×6.4 progression
+    // beyond Трон Мидаса. For a player who already has 2 ascensions of crumbs.
+    { id: 'starBakery',   name: 'Звёздная пекарня',    icon: '⭐', baseCost: 8.0e27, baseCps: 5.1e20, tier: 2 },
+    { id: 'moonMill',     name: 'Лунная мельница',     icon: '🌙', baseCost: 7.5e28, baseCps: 3.3e21, tier: 2 },
+    { id: 'skyForge',     name: 'Небесный очаг',       icon: '☁️', baseCost: 7.0e29, baseCps: 2.1e22, tier: 2 },
+    { id: 'ringWorks',    name: 'Планетарное кольцо',  icon: '🪐', baseCost: 6.6e30, baseCps: 1.3e23, tier: 2 },
+    { id: 'galaxyMixer',  name: 'Галактический тестомес', icon: '🌌', baseCost: 6.2e31, baseCps: 8.5e23, tier: 2 },
+    { id: 'meteorRain',   name: 'Метеорный дождь',     icon: '🌠', baseCost: 5.8e32, baseCps: 5.4e24, tier: 2 },
+    { id: 'bifrost',      name: 'Мост Бифрёст',        icon: '🌈', baseCost: 5.5e33, baseCps: 3.5e25, tier: 2 },
+    { id: 'starArk',      name: 'Звёздный ковчег',     icon: '🛸', baseCost: 5.2e34, baseCps: 2.2e26, tier: 2 },
+    { id: 'cosmicEye',    name: 'Око вселенной',       icon: '🔭', baseCost: 4.9e35, baseCps: 1.4e27, tier: 2 },
+    { id: 'heavenThrone', name: 'Престол небес',       icon: '👼', baseCost: 4.6e36, baseCps: 9.0e27, tier: 2 },
     // Special building: can't be bought for cookies (referralLocked). Unlocked
     // by reaching unlockFriends peak active friends, then placed for free.
     // Its output scales with your peak army size (see buildingCps), so it
@@ -115,6 +128,26 @@
     // Click ×2 upgrades.
     { id: 'click_t2_1', name: 'Золотое касание',   desc: 'Сила клика x2', icon: '🫰', cost: 1.0e8,  category: 'click', reqType: 'clicks', reqValue: 50000,  req: (b, s) => s.totalClicks >= 50000,  effect: s => s.clickMult *= 2, tier: 1, skipStars: 40 },
     { id: 'click_t2_2', name: 'Шоколадная длань',  desc: 'Сила клика x2', icon: '🖐️', cost: 1.0e10, category: 'click', reqType: 'clicks', reqValue: 100000, req: (b, s) => s.totalClicks >= 100000, effect: s => s.clickMult *= 2, tier: 1, skipStars: 60 },
+    // ===== Tier 3 (Небесная эпоха) — unlocked after 2nd ascension (tier: 2) =====
+    // Building ×2 upgrades, one per tier-3 building (cost = building base ×10).
+    { id: 'starBakery_u1',   name: 'Звёздная пыль',        desc: 'Звёздные пекарни x2',      icon: '✨', cost: 8.0e28, category: 'building', buildingId: 'starBakery',   reqType: 'building', req: b => b.starBakery >= 1,   effect: s => s.buildingMult.starBakery *= 2, tier: 2 },
+    { id: 'moonMill_u1',     name: 'Лунное притяжение',    desc: 'Лунные мельницы x2',       icon: '🌗', cost: 7.5e29, category: 'building', buildingId: 'moonMill',     reqType: 'building', req: b => b.moonMill >= 1,     effect: s => s.buildingMult.moonMill *= 2, tier: 2 },
+    { id: 'skyForge_u1',     name: 'Небесное пламя',       desc: 'Небесные очаги x2',        icon: '🔥', cost: 7.0e30, category: 'building', buildingId: 'skyForge',     reqType: 'building', req: b => b.skyForge >= 1,     effect: s => s.buildingMult.skyForge *= 2, tier: 2 },
+    { id: 'ringWorks_u1',    name: 'Идеальная орбита',     desc: 'Планетарные кольца x2',    icon: '💫', cost: 6.6e31, category: 'building', buildingId: 'ringWorks',    reqType: 'building', req: b => b.ringWorks >= 1,    effect: s => s.buildingMult.ringWorks *= 2, tier: 2 },
+    { id: 'galaxyMixer_u1',  name: 'Спиральный рукав',     desc: 'Галактические тестомесы x2', icon: '🌀', cost: 6.2e32, category: 'building', buildingId: 'galaxyMixer',  reqType: 'building', req: b => b.galaxyMixer >= 1,  effect: s => s.buildingMult.galaxyMixer *= 2, tier: 2 },
+    { id: 'meteorRain_u1',   name: 'Метеорный поток',      desc: 'Метеорные дожди x2',       icon: '☄️', cost: 5.8e33, category: 'building', buildingId: 'meteorRain',   reqType: 'building', req: b => b.meteorRain >= 1,   effect: s => s.buildingMult.meteorRain *= 2, tier: 2 },
+    { id: 'bifrost_u1',      name: 'Радужный код',         desc: 'Мосты Бифрёст x2',         icon: '🌉', cost: 5.5e34, category: 'building', buildingId: 'bifrost',      reqType: 'building', req: b => b.bifrost >= 1,      effect: s => s.buildingMult.bifrost *= 2, tier: 2 },
+    { id: 'starArk_u1',      name: 'Варп-двигатель',       desc: 'Звёздные ковчеги x2',      icon: '🚀', cost: 5.2e35, category: 'building', buildingId: 'starArk',      reqType: 'building', req: b => b.starArk >= 1,      effect: s => s.buildingMult.starArk *= 2, tier: 2 },
+    { id: 'cosmicEye_u1',    name: 'Всевидящий взор',      desc: 'Очи вселенной x2',         icon: '👁️', cost: 4.9e36, category: 'building', buildingId: 'cosmicEye',    reqType: 'building', req: b => b.cosmicEye >= 1,    effect: s => s.buildingMult.cosmicEye *= 2, tier: 2 },
+    { id: 'heavenThrone_u1', name: 'Божественный мандат',  desc: 'Престолы небес x2',        icon: '😇', cost: 4.6e37, category: 'building', buildingId: 'heavenThrone', reqType: 'building', req: b => b.heavenThrone >= 1, effect: s => s.buildingMult.heavenThrone *= 2, tier: 2 },
+    // Global ×2 upgrades (all production).
+    { id: 'global_t3_1', name: 'Звёздное вещество',    desc: 'Всё производство x2', icon: '🌟', cost: 1.0e26, category: 'global', reqType: 'baked', reqValue: 1.4e25, req: (b, s) => s.totalBaked >= 1.4e25, effect: s => s.globalMult *= 2, tier: 2 },
+    { id: 'global_t3_2', name: 'Тёмная материя',       desc: 'Всё производство x2', icon: '🌑', cost: 7.0e27, category: 'global', reqType: 'baked', reqValue: 9.0e26, req: (b, s) => s.totalBaked >= 9.0e26, effect: s => s.globalMult *= 2, tier: 2 },
+    { id: 'global_t3_3', name: 'Космическая гармония', desc: 'Всё производство x2', icon: '🎼', cost: 4.5e29, category: 'global', reqType: 'baked', reqValue: 6.0e28, req: (b, s) => s.totalBaked >= 6.0e28, effect: s => s.globalMult *= 2, tier: 2 },
+    { id: 'global_t3_4', name: 'Воля вселенной',       desc: 'Всё производство x2', icon: '🌟', cost: 3.0e31, category: 'global', reqType: 'baked', reqValue: 4.0e30, req: (b, s) => s.totalBaked >= 4.0e30, effect: s => s.globalMult *= 2, tier: 2 },
+    // Click ×2 upgrades (covered by the 100⭐ click-bypass boost; no per-upgrade skip).
+    { id: 'click_t3_1', name: 'Астральный щелчок', desc: 'Сила клика x2', icon: '👆', cost: 1.0e12, category: 'click', reqType: 'clicks', reqValue: 200000, req: (b, s) => s.totalClicks >= 200000, effect: s => s.clickMult *= 2, tier: 2 },
+    { id: 'click_t3_2', name: 'Длань творца',      desc: 'Сила клика x2', icon: '✋', cost: 1.0e14, category: 'click', reqType: 'clicks', reqValue: 400000, req: (b, s) => s.totalClicks >= 400000, effect: s => s.clickMult *= 2, tier: 2 },
   ];
 
   const CATEGORY_LABELS = {
@@ -967,7 +1000,8 @@
 
   function formatNum(n) {
     if (n < 1000) return n < 100 ? (Math.floor(n * 10) / 10).toString() : Math.floor(n).toString();
-    const units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    const units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc',
+      'UDc', 'DDc', 'TDc', 'QaDc', 'QiDc', 'SxDc', 'SpDc', 'ODc', 'NDc', 'Vg'];
     let u = 0;
     while (n >= 1000 && u < units.length - 1) { n /= 1000; u++; }
     return n.toFixed(n < 10 ? 2 : n < 100 ? 1 : 0) + units[u];
@@ -1951,8 +1985,14 @@
   // player ascends (refreshAll runs right after ascend()) and persists across
   // reloads. Idempotent — safe to call on every refresh.
   function applyPrestigeTheme() {
-    const golden = (state.ascensionCount || 0) >= 1;
-    document.body.classList.toggle('theme-golden', golden);
+    const asc = state.ascensionCount || 0;
+    // The golden background/topbar kicks in at the 1st ascension and stays for
+    // all higher tiers (a good "prestige" backdrop behind every tier cookie).
+    document.body.classList.toggle('theme-golden', asc >= 1);
+    // Per-tier cookie art: data-tier picks which PNG .cookie-svg shows (see CSS).
+    // data-tier == ascensionCount: 0→base (tier1), 1→tier2 … 9→tier10. Clamp to
+    // the highest tier we have art for so tier 11+ keeps the tier-10 cookie.
+    document.body.dataset.tier = String(Math.min(asc, 9));
   }
 
   // Onboarding.

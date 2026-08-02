@@ -297,7 +297,7 @@ html, body {
   pointer-events: none;
   /* Base (pre-ascension) cookie art. Theme-swapped below. background-image (not
      <img>) so the golden theme can substitute a different PNG via CSS. */
-  background: url('assets/cookie_base.png?v=68') center / contain no-repeat;
+  background: url('assets/cookie_base.png?v=69') center / contain no-repeat;
 }
 
 .float-layer {
@@ -1445,8 +1445,16 @@ body.theme-golden {
 body.theme-golden .topbar {
   background: linear-gradient(180deg, rgba(90, 63, 20, 0.85), rgba(36, 26, 13, 0.6));
 }
-/* After the first ascension, swap the cookie art to the chocolate + golden-ring
-   PNG (the base pre-ascension cookie is the lighter one, set on .cookie-svg). */
-body.theme-golden .cookie-svg {
-  background-image: url('assets/cookie.png?v=68');
-}
+/* Per-tier cookie art. data-tier is set by applyPrestigeTheme() = ascension
+   count (0→base/tier1 stays the default .cookie-svg background; 1→tier2 … 9→
+   tier10). Only the matched selector's image is fetched, so each player loads
+   just their current tier's PNG. */
+body[data-tier="1"] .cookie-svg { background-image: url('assets/cookie.png?v=69'); }
+body[data-tier="2"] .cookie-svg { background-image: url('assets/cookie_t3.png?v=69'); }
+body[data-tier="3"] .cookie-svg { background-image: url('assets/cookie_t4.png?v=69'); }
+body[data-tier="4"] .cookie-svg { background-image: url('assets/cookie_t5.png?v=69'); }
+body[data-tier="5"] .cookie-svg { background-image: url('assets/cookie_t6.png?v=69'); }
+body[data-tier="6"] .cookie-svg { background-image: url('assets/cookie_t7.png?v=69'); }
+body[data-tier="7"] .cookie-svg { background-image: url('assets/cookie_t8.png?v=69'); }
+body[data-tier="8"] .cookie-svg { background-image: url('assets/cookie_t9.png?v=69'); }
+body[data-tier="9"] .cookie-svg { background-image: url('assets/cookie_t10.png?v=69'); }
