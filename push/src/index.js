@@ -17,6 +17,7 @@
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
 const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=87';
+const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
 const OFFLINE_FULL_RATE_SECONDS = 2 * 3600;
 const OFFLINE_RATE = 0.1;
@@ -176,12 +177,32 @@ async function getConfigStr(env, key) {
 // `source` stays coarse ('keitaro') so /funnel segments don't explode per click.
 async function captureAttribution(env, userId, startParam) {
   if (!env.DB) return;
-  const subid = sanitizeSource(startParam);
-  if (!subid) return;
+  const clean = sanitizeSource(startParam);
+  if (!clean) return;
+  // Reverse the /go redirect's dot→dash encoding: Keitaro subids contain dots
+  // (e.g. 37o23c7.1f.381o), which Telegram strips from start params, so /go sends
+  // them dashed and we restore the original dotted subid here. Keitaro subids have
+  // no native dashes, so this is lossless for them (see /go).
+  const subid = clean.replace(/-/g, '.');
   try {
     await env.DB.prepare("UPDATE users SET kt_subid = ?, source = COALESCE(source, 'keitaro') WHERE user_id = ? AND kt_subid IS NULL")
       .bind(subid, userId).run();
   } catch (e) { /* column may not be migrated yet — degrade */ }
+}
+
+// GET /go?kt=<subid> — redirect hop placed BEFORE Telegram in the Keitaro offer
+// URL. Telegram's start param allows only [A-Za-z0-9_-] (dots are stripped), so
+// we encode the Keitaro subid's dots as dashes here; captureAttribution reverses
+// it on capture. Keitaro's own click tracking (fbclid etc.) happens before this
+// hop, so it's unaffected.
+function handleGo(request, env) {
+  const url = new URL(request.url);
+  const kt = (url.searchParams.get('kt') || '').replace(/\./g, '-'); // dots → dashes
+  const safe = kt.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);       // Telegram start-param charset
+  const target = safe
+    ? `https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(safe)}`
+    : `https://t.me/${BOT_USERNAME}`;
+  return Response.redirect(target, 302);
 }
 
 // Server-to-server (S2S) postback to Keitaro so it can fire the conversion back
@@ -585,9 +606,12 @@ async function handleTelegramWebhook(request, env) {
     await logEvent(env, userId, 'bot_start');
     const startParam = msg.text.trim().split(/\s+/)[1];
     if (startParam) {
-      await logEvent(env, userId, 'ref_click', startParam);
-      // Also capture it as a Keitaro click id (first-touch) — covers the
-      // /start <subid> entry path in addition to ?startapp=<subid>.
+      // Only referral codes (refNNN) count as a ref_click — a Keitaro/marketing
+      // subid arriving via /start <subid> must NOT pollute the referral funnel.
+      if (/^ref\d+$/.test(startParam)) {
+        await logEvent(env, userId, 'ref_click', startParam);
+      }
+      // Capture as a Keitaro click id (first-touch); no-op for referral codes.
       await captureAttribution(env, userId, startParam);
     }
     // Localized welcome reply with the "open game" button (lang from Telegram).
@@ -1608,6 +1632,10 @@ export default {
 
     if (url.pathname === '/adsgram-cancel' && request.method === 'POST') {
       return handleAdsgramCancel(request, env);
+    }
+
+    if (url.pathname === '/go' && request.method === 'GET') {
+      return handleGo(request, env);
     }
 
     if (url.pathname === '/adsgram-reward' && request.method === 'GET') {
