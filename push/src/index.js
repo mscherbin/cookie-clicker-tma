@@ -107,7 +107,11 @@ function corsHeaders() {
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+    // no-store: our JSON responses are all dynamic (per-user checkin, admin
+    // analytics). Without this the Cloudflare edge can cache a GET response by
+    // URL and serve stale numbers — e.g. /funnel?period=today would freeze until
+    // the cache expired. Nothing here should ever be cached by any intermediary.
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders() },
   });
 }
 
@@ -687,11 +691,49 @@ async function handleTelegramWebhook(request, env) {
   return jsonResponse({ ok: true });
 }
 
+// Parse the optional time window shared by /funnel and /countries. Returns
+// { since, until } in ms epoch (half-open [since, until)), plus a `label` echoed
+// in the response. Precedence: explicit from/to (ISO) override period.
+//   period = today | 24h | 7d | all   (default 'all' = full history)
+//   from/to = arbitrary ISO range (from inclusive → to exclusive; open ends
+//             default to 0 / now)
+// Bounds are applied to events.ts (funnel stages, ad_view) and to
+// users.first_seen_ts (countries, bySource). 'today' uses the UTC day boundary,
+// consistent with the rest of the codebase (ads_reward_day, weekId). Returns
+// { error } on a malformed value so callers can answer 400. All-time uses a
+// far-future upper bound so the ts clause is a no-op — preserving the original
+// cumulative behavior when no period is given.
+function parsePeriod(url) {
+  const now = Date.now();
+  const DAY = 86400000;
+  const FAR_FUTURE = 8640000000000000; // max representable Date ms
+  const from = url.searchParams.get('from');
+  const to = url.searchParams.get('to');
+  if (from || to) {
+    const since = from ? Date.parse(from) : 0;
+    const until = to ? Date.parse(to) : now;
+    if ((from && !Number.isFinite(since)) || (to && !Number.isFinite(until))) {
+      return { error: 'bad_range' };
+    }
+    return { since, until, label: 'custom' };
+  }
+  const period = (url.searchParams.get('period') || 'all').toLowerCase();
+  if (period === 'all') return { since: 0, until: FAR_FUTURE, label: 'all' };
+  if (period === '24h') return { since: now - DAY, until: now, label: '24h' };
+  if (period === '7d') return { since: now - 7 * DAY, until: now, label: '7d' };
+  if (period === 'today') {
+    const d = new Date(now);
+    return { since: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()), until: now, label: 'today' };
+  }
+  return { error: 'bad_period' };
+}
+
 // GET /funnel?key=<ADMIN_KEY> — distinct-user counts per event, the
 // simplest useful view of the funnel. Not a strict sequential-conversion
 // funnel yet; good enough to sanity-check the pipeline is capturing data,
 // query push/schema.sql's `events` table directly (via `wrangler d1
 // execute`) for real funnel/cohort SQL once there's enough data to matter.
+// Optional ?period=/from=/to= windows every counter (see parsePeriod).
 async function handleFunnel(request, env) {
   const url = new URL(request.url);
   if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) {
@@ -703,71 +745,80 @@ async function handleFunnel(request, env) {
   //   ?source=organic → only users with NO attributed source (organic)
   //   (absent)        → all users
   const rawSource = url.searchParams.get('source');
+  if (rawSource && rawSource !== 'organic' && !sanitizeSource(rawSource)) {
+    return jsonResponse({ ok: false, error: 'bad_source' }, 400);
+  }
+  // Optional time window (see parsePeriod). Applied to events.ts for stages.
+  const win = parsePeriod(url);
+  if (win.error) return jsonResponse({ ok: false, error: win.error }, 400);
+  const { since, until, label } = win;
+
+  // Stages: distinct users per event within [since, until), respecting source.
   let stages;
   if (rawSource === 'organic') {
     stages = await env.DB.prepare(
-      'SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source IS NULL GROUP BY e.event ORDER BY users DESC'
-    ).all();
+      'SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source IS NULL AND e.ts >= ? AND e.ts < ? GROUP BY e.event ORDER BY users DESC'
+    ).bind(since, until).all();
   } else if (rawSource) {
-    const source = sanitizeSource(rawSource);
-    if (!source) return jsonResponse({ ok: false, error: 'bad_source' }, 400);
     stages = await env.DB.prepare(
-      'SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source = ? GROUP BY e.event ORDER BY users DESC'
-    ).bind(source).all();
+      'SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source = ? AND e.ts >= ? AND e.ts < ? GROUP BY e.event ORDER BY users DESC'
+    ).bind(sanitizeSource(rawSource), since, until).all();
   } else {
     stages = await env.DB.prepare(
-      'SELECT event, COUNT(DISTINCT user_id) as users FROM events GROUP BY event ORDER BY users DESC'
-    ).all();
+      'SELECT event, COUNT(DISTINCT user_id) as users FROM events WHERE ts >= ? AND ts < ? GROUP BY event ORDER BY users DESC'
+    ).bind(since, until).all();
   }
 
-  // Always include a per-source breakdown (attributed users per source, plus the
-  // organic count) so the marketer can see which sources exist and their sizes.
+  // Per-source breakdown (attributed users per source + organic), windowed by
+  // acquisition time (first_seen_ts) so the marketer sees sizes for the period.
   const bySourceRows = await env.DB.prepare(
-    "SELECT COALESCE(source, 'organic') AS source, COUNT(*) AS users FROM users GROUP BY COALESCE(source, 'organic') ORDER BY users DESC"
-  ).all();
+    "SELECT COALESCE(source, 'organic') AS source, COUNT(*) AS users FROM users WHERE first_seen_ts >= ? AND first_seen_ts < ? GROUP BY COALESCE(source, 'organic') ORDER BY users DESC"
+  ).bind(since, until).all();
 
   return jsonResponse({
     ok: true,
     source: rawSource || 'all',
+    period: label,
     stages: stages.results,
     bySource: bySourceRows.results,
     // Geo breakdown embedded here too (the dashboard reads countries from either
-    // /funnel or the dedicated /countries endpoint). rawSource is already
-    // validated above, so this can't hit the bad-source path.
-    countries: await countriesByFilter(env, rawSource),
+    // /funnel or the dedicated /countries endpoint), windowed by the same period.
+    countries: await countriesByFilter(env, rawSource, since, until),
   });
 }
 
-// Distinct users per ISO-2 country, with the same optional source filter as
-// /funnel ('organic' = no source, '<x>' = that source, absent = all). NULL /
-// unknown countries are excluded. Degrades to [] if the country column isn't
-// migrated yet. Shared by /funnel (embedded) and the dedicated /countries route.
-async function countriesByFilter(env, rawSource) {
+// Users per ISO-2 country, with the same optional source filter as /funnel
+// ('organic' = no source, '<x>' = that source, absent = all) and windowed by
+// acquisition time (users.first_seen_ts within [since, until)). NULL / unknown
+// countries are excluded. Degrades to [] if the country column isn't migrated
+// yet. Shared by /funnel (embedded) and the dedicated /countries route.
+async function countriesByFilter(env, rawSource, since, until) {
   if (!env.DB) return [];
   try {
     if (rawSource === 'organic') {
       const r = await env.DB.prepare(
-        'SELECT country, COUNT(*) AS users FROM users WHERE country IS NOT NULL AND source IS NULL GROUP BY country ORDER BY users DESC'
-      ).all();
+        'SELECT country, COUNT(*) AS users FROM users WHERE country IS NOT NULL AND source IS NULL AND first_seen_ts >= ? AND first_seen_ts < ? GROUP BY country ORDER BY users DESC'
+      ).bind(since, until).all();
       return r.results;
     } else if (rawSource) {
       const source = sanitizeSource(rawSource);
       if (!source) return [];
       const r = await env.DB.prepare(
-        'SELECT country, COUNT(*) AS users FROM users WHERE country IS NOT NULL AND source = ? GROUP BY country ORDER BY users DESC'
-      ).bind(source).all();
+        'SELECT country, COUNT(*) AS users FROM users WHERE country IS NOT NULL AND source = ? AND first_seen_ts >= ? AND first_seen_ts < ? GROUP BY country ORDER BY users DESC'
+      ).bind(source, since, until).all();
       return r.results;
     }
     const r = await env.DB.prepare(
-      'SELECT country, COUNT(*) AS users FROM users WHERE country IS NOT NULL GROUP BY country ORDER BY users DESC'
-    ).all();
+      'SELECT country, COUNT(*) AS users FROM users WHERE country IS NOT NULL AND first_seen_ts >= ? AND first_seen_ts < ? GROUP BY country ORDER BY users DESC'
+    ).bind(since, until).all();
     return r.results;
   } catch (e) { return []; } // country column not migrated yet — degrade
 }
 
-// GET /countries?key=<ADMIN_KEY>[&source=<x>] — distinct users per ISO-2 country,
-// same source-filter semantics as /funnel. For the FB test: confirm traffic
-// actually lands in the targeted geo (and spot junk mixed in from other geos).
+// GET /countries?key=<ADMIN_KEY>[&source=<x>][&period=…|&from=&to=] — users per
+// ISO-2 country, same source-filter + time-window semantics as /funnel. For the
+// FB test: confirm traffic actually lands in the targeted geo (and spot junk
+// mixed in from other geos), optionally sliced to today / a range.
 async function handleCountries(request, env) {
   const url = new URL(request.url);
   if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) {
@@ -777,8 +828,10 @@ async function handleCountries(request, env) {
   if (rawSource && rawSource !== 'organic' && !sanitizeSource(rawSource)) {
     return jsonResponse({ ok: false, error: 'bad_source' }, 400);
   }
-  const countries = await countriesByFilter(env, rawSource);
-  return jsonResponse({ ok: true, source: rawSource || 'all', countries });
+  const win = parsePeriod(url);
+  if (win.error) return jsonResponse({ ok: false, error: win.error }, 400);
+  const countries = await countriesByFilter(env, rawSource, win.since, win.until);
+  return jsonResponse({ ok: true, source: rawSource || 'all', period: win.label, countries });
 }
 
 // GET /online?key=<ADMIN_KEY> — live activity snapshot from KV metadata (no
