@@ -188,11 +188,26 @@ async function captureAttribution(env, userId, startParam) {
 // to Facebook. Base URL from a Worker var/secret KEITARO_POSTBACK_URL, else the
 // D1 config row `keitaro_postback_url`. Appends ?subid=<>&status=<>. Retries once
 // on a network error; logs the outcome. Never throws.
+// Build the final Keitaro URL from the configured postback URL. Two supported
+// shapes: (a) a full URL with a click-id MACRO ({clickid}/{subid}/{sub_id}) that
+// we substitute in place (Keitaro's standard postback template — respects any
+// status= already in the URL); (b) a bare base URL, to which we append
+// ?subid=<>&status=<>. Avoids duplicated params either way.
+function buildKeitaroUrl(base, subid, status) {
+  const s = encodeURIComponent(subid);
+  if (/\{(clickid|subid|sub_id)\}/i.test(base)) {
+    let u = base.replace(/\{(clickid|subid|sub_id)\}/ig, s);
+    if (!/[?&]status=/i.test(u)) u += (u.includes('?') ? '&' : '?') + 'status=' + encodeURIComponent(status);
+    return u;
+  }
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}subid=${s}&status=${encodeURIComponent(status)}`;
+}
+
 async function sendKeitaroPostback(env, subid, status) {
   const base = (env.KEITARO_POSTBACK_URL && String(env.KEITARO_POSTBACK_URL)) || await getConfigStr(env, 'keitaro_postback_url');
   if (!base) { console.log(`keitaro: postback URL not configured — skipped (subid=${subid}, status=${status})`); return { ok: false, error: 'no_postback_url' }; }
-  const sep = base.includes('?') ? '&' : '?';
-  const url = `${base}${sep}subid=${encodeURIComponent(subid)}&status=${encodeURIComponent(status)}`;
+  const url = buildKeitaroUrl(base, subid, status);
   let lastErr = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
