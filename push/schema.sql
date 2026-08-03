@@ -89,11 +89,18 @@ CREATE TABLE IF NOT EXISTS users (
   -- channel_bonus_claimed: 1 once the user claimed the one-time bonus for
   -- subscribing to our Telegram channel (verified via getChatMember). Never
   -- clawed back if they later unsubscribe.
-  channel_bonus_claimed INTEGER NOT NULL DEFAULT 0
+  channel_bonus_claimed INTEGER NOT NULL DEFAULT 0,
+  -- country: ISO-2 country code (PH, IN, US…) from Cloudflare edge geolocation
+  -- (request.cf.country) captured first-touch on /checkin — the Mini App's fetch
+  -- comes straight from the player's device, so cf.country is the player's geo
+  -- (unlike the Telegram /start webhook, which originates from Telegram's DCs).
+  -- Set once, never overwritten. NULL = unknown (edge had no geo / not migrated).
+  country TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
 CREATE INDEX IF NOT EXISTS idx_users_source ON users(source);
+CREATE INDEX IF NOT EXISTS idx_users_country ON users(country);
 
 -- Telegram Stars invoices for the "2x offline income" boost. Created (status
 -- 'pending') when the client taps the paid button, with `amount` = the offline
@@ -217,6 +224,9 @@ INSERT OR IGNORE INTO config (key, value) VALUES
 -- Traffic-source attribution (?startapp=<x> → users.source). Migration:
 --   ALTER TABLE users ADD COLUMN source TEXT;
 --   CREATE INDEX IF NOT EXISTS idx_users_source ON users(source);
+-- Geo (ISO-2 country from Cloudflare edge, first-touch on /checkin). Migration:
+--   ALTER TABLE users ADD COLUMN country TEXT;
+--   CREATE INDEX IF NOT EXISTS idx_users_country ON users(country);
 -- Keitaro S2S postback (FB conversions). Migration:
 --   ALTER TABLE users ADD COLUMN kt_subid TEXT;
 --   ALTER TABLE users ADD COLUMN kt_sent_first_click INTEGER NOT NULL DEFAULT 0;

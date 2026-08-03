@@ -201,6 +201,22 @@ async function captureAttribution(env, userId, startParam) {
   } catch (e) { /* column may not be migrated yet — degrade */ }
 }
 
+// First-touch geo capture. request.cf.country is Cloudflare's ISO-2 for the
+// request's client IP. On /checkin the Mini App's fetch comes straight from the
+// player's device, so this is the player's country (used to see whether FB
+// traffic lands in the targeted geo). Set once (WHERE country IS NULL), never
+// overwritten, so a later trip abroad / VPN can't rewrite the acquisition geo.
+// Cloudflare uses 'XX'/'T1' for unknown/Tor — treated as no-geo and skipped.
+async function captureCountry(env, userId, request) {
+  if (!env.DB) return;
+  const cc = request && request.cf && request.cf.country;
+  if (!cc || !/^[A-Z]{2}$/.test(cc) || cc === 'XX' || cc === 'T1') return;
+  try {
+    await env.DB.prepare('UPDATE users SET country = ? WHERE user_id = ? AND country IS NULL')
+      .bind(cc, userId).run();
+  } catch (e) { /* column may not be migrated yet — degrade */ }
+}
+
 // GET /go?kt=<subid> — redirect hop placed BEFORE Telegram in the Keitaro offer
 // URL. Telegram's start param allows only [A-Za-z0-9_-] (dots are stripped), so
 // we encode the Keitaro subid's dots as dashes here; captureAttribution reverses
@@ -715,7 +731,54 @@ async function handleFunnel(request, env) {
     source: rawSource || 'all',
     stages: stages.results,
     bySource: bySourceRows.results,
+    // Geo breakdown embedded here too (the dashboard reads countries from either
+    // /funnel or the dedicated /countries endpoint). rawSource is already
+    // validated above, so this can't hit the bad-source path.
+    countries: await countriesByFilter(env, rawSource),
   });
+}
+
+// Distinct users per ISO-2 country, with the same optional source filter as
+// /funnel ('organic' = no source, '<x>' = that source, absent = all). NULL /
+// unknown countries are excluded. Degrades to [] if the country column isn't
+// migrated yet. Shared by /funnel (embedded) and the dedicated /countries route.
+async function countriesByFilter(env, rawSource) {
+  if (!env.DB) return [];
+  try {
+    if (rawSource === 'organic') {
+      const r = await env.DB.prepare(
+        'SELECT country, COUNT(*) AS users FROM users WHERE country IS NOT NULL AND source IS NULL GROUP BY country ORDER BY users DESC'
+      ).all();
+      return r.results;
+    } else if (rawSource) {
+      const source = sanitizeSource(rawSource);
+      if (!source) return [];
+      const r = await env.DB.prepare(
+        'SELECT country, COUNT(*) AS users FROM users WHERE country IS NOT NULL AND source = ? GROUP BY country ORDER BY users DESC'
+      ).bind(source).all();
+      return r.results;
+    }
+    const r = await env.DB.prepare(
+      'SELECT country, COUNT(*) AS users FROM users WHERE country IS NOT NULL GROUP BY country ORDER BY users DESC'
+    ).all();
+    return r.results;
+  } catch (e) { return []; } // country column not migrated yet — degrade
+}
+
+// GET /countries?key=<ADMIN_KEY>[&source=<x>] — distinct users per ISO-2 country,
+// same source-filter semantics as /funnel. For the FB test: confirm traffic
+// actually lands in the targeted geo (and spot junk mixed in from other geos).
+async function handleCountries(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) {
+    return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  }
+  const rawSource = url.searchParams.get('source');
+  if (rawSource && rawSource !== 'organic' && !sanitizeSource(rawSource)) {
+    return jsonResponse({ ok: false, error: 'bad_source' }, 400);
+  }
+  const countries = await countriesByFilter(env, rawSource);
+  return jsonResponse({ ok: true, source: rawSource || 'all', countries });
 }
 
 // GET /online?key=<ADMIN_KEY> — live activity snapshot from KV metadata (no
@@ -1237,6 +1300,8 @@ async function handleCheckin(request, env) {
       // First-touch attribution: capture the Keitaro click id (?startapp=<subid>)
       // into kt_subid + coarse source 'keitaro' (set once, never overwritten).
       await captureAttribution(env, user.id, result.startParam);
+      // First-touch geo: ISO-2 from Cloudflare edge (player's device fetch).
+      await captureCountry(env, user.id, request);
       const row = await env.DB.prepare('SELECT pending_reward FROM users WHERE user_id = ?').bind(user.id).first();
       if (row && row.pending_reward > 0) {
         pendingReward = row.pending_reward;
@@ -1682,6 +1747,18 @@ async function handleAdsgramReward(request, env) {
   }
   console.log(`adsreward GRANT uid=${userId} type=${type} count ${count}->${count + 1}`);
 
+  // Funnel signal: one 'ad_view' row per user (first confirmed rewarded view).
+  // We're past the secret + intent + daily-limit gates, so a real view happened.
+  // /funnel counts DISTINCT users per event, so a single row per user is exactly
+  // "users who watched >=1 rewarded ad"; logging once keeps the table lean and
+  // avoids re-deriving d1_return/ref stages that full logEvent() would. Wrapped
+  // so analytics can never break the reward grant.
+  try {
+    await env.DB.prepare(
+      "INSERT INTO events (user_id, event, ts) SELECT ?, 'ad_view', ? WHERE NOT EXISTS (SELECT 1 FROM events WHERE user_id = ? AND event = 'ad_view')"
+    ).bind(userId, now, userId).run();
+  } catch (e) { /* analytics must never block the reward */ }
+
   // Accumulating path: each view is +1 toward AD_CLICK_BYPASS_TARGET; the target
   // sets the SAME has_click_bypass flag the Stars purchase sets. Idempotent past
   // the target (views capped, flag never downgraded) — extra views can't corrupt.
@@ -1758,6 +1835,10 @@ export default {
 
     if (url.pathname === '/funnel' && request.method === 'GET') {
       return handleFunnel(request, env);
+    }
+
+    if (url.pathname === '/countries' && request.method === 'GET') {
+      return handleCountries(request, env);
     }
 
     if (url.pathname === '/online' && request.method === 'GET') {
