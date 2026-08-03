@@ -121,6 +121,10 @@ function bytesToHex(bytes) {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Max age of a Telegram initData string we still accept, in seconds. Guards
+// against replay of a captured-but-valid initData (see validateInitData).
+const INIT_DATA_MAX_AGE_SEC = 86400; // 24h
+
 // Verifies the Telegram WebApp initData signature per
 // https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
 async function validateInitData(initData, botToken) {
@@ -142,6 +146,12 @@ async function validateInitData(initData, botToken) {
   if (!userJson) return null;
   const user = JSON.parse(userJson);
   const authDate = Number(params.get('auth_date') || '0');
+  // Replay protection: even with a valid HMAC, a captured initData string
+  // (logs, sharing, MITM) must not be usable forever. Reject anything older
+  // than INIT_DATA_MAX_AGE_SEC. Telegram refreshes initData on each launch, so
+  // legitimate clients always send a fresh auth_date.
+  if (!Number.isFinite(authDate) || authDate <= 0) return null;
+  if (Date.now() / 1000 - authDate > INIT_DATA_MAX_AGE_SEC) return null;
   // start_param = the ?startapp=<x> value the Mini App was opened with (e.g.
   // 'fb_en'), used for traffic-source attribution. Sanitized by the caller.
   const startParam = params.get('start_param') || null;
