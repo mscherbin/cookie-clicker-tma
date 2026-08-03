@@ -146,15 +146,96 @@ async function validateInitData(initData, botToken) {
   return { user, authDate, startParam };
 }
 
-// Sanitize a start_param into a marketing source tag: Telegram allows up to 64
-// chars of [A-Za-z0-9_-]. Referral codes (refNNN) are NOT sources — they come
-// through the /start referral flow, so we exclude them here.
+// Sanitize a start_param (from ?startapp=<x> or /start <x>) into a click id /
+// source tag: [A-Za-z0-9_-], up to 128 chars. Referral codes (refNNN) are NOT
+// sources/subids — they come through the /start referral flow — so we exclude
+// them here.
 function sanitizeSource(raw) {
   if (typeof raw !== 'string') return null;
-  const s = raw.trim().slice(0, 64);
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(s)) return null;
+  const s = raw.trim().slice(0, 128);
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(s)) return null;
   if (/^ref\d+$/.test(s)) return null;
   return s;
+}
+
+// Read a raw string value from the key/value `config` table (e.g. the Keitaro
+// postback URL). No cache — read rarely.
+async function getConfigStr(env, key) {
+  if (!env.DB) return null;
+  try {
+    const row = await env.DB.prepare('SELECT value FROM config WHERE key = ?').bind(key).first();
+    return row ? row.value : null;
+  } catch (e) { return null; }
+}
+
+// First-touch traffic attribution: on the FIRST entry that carries a start_param
+// (Keitaro click id via ?startapp=<subid> or /start <subid>), store it in
+// users.kt_subid and mark the coarse source 'keitaro' — both set ONCE and never
+// overwritten (WHERE kt_subid IS NULL), so the first click that brought the user
+// in wins. The precise per-click id lives in kt_subid (for the S2S postback);
+// `source` stays coarse ('keitaro') so /funnel segments don't explode per click.
+async function captureAttribution(env, userId, startParam) {
+  if (!env.DB) return;
+  const subid = sanitizeSource(startParam);
+  if (!subid) return;
+  try {
+    await env.DB.prepare("UPDATE users SET kt_subid = ?, source = COALESCE(source, 'keitaro') WHERE user_id = ? AND kt_subid IS NULL")
+      .bind(subid, userId).run();
+  } catch (e) { /* column may not be migrated yet — degrade */ }
+}
+
+// Server-to-server (S2S) postback to Keitaro so it can fire the conversion back
+// to Facebook. Base URL from a Worker var/secret KEITARO_POSTBACK_URL, else the
+// D1 config row `keitaro_postback_url`. Appends ?subid=<>&status=<>. Retries once
+// on a network error; logs the outcome. Never throws.
+async function sendKeitaroPostback(env, subid, status) {
+  const base = (env.KEITARO_POSTBACK_URL && String(env.KEITARO_POSTBACK_URL)) || await getConfigStr(env, 'keitaro_postback_url');
+  if (!base) { console.log(`keitaro: postback URL not configured — skipped (subid=${subid}, status=${status})`); return { ok: false, error: 'no_postback_url' }; }
+  const sep = base.includes('?') ? '&' : '?';
+  const url = `${base}${sep}subid=${encodeURIComponent(subid)}&status=${encodeURIComponent(status)}`;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const r = await fetch(url, { method: 'GET' });
+      const resp = (await r.text().catch(() => '')).slice(0, 300);
+      console.log(`keitaro postback sent (attempt ${attempt}) http=${r.status} subid=${subid} status=${status} resp=${resp}`);
+      return { ok: true, http: r.status, resp }; // response received (even non-2xx); don't retry
+    } catch (e) {
+      lastErr = String(e);
+      console.log(`keitaro postback network error (attempt ${attempt}) subid=${subid}: ${lastErr}`);
+    }
+  }
+  return { ok: false, error: 'network', detail: lastErr };
+}
+
+// GET /kt-test?key=<ADMIN_KEY>&subid=<x>&status=<lead|sale> — fire a manual
+// Keitaro postback so marketing can confirm it lands in Keitaro's postback log,
+// without needing a real player. Returns Keitaro's HTTP status + response body.
+async function handleKtTest(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  const subid = sanitizeSource(url.searchParams.get('subid') || '') || 'test_subid';
+  const status = (url.searchParams.get('status') || 'lead').slice(0, 32);
+  const result = await sendKeitaroPostback(env, subid, status);
+  return jsonResponse({ ok: !!result.ok, sent: { subid, status }, keitaro: result });
+}
+
+// Fire the FIRST_CLICK conversion postback exactly once per user. The conditional
+// UPDATE on kt_sent_first_click is the idempotency guard (only the first caller
+// flips 0→1 and sends). No kt_subid (organic) → nothing sent.
+async function maybeFireKeitaroFirstClick(env, userId) {
+  if (!env.DB) return;
+  let row;
+  try {
+    row = await env.DB.prepare('SELECT kt_subid AS s, kt_sent_first_click AS sent FROM users WHERE user_id = ?').bind(userId).first();
+  } catch (e) { return; } // columns not migrated yet
+  if (!row || !row.s || row.sent) return;
+  try {
+    const upd = await env.DB.prepare('UPDATE users SET kt_sent_first_click = 1 WHERE user_id = ? AND kt_subid IS NOT NULL AND kt_sent_first_click = 0')
+      .bind(userId).run();
+    if (!upd.meta || !upd.meta.changes) return; // another request already claimed it
+  } catch (e) { return; }
+  await sendKeitaroPostback(env, row.s, 'lead');
 }
 
 // ---------- Analytics + referral rewards (D1) ----------
@@ -433,7 +514,16 @@ async function handleEvent(request, env) {
   const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
   if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
 
-  await logEvent(env, result.user.id, body.event);
+  const userId = result.user.id;
+  await logEvent(env, userId, body.event);
+  // Belt-and-suspenders attribution capture (in case /event arrives before any
+  // /checkin) — first-touch, no overwrite.
+  await captureAttribution(env, userId, result.startParam);
+  // Conversion → Keitaro S2S postback. Event agreed with marketing: FIRST_CLICK
+  // → status=lead (fired once per user). FIRST_UPGRADE→sale is Part 3, not on yet.
+  if (body.event === 'first_click') {
+    await maybeFireKeitaroFirstClick(env, userId);
+  }
   return jsonResponse({ ok: true });
 }
 
@@ -476,6 +566,9 @@ async function handleTelegramWebhook(request, env) {
     const startParam = msg.text.trim().split(/\s+/)[1];
     if (startParam) {
       await logEvent(env, userId, 'ref_click', startParam);
+      // Also capture it as a Keitaro click id (first-touch) — covers the
+      // /start <subid> entry path in addition to ?startapp=<subid>.
+      await captureAttribution(env, userId, startParam);
     }
     // Localized welcome reply with the "open game" button (lang from Telegram).
     const lang = langFromCode(msg.from.language_code);
@@ -1040,15 +1133,9 @@ async function handleCheckin(request, env) {
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
-      // First-touch traffic-source attribution: if the Mini App was opened via
-      // ?startapp=<source> (e.g. 'fb_en'), record it once (never overwrite, so
-      // the first source that brought the user in wins). ensureUser (in
-      // logEvent) has already created the row.
-      const source = sanitizeSource(result.startParam);
-      if (source) {
-        await env.DB.prepare('UPDATE users SET source = ? WHERE user_id = ? AND source IS NULL')
-          .bind(source, user.id).run();
-      }
+      // First-touch attribution: capture the Keitaro click id (?startapp=<subid>)
+      // into kt_subid + coarse source 'keitaro' (set once, never overwritten).
+      await captureAttribution(env, user.id, result.startParam);
       const row = await env.DB.prepare('SELECT pending_reward FROM users WHERE user_id = ?').bind(user.id).first();
       if (row && row.pending_reward > 0) {
         pendingReward = row.pending_reward;
@@ -1485,6 +1572,10 @@ export default {
 
     if (url.pathname === '/online' && request.method === 'GET') {
       return handleOnline(request, env);
+    }
+
+    if (url.pathname === '/kt-test' && request.method === 'GET') {
+      return handleKtTest(request, env);
     }
 
     if (url.pathname === '/create-offline-invoice' && request.method === 'POST') {

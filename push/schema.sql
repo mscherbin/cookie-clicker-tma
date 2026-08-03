@@ -33,10 +33,19 @@ CREATE TABLE IF NOT EXISTS users (
   user_id INTEGER PRIMARY KEY,
   referrer_id INTEGER,
   first_seen_ts INTEGER NOT NULL,
-  -- source: first-touch traffic-source tag from ?startapp=<x> (e.g. 'fb_en'),
-  -- set once on the first /checkin that carries it. NULL = organic (no tag).
-  -- Used by /funnel?source=<x> to split the funnel by acquisition channel.
+  -- source: coarse first-touch acquisition channel. Set to 'keitaro' when the
+  -- user arrives with a start_param (Keitaro click); NULL = organic. Used by
+  -- /funnel?source=<x> to split the funnel by channel.
   source TEXT,
+  -- kt_subid: the Keitaro click id from ?startapp=<subid> (or /start <subid>),
+  -- captured first-touch (never overwritten). Used for the S2S postback so
+  -- Keitaro can return the conversion to Facebook.
+  kt_subid TEXT,
+  -- kt_sent_first_click / kt_sent_first_upgrade: idempotency flags so each Keitaro
+  -- conversion postback is sent at most once per user. first_click→status=lead is
+  -- live; first_upgrade→status=sale is wired in schema for later (Part 3).
+  kt_sent_first_click INTEGER NOT NULL DEFAULT 0,
+  kt_sent_first_upgrade INTEGER NOT NULL DEFAULT 0,
   pending_reward REAL NOT NULL DEFAULT 0,
   max_active_friends_ever INTEGER NOT NULL DEFAULT 0,
   weekly_baseline INTEGER NOT NULL DEFAULT 0,
@@ -191,7 +200,10 @@ INSERT OR IGNORE INTO config (key, value) VALUES
   -- bonus. Code defaults apply if these rows are missing.
   ('channel_bonus_chat', '@bestcookieclicker'),
   ('channel_bonus_seconds', '600'),
-  ('channel_bonus_min', '500');
+  ('channel_bonus_min', '500'),
+  -- Keitaro S2S postback base URL. Empty = disabled (postbacks skipped). Set it
+  -- to your Keitaro postback endpoint; the worker appends ?subid=<>&status=<>.
+  ('keitaro_postback_url', '');
 
 -- Rewarded ads (AdsGram, Task #25). Per-user daily counter of ad-granted boosts;
 -- resets on the UTC-day boundary (ads_reward_day = floor(now_ms / 86400000)).
@@ -205,6 +217,14 @@ INSERT OR IGNORE INTO config (key, value) VALUES
 -- Traffic-source attribution (?startapp=<x> → users.source). Migration:
 --   ALTER TABLE users ADD COLUMN source TEXT;
 --   CREATE INDEX IF NOT EXISTS idx_users_source ON users(source);
+-- Keitaro S2S postback (FB conversions). Migration:
+--   ALTER TABLE users ADD COLUMN kt_subid TEXT;
+--   ALTER TABLE users ADD COLUMN kt_sent_first_click INTEGER NOT NULL DEFAULT 0;
+--   ALTER TABLE users ADD COLUMN kt_sent_first_upgrade INTEGER NOT NULL DEFAULT 0;
+-- Postback base URL (Keitaro) — set it (no redeploy needed):
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "UPDATE config SET value='https://YOUR-KEITARO/postback' WHERE key='keitaro_postback_url'"
+-- (Alternatively set a Worker var/secret KEITARO_POSTBACK_URL, which overrides.)
 --   (config rows channel_bonus_* are added by the INSERT OR IGNORE block above;
 --    re-run that or add them manually — code defaults apply if absent.)
 -- Secret for the reward callback lives in a Worker secret, not here:
