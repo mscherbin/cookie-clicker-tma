@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS users (
   user_id INTEGER PRIMARY KEY,
   referrer_id INTEGER,
   first_seen_ts INTEGER NOT NULL,
+  -- source: first-touch traffic-source tag from ?startapp=<x> (e.g. 'fb_en'),
+  -- set once on the first /checkin that carries it. NULL = organic (no tag).
+  -- Used by /funnel?source=<x> to split the funnel by acquisition channel.
+  source TEXT,
   pending_reward REAL NOT NULL DEFAULT 0,
   max_active_friends_ever INTEGER NOT NULL DEFAULT 0,
   weekly_baseline INTEGER NOT NULL DEFAULT 0,
@@ -80,6 +84,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
+CREATE INDEX IF NOT EXISTS idx_users_source ON users(source);
 
 -- Telegram Stars invoices for the "2x offline income" boost. Created (status
 -- 'pending') when the client taps the paid button, with `amount` = the offline
@@ -197,6 +202,9 @@ INSERT OR IGNORE INTO config (key, value) VALUES
 --   ALTER TABLE users ADD COLUMN ad_click_bypass_views INTEGER NOT NULL DEFAULT 0;
 -- One-time channel-subscription bonus (Task #29). Migration:
 --   ALTER TABLE users ADD COLUMN channel_bonus_claimed INTEGER NOT NULL DEFAULT 0;
+-- Traffic-source attribution (?startapp=<x> → users.source). Migration:
+--   ALTER TABLE users ADD COLUMN source TEXT;
+--   CREATE INDEX IF NOT EXISTS idx_users_source ON users(source);
 --   (config rows channel_bonus_* are added by the INSERT OR IGNORE block above;
 --    re-run that or add them manually — code defaults apply if absent.)
 -- Secret for the reward callback lives in a Worker secret, not here:

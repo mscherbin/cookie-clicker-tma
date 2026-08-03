@@ -140,7 +140,21 @@ async function validateInitData(initData, botToken) {
   if (!userJson) return null;
   const user = JSON.parse(userJson);
   const authDate = Number(params.get('auth_date') || '0');
-  return { user, authDate };
+  // start_param = the ?startapp=<x> value the Mini App was opened with (e.g.
+  // 'fb_en'), used for traffic-source attribution. Sanitized by the caller.
+  const startParam = params.get('start_param') || null;
+  return { user, authDate, startParam };
+}
+
+// Sanitize a start_param into a marketing source tag: Telegram allows up to 64
+// chars of [A-Za-z0-9_-]. Referral codes (refNNN) are NOT sources — they come
+// through the /start referral flow, so we exclude them here.
+function sanitizeSource(raw) {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim().slice(0, 64);
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(s)) return null;
+  if (/^ref\d+$/.test(s)) return null;
+  return s;
 }
 
 // ---------- Analytics + referral rewards (D1) ----------
@@ -482,11 +496,40 @@ async function handleFunnel(request, env) {
     return jsonResponse({ ok: false, error: 'forbidden' }, 403);
   }
 
-  const stages = await env.DB.prepare(
-    'SELECT event, COUNT(DISTINCT user_id) as users FROM events GROUP BY event ORDER BY users DESC'
+  // Optional source filter for traffic-source attribution:
+  //   ?source=fb_en   → only users whose first-touch source is 'fb_en'
+  //   ?source=organic → only users with NO attributed source (organic)
+  //   (absent)        → all users
+  const rawSource = url.searchParams.get('source');
+  let stages;
+  if (rawSource === 'organic') {
+    stages = await env.DB.prepare(
+      'SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source IS NULL GROUP BY e.event ORDER BY users DESC'
+    ).all();
+  } else if (rawSource) {
+    const source = sanitizeSource(rawSource);
+    if (!source) return jsonResponse({ ok: false, error: 'bad_source' }, 400);
+    stages = await env.DB.prepare(
+      'SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source = ? GROUP BY e.event ORDER BY users DESC'
+    ).bind(source).all();
+  } else {
+    stages = await env.DB.prepare(
+      'SELECT event, COUNT(DISTINCT user_id) as users FROM events GROUP BY event ORDER BY users DESC'
+    ).all();
+  }
+
+  // Always include a per-source breakdown (attributed users per source, plus the
+  // organic count) so the marketer can see which sources exist and their sizes.
+  const bySourceRows = await env.DB.prepare(
+    "SELECT COALESCE(source, 'organic') AS source, COUNT(*) AS users FROM users GROUP BY COALESCE(source, 'organic') ORDER BY users DESC"
   ).all();
 
-  return jsonResponse({ ok: true, stages: stages.results });
+  return jsonResponse({
+    ok: true,
+    source: rawSource || 'all',
+    stages: stages.results,
+    bySource: bySourceRows.results,
+  });
 }
 
 // GET /online?key=<ADMIN_KEY> — live activity snapshot from KV metadata (no
@@ -997,6 +1040,15 @@ async function handleCheckin(request, env) {
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
+      // First-touch traffic-source attribution: if the Mini App was opened via
+      // ?startapp=<source> (e.g. 'fb_en'), record it once (never overwrite, so
+      // the first source that brought the user in wins). ensureUser (in
+      // logEvent) has already created the row.
+      const source = sanitizeSource(result.startParam);
+      if (source) {
+        await env.DB.prepare('UPDATE users SET source = ? WHERE user_id = ? AND source IS NULL')
+          .bind(source, user.id).run();
+      }
       const row = await env.DB.prepare('SELECT pending_reward FROM users WHERE user_id = ?').bind(user.id).first();
       if (row && row.pending_reward > 0) {
         pendingReward = row.pending_reward;
