@@ -3092,9 +3092,9 @@
     // Tutorial step 2: the one and only offline-mechanic nudge, right after the
     // first upgrade. Cap/timer details are self-explained by the offline UI, so
     // keep it to a single line. Delayed so it follows the "bought" toast.
-    const t = tut();
-    if (isFirstUpgrade && !t.offlineHintDone) {
-      t.offlineHintDone = true;
+    const tu = tut();
+    if (isFirstUpgrade && !tu.offlineHintDone) {
+      tu.offlineHintDone = true;
       saveState();
       setTimeout(() => showToast(t('toast.offlineHint'), 5000), 1500);
     }
