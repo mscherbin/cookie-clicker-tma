@@ -1087,15 +1087,23 @@ async function handleSuccessfulPayment(env, msg) {
       // One-time "skip the clicker" flag. Idempotent, same as perm_prod.
       await env.DB.prepare('UPDATE users SET has_click_bypass = 1 WHERE user_id = ?')
         .bind(userId).run();
-    } else if (inv.kind === 'upgrade_skip') {
-      // Per-upgrade paid unlock: add the upgrade id to the user's set. The
-      // conditional invoice flip above guarantees this runs once per invoice;
-      // the set add is idempotent regardless.
-      const row = await env.DB.prepare('SELECT paid_unlocked_upgrades AS pu FROM users WHERE user_id = ?').bind(userId).first();
-      const set = parseIdList(row && row.pu);
-      if (inv.upgrade_id && !set.includes(inv.upgrade_id)) set.push(inv.upgrade_id);
-      await env.DB.prepare('UPDATE users SET paid_unlocked_upgrades = ? WHERE user_id = ?')
-        .bind(set.join(','), userId).run();
+    } else if (inv.kind === 'upgrade_skip' && inv.upgrade_id) {
+      // Per-upgrade paid unlock: append the id to the user's comma-separated set
+      // in ONE atomic statement. A read-modify-write here loses updates when two
+      // upgrade_skip webhooks for the same user (different upgrade ids, so each
+      // passes the per-invoice flip above) race: both read the old list and the
+      // second write clobbers the id the first appended -> paid, not delivered.
+      // SQLite serializes concurrent single-statement UPDATEs of the same row, so
+      // each sees the other's committed value. INSTR (not LIKE — ids contain '_',
+      // a LIKE wildcard) does the delimited exact-token dedup, keeping it
+      // idempotent across retries too.
+      await env.DB.prepare(
+        "UPDATE users SET paid_unlocked_upgrades = CASE " +
+        "WHEN paid_unlocked_upgrades IS NULL OR paid_unlocked_upgrades = '' THEN ? " +
+        "WHEN INSTR(',' || paid_unlocked_upgrades || ',', ',' || ? || ',') > 0 THEN paid_unlocked_upgrades " +
+        "ELSE paid_unlocked_upgrades || ',' || ? END " +
+        "WHERE user_id = ?"
+      ).bind(inv.upgrade_id, inv.upgrade_id, inv.upgrade_id, userId).run();
     } else {
       // offline_2x (default): credit the frozen amount x2.
       const credit = (inv.amount || 0) * OFFLINE_BOOST_MULT;
