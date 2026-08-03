@@ -748,24 +748,33 @@ async function handleFunnel(request, env) {
   if (rawSource && rawSource !== 'organic' && !sanitizeSource(rawSource)) {
     return jsonResponse({ ok: false, error: 'bad_source' }, 400);
   }
-  // Optional time window (see parsePeriod). Applied to events.ts for stages.
+  // Optional time window (see parsePeriod).
   const win = parsePeriod(url);
   if (win.error) return jsonResponse({ ok: false, error: win.error }, 400);
   const { since, until, label } = win;
 
-  // Stages: distinct users per event within [since, until), respecting source.
+  // Stages: distinct users per event, windowed by the user's ACQUISITION time
+  // (users.first_seen_ts), not the event's own ts. This is an acquisition-cohort
+  // funnel — "of users first seen in [since, until), how many reached each
+  // stage" — and it's the only windowing that's uniform across stages: app_open
+  // (and first_click) are re-logged on activity, so windowing by event ts would
+  // make app_open(today) ≈ everyone-active-today instead of acquired-today, and
+  // exceed bySource(today). first_seen_ts keys every counter (stages, ad_view,
+  // bySource, countries) on the same cohort, so app_open(today) ≤ bySource(today)
+  // always holds. period=all covers every user, so all-time counts are unchanged.
+  const winClause = 'u.first_seen_ts >= ? AND u.first_seen_ts < ?';
   let stages;
   if (rawSource === 'organic') {
     stages = await env.DB.prepare(
-      'SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source IS NULL AND e.ts >= ? AND e.ts < ? GROUP BY e.event ORDER BY users DESC'
+      `SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source IS NULL AND ${winClause} GROUP BY e.event ORDER BY users DESC`
     ).bind(since, until).all();
   } else if (rawSource) {
     stages = await env.DB.prepare(
-      'SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source = ? AND e.ts >= ? AND e.ts < ? GROUP BY e.event ORDER BY users DESC'
+      `SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE u.source = ? AND ${winClause} GROUP BY e.event ORDER BY users DESC`
     ).bind(sanitizeSource(rawSource), since, until).all();
   } else {
     stages = await env.DB.prepare(
-      'SELECT event, COUNT(DISTINCT user_id) as users FROM events WHERE ts >= ? AND ts < ? GROUP BY event ORDER BY users DESC'
+      `SELECT e.event AS event, COUNT(DISTINCT e.user_id) AS users FROM events e JOIN users u ON u.user_id = e.user_id WHERE ${winClause} GROUP BY e.event ORDER BY users DESC`
     ).bind(since, until).all();
   }
 
