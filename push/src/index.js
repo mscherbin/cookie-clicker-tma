@@ -18,6 +18,7 @@
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
 const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=88';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
+const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
 const OFFLINE_FULL_RATE_SECONDS = 2 * 3600;
 const OFFLINE_RATE = 0.1;
@@ -617,6 +618,44 @@ async function handleTelegramWebhook(request, env) {
     // Localized welcome reply with the "open game" button (lang from Telegram).
     const lang = langFromCode(msg.from.language_code);
     await sendPush(env, userId, pt(lang, 'start.welcome'), lang);
+  } else if (msg && msg.text && msg.from) {
+    // Other slash commands (menu is set in BotFather; here are the replies). They
+    // work right in the chat — no mini-app needed. `/help@botname` is normalized.
+    const cmd = msg.text.trim().split(/\s+/)[0].split('@')[0];
+    const userId = msg.from.id;
+    if (cmd === '/help' || cmd === '/stats' || cmd === '/top' || cmd === '/invite' || cmd === '/channel') {
+      const lang = await getUserLang(env, userId, msg.from.language_code);
+      if (cmd === '/help') {
+        await sendPush(env, userId, pt(lang, 'cmd.help'), lang); // + "open game" button
+      } else if (cmd === '/stats') {
+        let m = null;
+        try { m = (await env.USERS.getWithMetadata(`user:${userId}`)).metadata; } catch (e) { /* ignore */ }
+        if (!m) {
+          await sendBotText(env, userId, pt(lang, 'cmd.statsEmpty'));
+        } else {
+          await sendPush(env, userId, pt(lang, 'cmd.stats', {
+            total: fmtBig(m.totalBaked || 0),
+            cps: fmtBig(m.cps || 0),
+            ascensions: m.prestigeCount || 0,
+            friends: m.activeReferrals || 0,
+          }), lang);
+        }
+      } else if (cmd === '/top') {
+        const { entries } = await computeLeaderboard(env);
+        const top = entries.slice(0, 10);
+        if (!top.length) {
+          await sendBotText(env, userId, pt(lang, 'cmd.topEmpty'));
+        } else {
+          const list = top.map((e, i) => `${i + 1}. ${e.name} — ⭐×${e.prestigeCount} — ${fmtBig(e.cps)}`).join('\n');
+          await sendPush(env, userId, pt(lang, 'cmd.top', { list }), lang);
+        }
+      } else if (cmd === '/invite') {
+        const link = `https://t.me/${BOT_USERNAME}?start=ref${userId}`;
+        await sendBotText(env, userId, pt(lang, 'cmd.invite', { link }));
+      } else if (cmd === '/channel') {
+        await sendBotText(env, userId, pt(lang, 'cmd.channel', { link: CHANNEL_LINK }));
+      }
+    }
   }
 
   return jsonResponse({ ok: true });
@@ -1251,6 +1290,7 @@ async function handleCheckin(request, env) {
     cps: Number(body.cps) || 0,
     totalBaked: Number(body.totalBaked) || 0,
     displayName,
+    activeReferrals,     // current active friends (for the /stats bot command)
     maxActiveFriendsEver,
     weeklyReferrals,      // friends recruited this week (for the weekly board)
     weeklyWeekId: curWeek, // which week weeklyReferrals belongs to (stale => 0 on the board)
@@ -1283,7 +1323,10 @@ async function handleCheckin(request, env) {
   return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed });
 }
 
-async function handleLeaderboard(env) {
+// Builds the ranked leaderboard from KV metadata (one list() sweep, no per-user
+// reads). Shared by the /leaderboard endpoint and the /top bot command so both
+// show identical ranking.
+async function computeLeaderboard(env) {
   const entries = [];
   let cursor;
   for (;;) {
@@ -1317,6 +1360,11 @@ async function handleLeaderboard(env) {
     const row = await env.DB.prepare("SELECT value FROM config WHERE key = 'pioneer_limit'").first();
     if (row && Number.isFinite(Number(row.value))) pioneerLimit = Number(row.value);
   } catch (e) { /* config table may not exist yet — fall back to default */ }
+  return { entries, pioneerLimit };
+}
+
+async function handleLeaderboard(env) {
+  const { entries, pioneerLimit } = await computeLeaderboard(env);
   return jsonResponse({ ok: true, entries: entries.slice(0, 50), pioneerLimit });
 }
 
@@ -1370,6 +1418,13 @@ const PUSH_STRINGS = {
     'evt.refEvent': '🎉 Событие рефералов! Награда за приглашённых друзей ×{mult}.{tail}',
     'evt.refEventTail': ' Успей позвать друзей!',
     'start.welcome': '🍪 Привет! Это Cookie Clicker — пеки печеньки, прокачивай здания, возносись и зови друзей. Жми кнопку, чтобы начать!',
+    'cmd.help': '🍪 Как играть в Cookie Clicker:\n👆 Тапай печеньку — получай печеньки\n🏗 Покупай здания и апгрейды — производство растёт само\n⭐ Когда всё раскуплено — вознесись: сброс прогресса даёт постоянный бонус навсегда\n🤝 Зови друзей — получай бонус к производству за каждого активного\nОткрой игру и начинай печь!',
+    'cmd.stats': '📊 Твоя статистика:\n🍪 Всего испечено: {total}\n⚡ Печенек/сек: {cps}\n⭐ Вознесений: {ascensions}\n🤝 Активных друзей: {friends}',
+    'cmd.statsEmpty': '📊 Пока нет статистики — открой игру и начни печь печеньки!',
+    'cmd.top': '🏆 Топ игроков:\n{list}\nОткрой игру, чтобы увидеть свой ранг!',
+    'cmd.topEmpty': '🏆 Топ пока пуст — стань первым! Открой игру и начни печь.',
+    'cmd.invite': '🤝 Зови друзей в игру!\nТвоя ссылка: {link}\nТы и друг получите бонус печенек сразу, а с каждым активным другом твоё производство растёт навсегда.',
+    'cmd.channel': '📢 Наш канал: {link}\nАнонсы событий, новых уровней и обновлений — всё там.',
   },
   en: {
     'push.early': '⏰ Your cookies are about to slow down! In 15 minutes your offline baking rate drops 10×. Hop in while we’re still baking at full speed.',
@@ -1382,6 +1437,13 @@ const PUSH_STRINGS = {
     'evt.refEvent': '🎉 Referral event! Reward for invited friends ×{mult}.{tail}',
     'evt.refEventTail': ' Invite friends now!',
     'start.welcome': '🍪 Hi! This is Cookie Clicker — bake cookies, upgrade buildings, ascend, and invite friends. Tap the button to start!',
+    'cmd.help': "🍪 How to play Cookie Clicker:\n👆 Tap the cookie to earn cookies\n🏗 Buy buildings and upgrades — production grows on its own\n⭐ Once everything's bought — ascend: resetting gives a permanent bonus forever\n🤝 Invite friends — get a production boost for each active friend\nOpen the game and start baking!",
+    'cmd.stats': '📊 Your stats:\n🍪 Total baked: {total}\n⚡ Cookies/sec: {cps}\n⭐ Ascensions: {ascensions}\n🤝 Active friends: {friends}',
+    'cmd.statsEmpty': '📊 No stats yet — open the game and start baking cookies!',
+    'cmd.top': '🏆 Leaderboard:\n{list}\nOpen the game to see your rank!',
+    'cmd.topEmpty': '🏆 The leaderboard is empty — be the first! Open the game and start baking.',
+    'cmd.invite': '🤝 Invite friends to play!\nYour link: {link}\nYou and your friend both get an instant cookie bonus, and each active friend permanently boosts your production.',
+    'cmd.channel': '📢 Our channel: {link}\nEvent announcements, new levels and updates — all there.',
   },
 };
 function pt(lang, key, vars) {
@@ -1393,6 +1455,36 @@ function pt(lang, key, vars) {
   return s;
 }
 function langFromCode(code) { return /^ru/i.test(code || '') ? 'ru' : 'en'; }
+
+// A user's saved language for bot replies: prefer their stored KV metadata lang
+// (same source the pushes use), else fall back to Telegram's language_code.
+async function getUserLang(env, userId, code) {
+  try {
+    const { metadata } = await env.USERS.getWithMetadata(`user:${userId}`);
+    if (metadata && (metadata.lang === 'ru' || metadata.lang === 'en')) return metadata.lang;
+  } catch (e) { /* ignore */ }
+  return langFromCode(code);
+}
+
+// Compact big-number format for bot text (1200000000000 → "1.20T"). Suffix scale
+// mirrors the client's formatNum enough to read consistently.
+const BIG_SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'UDc', 'DDc', 'TDc', 'QaDc', 'QiDc', 'SxDc', 'SpDc', 'OcDc', 'NoDc', 'Vg'];
+function fmtBig(n) {
+  n = Number(n) || 0;
+  if (!isFinite(n)) return '0';
+  const sign = n < 0 ? '-' : '';
+  n = Math.abs(n);
+  if (n < 1000) return sign + (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  let tier = Math.floor(Math.log10(n) / 3);
+  if (tier >= BIG_SUFFIXES.length) tier = BIG_SUFFIXES.length - 1;
+  const scaled = n / Math.pow(10, tier * 3);
+  return sign + scaled.toFixed(2) + BIG_SUFFIXES[tier];
+}
+
+// Plain-text bot reply (no game button). URLs auto-link in Telegram.
+async function sendBotText(env, chatId, text) {
+  await tgCall(env, 'sendMessage', { chat_id: chatId, text, disable_web_page_preview: true });
+}
 
 function stageEarlyText(lang) {
   return pt(lang, 'push.early');
