@@ -53,6 +53,8 @@
       'shop.adBypassOr': 'Или бесплатно за рекламу', 'shop.adBypass': '📺 +1 просмотр к разблокировке',
       'toast.adBypassProgress': '📺 Прогресс: {views}/{target} просмотров', 'toast.adBypassUnlocked': '⚡ Клик-апгрейды открыты за рекламу!',
       'popup.offlineTitle': '💤 Офлайн-доход', 'popup.cpsTitle': '⚡ Производство',
+      'popup.offlineExplain': 'Печеньки копятся, даже когда игра закрыта: первые {cap} — на полной скорости, дальше медленнее.',
+      'popup.offlineExplainBoost': 'Сейчас офлайн без ограничений — печеньки копятся на полной скорости всё время, пока активен буст.',
       'toast.adLoading': 'Загружаем рекламу…', 'toast.adReward': '📺 Награда за рекламу начислена!',
       'toast.adNoReward': 'Реклама не досмотрена — награда не начислена', 'toast.adUnavailable': 'Реклама сейчас недоступна',
       'toast.adLimitReached': 'Лимит рекламы на сегодня исчерпан ({used}/{limit})',
@@ -196,6 +198,8 @@
       'shop.adBypassOr': 'Or unlock free by watching ads', 'shop.adBypass': '📺 +1 view toward unlock',
       'toast.adBypassProgress': '📺 Progress: {views}/{target} views', 'toast.adBypassUnlocked': '⚡ Click upgrades unlocked via ads!',
       'popup.offlineTitle': '💤 Offline income', 'popup.cpsTitle': '⚡ Production',
+      'popup.offlineExplain': 'Cookies pile up even while the game is closed: full speed for the first {cap}, then slower.',
+      'popup.offlineExplainBoost': 'Offline is uncapped right now — cookies pile up at full speed the whole time while the boost is active.',
       'toast.adLoading': 'Loading ad…', 'toast.adReward': '📺 Ad reward granted!',
       'toast.adNoReward': 'Ad not completed — no reward', 'toast.adUnavailable': 'Ads are unavailable right now',
       'toast.adLimitReached': 'Daily ad limit reached ({used}/{limit})',
@@ -2019,9 +2023,16 @@
   // Header contextual popup: a small titled sheet with 2 relevant offers
   // (Stars + ad). Buttons are built from the same registry, so no duplicated
   // markup or state. offerIds e.g. ['nocap','adNocap'].
-  function openOfferPopup(titleKey, offerIds) {
+  // explainText (optional): a short plain-language blurb shown above the offers —
+  // e.g. what the offline-income line means, so the popup doubles as an always-
+  // available explanation (not just a buy sheet).
+  function openOfferPopup(titleKey, offerIds, explainText) {
     if (!el.offerPopup) return;
     el.offerPopupTitle.textContent = t(titleKey);
+    if (el.offerPopupExplain) {
+      el.offerPopupExplain.textContent = explainText || '';
+      el.offerPopupExplain.hidden = !explainText;
+    }
     el.offerPopupBody.innerHTML = '';
     offerIds.forEach((id) => {
       const b = document.createElement('button');
@@ -2129,6 +2140,7 @@
     rewardBurstAmount: document.getElementById('rewardBurstAmount'),
     offerPopup: document.getElementById('offerPopup'),
     offerPopupTitle: document.getElementById('offerPopupTitle'),
+    offerPopupExplain: document.getElementById('offerPopupExplain'),
     offerPopupBody: document.getElementById('offerPopupBody'),
   };
 
@@ -2172,6 +2184,15 @@
       el.offlineInfoLine.textContent = t('top.offline100', { t: fmtHMText(capMin) });
       el.offlineInfoLine.classList.remove('boost');
     }
+  }
+
+  // Plain-language explanation of the offline-income line, adapted to the current
+  // state (uncapped boost active vs the normal full-rate window). Shown in the
+  // popup when the header line is tapped — an always-available "what is this?".
+  function offlineExplainText() {
+    if ((state.boostExpiresAt || 0) > Date.now()) return t('popup.offlineExplainBoost');
+    const capMin = Math.round(getOfflineCapHours(state.activeReferrals || 0) * 60);
+    return t('popup.offlineExplain', { cap: fmtHMText(capMin) });
   }
 
   function updateEventBanner() {
@@ -3256,7 +3277,7 @@
   });
   // Header contextual entry points: tap the offline timer / CPS number to open a
   // 2-offer popup right where the friction is felt.
-  if (el.offlineInfoLine) el.offlineInfoLine.addEventListener('click', () => openOfferPopup('popup.offlineTitle', ['nocap', 'adNocap']));
+  if (el.offlineInfoLine) el.offlineInfoLine.addEventListener('click', () => openOfferPopup('popup.offlineTitle', ['nocap', 'adNocap'], offlineExplainText()));
   if (el.cps) el.cps.addEventListener('click', () => openOfferPopup('popup.cpsTitle', ['boost2x', 'adBoost2x']));
   if (el.offerPopup) el.offerPopup.addEventListener('click', (e) => { if (e.target === el.offerPopup) closeOfferPopup(); });
   // Tapping the backdrop = free claim (never lose offline income); ignored while

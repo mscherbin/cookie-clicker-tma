@@ -1124,6 +1124,13 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   color: var(--gold);
   margin-bottom: 4px;
 }
+.offer-explain {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted, #b9a888);
+  margin: 6px 0 2px;
+  text-align: left;
+}
 .offer-body { display: flex; flex-direction: column; }
 .offer-body .nocap-btn:first-child,
 .offer-body .ad-btn:first-child { margin-top: 12px; }
