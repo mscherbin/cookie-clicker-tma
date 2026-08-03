@@ -56,6 +56,7 @@
       'toast.adLoading': 'Загружаем рекламу…', 'toast.adReward': '📺 Награда за рекламу начислена!',
       'toast.adNoReward': 'Реклама не досмотрена — награда не начислена', 'toast.adUnavailable': 'Реклама сейчас недоступна',
       'toast.adLimitReached': 'Лимит рекламы на сегодня исчерпан ({used}/{limit})',
+      'toast.adInProgress': 'Дождитесь завершения текущего просмотра',
       // Ascension card
       'asc.title': '⭐ Вознесение',
       'asc.desc': 'Сбрасывает прогресс, но даёт постоянный бонус к производству — с каждым разом бонус растёт.',
@@ -198,6 +199,7 @@
       'toast.adLoading': 'Loading ad…', 'toast.adReward': '📺 Ad reward granted!',
       'toast.adNoReward': 'Ad not completed — no reward', 'toast.adUnavailable': 'Ads are unavailable right now',
       'toast.adLimitReached': 'Daily ad limit reached ({used}/{limit})',
+      'toast.adInProgress': 'Wait for the current ad to finish',
       'asc.title': '⭐ Ascension',
       'asc.desc': 'Resets your progress but grants a permanent production bonus — it grows every time.',
       'asc.firstTime': '✨ This will be your first ascension',
@@ -657,6 +659,7 @@
 
   const CHECKIN_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/checkin';
   const ADSGRAM_INTENT_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/adsgram-intent';
+  const ADSGRAM_CANCEL_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/adsgram-cancel';
   // AdsGram rewarded-video Block ID (from the AdsGram dashboard). Platform ID
   // 38246, bot 8767577526. Production block 40881 is approved/active (came out
   // of moderation 03.08.2026); test block was 40903.
@@ -1694,28 +1697,60 @@
   // secret — we never grant on the client.
   // type ∈ {'nocap','boost2x','click_bypass_progress'} (last = +1 view toward the
   // free click-bypass unlock; shares the daily ad limit with the other two).
+  // Only ONE ad may be in flight at a time. Watching a second ad before the
+  // first's reward callback has been processed used to clobber the server intent
+  // and silently lose a view — so we block overlapping watches here (and the
+  // server rejects them too, as a backstop).
+  let adInFlight = false;
   async function watchAd(type) {
     if (!tg || !tg.initData) { showToast(t('toast.onlyTelegram')); return; }
+    if (adInFlight) { showToast(t('toast.adInProgress'), 3000); return; }
     if (adsUsed() >= adsLimit()) { showToast(t('toast.adLimitReached', { used: adsUsed(), limit: adsLimit() })); return; }
     initAdsgram();
     if (!adController) { showToast(t('toast.adUnavailable')); return; }
+    adInFlight = true;
     // Record which boost this ad grants (server verifies + grants on the reward
     // callback). The intent doubles as a one-shot idempotency guard server-side.
+    // The server refuses to create a new intent while one is still pending
+    // (409 ad_in_progress) — surface that instead of showing an ad we can't credit.
     try {
-      await fetch(ADSGRAM_INTENT_URL, {
+      const resp = await fetch(ADSGRAM_INTENT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ initData: tg.initData, type }),
       });
-    } catch (e) { /* best-effort; if it failed the reward callback finds no intent and grants nothing */ }
+      const data = await resp.json().catch(() => null);
+      if (data && data.ok === false) {
+        adInFlight = false;
+        showToast(data.error === 'ad_in_progress' ? t('toast.adInProgress') : t('toast.adUnavailable'), 3000);
+        return;
+      }
+    } catch (e) {
+      // Network error creating the intent — abort rather than show an ad whose
+      // reward callback would find no intent and grant nothing.
+      adInFlight = false;
+      showToast(t('toast.adUnavailable'));
+      return;
+    }
     showToast(t('toast.adLoading'), 2500);
     adController.show().then(() => {
       // Fully watched → AdsGram calls /adsgram-reward server-side; poll checkins
-      // to pick up the extended boost window + updated daily counter.
+      // to pick up the extended boost window + updated daily counter. Clear the
+      // in-flight lock; the server's intent guard covers the brief window until
+      // the reward callback consumes the intent.
+      adInFlight = false;
       showToast(t('toast.adReward'), 3500);
       haptic('heavy');
       pollPaidCredit();
     }).catch(() => {
+      // Ad closed/skipped without completing → no reward callback will come, so
+      // cancel the pending intent server-side to free the next ad immediately.
+      adInFlight = false;
+      fetch(ADSGRAM_CANCEL_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      }).catch(() => {});
       showToast(t('toast.adNoReward'));
     });
   }

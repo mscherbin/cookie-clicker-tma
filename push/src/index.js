@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=86';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=87';
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
 const OFFLINE_FULL_RATE_SECONDS = 2 * 3600;
 const OFFLINE_RATE = 0.1;
@@ -302,7 +302,12 @@ const PROD2X_BOOST_DURATION_MS = 3600 * 1000; // 1h window per purchase
 // ad — one AdsGram block, one reward URL, two possible boosts.
 const AD_PROD2X_DURATION_MS = 15 * 60 * 1000; // 15 min of ×2 production (paid: 60 min)
 const AD_NOCAP_DURATION_MS = 2 * 3600 * 1000; // 2h of no offline cap (paid: 24h)
-const AD_INTENT_TTL_S = 600;                  // how long a "which boost" intent stays valid (also idempotency guard)
+// How long an ad "intent" lives. It's ALSO the concurrency lock: a new ad can't
+// start while an unconsumed intent exists (handleAdsgramIntent rejects), so the
+// TTL bounds how long a stuck intent (ad watched but reward callback never came,
+// or an abandoned ad whose cancel failed) blocks the next ad. Kept comfortably
+// longer than an ad+callback (seconds) but not the old 10 min.
+const AD_INTENT_TTL_S = 180;
 const AD_DAILY_LIMIT = 8;                     // rewarded-ad boosts per user per UTC day
 // Free, time-gated third path to the click-bypass: this many ad views accumulate
 // into the SAME has_click_bypass flag the 100⭐ purchase sets. Views share the
@@ -1480,7 +1485,32 @@ async function handleAdsgramIntent(request, env) {
   if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
   const type = (body.type === 'nocap' || body.type === 'boost2x' || body.type === 'click_bypass_progress') ? body.type : null;
   if (!type) return jsonResponse({ ok: false, error: 'bad_type' }, 400);
-  await env.USERS.put(`adsintent:${result.user.id}`, type, { expirationTtl: AD_INTENT_TTL_S });
+  const uid = result.user.id;
+  // Concurrency guard (fixes the "lost view" race): only ONE ad may be in flight
+  // per user. If an unconsumed intent already exists, refuse to overwrite it —
+  // otherwise a second ad started before the first's reward callback arrives
+  // would clobber the first intent (first callback grants the wrong type; the
+  // second finds no intent and grants nothing → the view is silently lost).
+  const existing = await env.USERS.get(`adsintent:${uid}`);
+  if (existing) {
+    console.log(`adsintent REJECT (in_progress) uid=${uid} want=${type} existing=${existing}`);
+    return jsonResponse({ ok: false, error: 'ad_in_progress' }, 409);
+  }
+  await env.USERS.put(`adsintent:${uid}`, type, { expirationTtl: AD_INTENT_TTL_S });
+  console.log(`adsintent SET uid=${uid} type=${type}`);
+  return jsonResponse({ ok: true });
+}
+
+// POST /adsgram-cancel { initData } — clear this user's pending ad intent when
+// they closed/abandoned the ad without completing it (no reward callback will
+// come), so the next ad isn't blocked by the concurrency guard until TTL.
+async function handleAdsgramCancel(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  await env.USERS.delete(`adsintent:${result.user.id}`);
+  console.log(`adsintent CANCEL uid=${result.user.id}`);
   return jsonResponse({ ok: true });
 }
 
@@ -1503,6 +1533,7 @@ async function handleAdsgramReward(request, env) {
   // an AdsGram retry finds no intent and does not double-grant.
   const type = await env.USERS.get(`adsintent:${userId}`);
   if (type !== 'nocap' && type !== 'boost2x' && type !== 'click_bypass_progress') {
+    console.log(`adsreward NO_INTENT uid=${userId} (expired or already consumed)`);
     return jsonResponse({ ok: false, error: 'no_intent' }); // expired or already consumed
   }
   const now = Date.now();
@@ -1512,8 +1543,10 @@ async function handleAdsgramReward(request, env) {
   const row = await env.DB.prepare('SELECT ads_reward_day AS d, ads_reward_count AS c, boost_expires_at AS e, boost2x_expires_at AS e2, ad_click_bypass_views AS abv, has_click_bypass AS hcb FROM users WHERE user_id = ?').bind(userId).first();
   const count = (row && row.d === today) ? (row.c || 0) : 0; // reset on UTC-day boundary
   if (count >= AD_DAILY_LIMIT) {
+    console.log(`adsreward DAILY_LIMIT uid=${userId} type=${type} count=${count}`);
     return jsonResponse({ ok: false, error: 'daily_limit', limit: AD_DAILY_LIMIT });
   }
+  console.log(`adsreward GRANT uid=${userId} type=${type} count ${count}->${count + 1}`);
 
   // Accumulating path: each view is +1 toward AD_CLICK_BYPASS_TARGET; the target
   // sets the SAME has_click_bypass flag the Stars purchase sets. Idempotent past
@@ -1571,6 +1604,10 @@ export default {
 
     if (url.pathname === '/adsgram-intent' && request.method === 'POST') {
       return handleAdsgramIntent(request, env);
+    }
+
+    if (url.pathname === '/adsgram-cancel' && request.method === 'POST') {
+      return handleAdsgramCancel(request, env);
     }
 
     if (url.pathname === '/adsgram-reward' && request.method === 'GET') {
