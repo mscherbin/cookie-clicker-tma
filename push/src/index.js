@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=89';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=90';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -844,16 +844,18 @@ async function handleCountries(request, env) {
 }
 
 // GET /online?key=<ADMIN_KEY> — live activity snapshot from KV metadata (no
-// per-user reads). "online" = pinged /checkin in the last 5 min (checkin fires
-// every ~2 min while playing, so 5 min ≈ "in the app right now"); "day" = DAU
-// (last 24h); "total" = everyone ever registered.
+// per-user reads). "online" = pinged /checkin in the last 6 min (checkin fires
+// every ~4 min while the tab is visible, so 6 min ≈ "in the app right now");
+// "day" = DAU (last 24h); "total" = everyone ever registered.
 async function handleOnline(request, env) {
   const url = new URL(request.url);
   if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) {
     return jsonResponse({ ok: false, error: 'forbidden' }, 403);
   }
   const now = Date.now();
-  const FIVE_MIN = 5 * 60 * 1000;
+  // Online window must exceed the client checkin cadence (4 min) so an active
+  // player never flickers offline between pings.
+  const ONLINE_WINDOW = 6 * 60 * 1000;
   const DAY = 24 * 3600 * 1000;
   let total = 0, online = 0, day = 0;
   let cursor;
@@ -864,7 +866,7 @@ async function handleOnline(request, env) {
       if (!data || !data.chatId) continue;
       total++;
       const ago = now - (data.lastActiveTs || 0);
-      if (ago <= FIVE_MIN) online++;
+      if (ago <= ONLINE_WINDOW) online++;
       if (ago <= DAY) day++;
     }
     if (list.list_complete || !list.cursor) break;
@@ -1454,7 +1456,17 @@ async function handleCheckin(request, env) {
   // paid), and a get()-per-user loop would blow through that once there are
   // more than a few dozen/thousand registered users, regardless of how many
   // are actually active. list() only costs one subrequest per 1000 keys.
-  await env.USERS.put(key, JSON.stringify(data), { metadata: data });
+  //
+  // Best-effort: this KV write only powers leaderboard / push / online
+  // freshness. It must NEVER fail the checkin — a throw here (e.g. KV daily
+  // put-limit → 429) would 500 the response, and since pending_reward /
+  // pending_paid_cookies were already decremented in D1 above, the client would
+  // never receive the reward it just paid for in the DB → silent loss, incl.
+  // paid Stars credit. Swallow it: the reward still returns below; only the KV
+  // mirror goes stale until the next successful checkin.
+  try {
+    await env.USERS.put(key, JSON.stringify(data), { metadata: data });
+  } catch (e) { console.log('checkin KV put failed (degraded, reward preserved)', e); }
 
   // Tunable boost curve knobs, so the client's referralBoost() can be
   // retuned server-side without a frontend release.

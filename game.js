@@ -3310,8 +3310,20 @@
   setInterval(() => { renderBuildings(); renderUpgrades(); renderStats(); renderPrestigeBanner(); renderRewardTeaser(); updateTutorial(); updateDailyBadge(); maybeOfferReferralBuildings(); }, 3000);
   setInterval(() => { state.lastTs = Date.now(); saveState(); }, 10000);
   // Keep the leaderboard/push-worker record fresh during a long play session
-  // instead of only ever reflecting the moment the app was opened.
-  setInterval(sendCheckin, 120000);
+  // instead of only ever reflecting the moment the app was opened. Managed so we
+  // can PAUSE it while the tab is hidden: a backgrounded Mini App left open all
+  // day would otherwise keep writing to KV every few minutes — the dominant
+  // driver of KV put usage (and the free-tier daily put cap). Interval widened
+  // 2→4 min (still within the ~6-min "online" window); reward pickup is
+  // unaffected because we also checkin immediately whenever the tab is shown.
+  let checkinTimer = null;
+  function startCheckinLoop() { if (checkinTimer == null) checkinTimer = setInterval(sendCheckin, 240000); }
+  function stopCheckinLoop() { if (checkinTimer != null) { clearInterval(checkinTimer); checkinTimer = null; } }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopCheckinLoop();
+    else { sendCheckin(); startCheckinLoop(); } // catch up on return, then resume
+  });
+  if (!document.hidden) startCheckinLoop();
   updateEventBanner();
   setInterval(updateEventBanner, 1000);
   setInterval(updateRefEventBanner, 1000);
