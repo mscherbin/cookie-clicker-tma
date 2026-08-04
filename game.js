@@ -738,6 +738,14 @@
 
   // ---------- Save / Load ----------
   function saveState() {
+    // Stamp every save so loadState can pick the FRESHEST store. CloudStorage
+    // writes are async and can lag, land out of order, or never arrive if the
+    // webview closes right after (e.g. right after an ascension reset), while
+    // localStorage is synchronous and always holds this device's latest save.
+    // Without this tag loadState preferred CloudStorage unconditionally, so a
+    // stale cloud value silently rolled progress back — most visibly a prestige
+    // reset reverting on reopen.
+    state.saveTs = Date.now();
     const data = JSON.stringify(state);
     if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
       tg.CloudStorage.setItem(SAVE_KEY, data, (err, success) => {
@@ -856,6 +864,7 @@
       }
       const msg = t('confirm.cloudPush', { here: formatNum(state.totalBaked), cloud: formatNum(existingBaked) });
       if (!(await confirmDialog(msg))) return;
+      state.saveTs = Date.now(); // an explicit push is the freshest by intent
       tg.CloudStorage.setItem(SAVE_KEY, JSON.stringify(state), (err, success) => {
         if (err || success === false) { showToast(t('toast.cloudPushFail')); return; }
         showToast(t('toast.cloudPushOk'));
@@ -1273,6 +1282,20 @@
     return div.innerHTML;
   }
 
+  // saveTs of a serialized save (or -1 if missing/unparseable). Legacy saves
+  // written before saveTs existed report 0, so a tagged save always beats them.
+  function saveTsOf(raw) {
+    if (!raw) return -1;
+    try { const o = JSON.parse(raw); return Number.isFinite(o.saveTs) ? o.saveTs : 0; } catch (e) { return -1; }
+  }
+  // Pick the freshest of two serialized saves by saveTs. Tie / both-legacy →
+  // prefer cloud (`a`), preserving the old cross-device precedence.
+  function pickFreshestSave(cloudRaw, localRaw) {
+    const tc = saveTsOf(cloudRaw), tl = saveTsOf(localRaw);
+    if (tc < 0 && tl < 0) return null;
+    return tc >= tl ? cloudRaw : localRaw;
+  }
+
   function loadState() {
     // Render immediately with defaults so the UI never sits blank while an async load resolves.
     refreshAll();
@@ -1287,24 +1310,31 @@
       }, 900);
     };
 
-    const loadFromLocal = () => {
-      try { applyLoaded(localStorage.getItem(SAVE_KEY)); } catch (e) { /* keep defaults */ }
+    const localRaw = (() => { try { return localStorage.getItem(SAVE_KEY); } catch (e) { return null; } })();
+
+    // Apply whichever of {cloud, local} is newer by saveTs. CloudStorage is no
+    // longer trusted unconditionally: its async write can lag / land out of
+    // order / never arrive (webview closed after an ascension), so a stale cloud
+    // value could roll back a just-made change. localStorage is synchronous and
+    // holds this device's latest save, so newest-wins fixes the reopen rollback
+    // while staying correct cross-device (the newest save is the truth).
+    const finish = (cloudRaw) => {
+      const pick = pickFreshestSave(cloudRaw, localRaw);
+      if (pick) { try { applyLoaded(pick); } catch (e) { /* keep defaults */ } }
       afterLoad();
     };
 
     if (cloudStorageUsable()) {
       let settled = false;
-      const fallbackTimer = setTimeout(() => { if (!settled) { settled = true; loadFromLocal(); } }, 1500);
+      const fallbackTimer = setTimeout(() => { if (!settled) { settled = true; finish(null); } }, 1500);
       tg.CloudStorage.getItem(SAVE_KEY, (err, value) => {
         if (settled) return;
         settled = true;
         clearTimeout(fallbackTimer);
-        if (!err && value) applyLoaded(value);
-        else loadFromLocal();
-        if (!err && value) afterLoad();
+        finish(!err ? value : null);
       });
     } else {
-      loadFromLocal();
+      finish(null);
     }
   }
 
