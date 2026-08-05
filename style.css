@@ -862,6 +862,9 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   padding: 4px;
   margin-bottom: 12px;
 }
+/* `display:flex` above otherwise beats the [hidden] UA rule, so hidden toggles
+   (the period row in Friends view, the country button without geo) still showed. */
+.ref-toggle[hidden], .ref-toggle-btn[hidden] { display: none !important; }
 
 .ref-toggle-btn {
   flex: 1;

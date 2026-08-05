@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=100" />
+<link rel="stylesheet" href="style.css?v=101" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 </head>
@@ -140,9 +140,10 @@
       </div>
       <!-- Global / My-country filter — shown only when the server knows the
            player's geo (data.country). -->
-      <div id="leaderboardToggle" class="ref-toggle" hidden>
+      <div id="leaderboardToggle" class="ref-toggle">
         <button id="lbToggleGlobal" class="ref-toggle-btn active" data-lbmode="global" data-i18n="lb.global">🌍 Все</button>
-        <button id="lbToggleCountry" class="ref-toggle-btn" data-lbmode="country" data-i18n="lb.myCountry">Моя страна</button>
+        <button id="lbToggleFriends" class="ref-toggle-btn" data-lbmode="friends" data-i18n="lb.friendsView">🤝 Друзья</button>
+        <button id="lbToggleCountry" class="ref-toggle-btn" data-lbmode="country" data-i18n="lb.myCountry" hidden>Моя страна</button>
       </div>
       <div id="leaderboardList" class="list"></div>
       <!-- Pinned "your place" for players below the top-50 cut (sticky at the
@@ -272,6 +273,6 @@
   </div>
 </div>
 
-<script src="game.js?v=100"></script>
+<script src="game.js?v=101"></script>
 </body>
 </html>

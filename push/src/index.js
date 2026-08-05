@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=100';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=101';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -2180,6 +2180,11 @@ async function handleLeaderboard(request, env) {
   // Weekly counterparts (same shape as the all-time ones, but from weeklyAll).
   let weeklySelf = null, weeklyMyRank = null, weeklyMyTotal = weeklyAll.length;
   let countryWeeklyEntries = null, countryWeeklySelf = null;
+  // Friends-by-progress board (Task #43): the requester's referral chain + self,
+  // ranked by the SAME criterion as the main board (prestige → cps), all-time.
+  // Distinct from the referral "who invited the most" tab. Null when they've
+  // invited no one (client shows an invite-a-friend empty state).
+  let friendsEntries = null, friendsSelf = null, friendsMyRank = null, friendsMyTotal = null;
   try {
     let initData = '';
     if (request && request.method === 'POST') {
@@ -2218,14 +2223,37 @@ async function handleLeaderboard(request, env) {
           const wcidx = wFiltered.findIndex(e => e.userId === meId);
           if (wcidx >= 50) countryWeeklySelf = weeklySelfFrom(wFiltered[wcidx], wcidx + 1, wFiltered.length);
         }
+        // Friends board: the people this user invited (referrer_id = me), plus
+        // self, filtered out of the already-sorted global array so the ranking
+        // criterion is identical to the main board. Empty (null) when they've
+        // invited no one who has played.
+        if (env.DB) {
+          try {
+            const fr = await env.DB.prepare('SELECT user_id AS id FROM users WHERE referrer_id = ?').bind(meId).all();
+            const friendIds = new Set((fr.results || []).map(r => r.id));
+            if (friendIds.size > 0) {
+              const chain = entries.filter(e => e.userId === meId || friendIds.has(e.userId)); // keeps global sort
+              if (chain.length > 0) {
+                friendsEntries = chain.slice(0, 50);
+                friendsMyTotal = chain.length;
+                const fidx = chain.findIndex(e => e.userId === meId);
+                if (fidx >= 0) {
+                  friendsMyRank = fidx + 1;
+                  if (fidx >= 50) friendsSelf = selfFrom(chain[fidx], fidx + 1, chain.length);
+                }
+              }
+            }
+          } catch (e) { /* friends board best-effort */ }
+        }
       }
     }
-  } catch (e) { /* self / rival / country / weekly views are best-effort */ }
+  } catch (e) { /* self / rival / country / weekly / friends views are best-effort */ }
 
   return jsonResponse({
     ok: true, entries: top, pioneerLimit, self, country, countryEntries, countrySelf,
     myRank, myTotal, rival, movers, weekEndsAt: weekEnds,
     weeklyEntries, weeklySelf, weeklyMyRank, weeklyMyTotal, countryWeeklyEntries, countryWeeklySelf,
+    friendsEntries, friendsSelf, friendsMyRank, friendsMyTotal,
   });
 }
 

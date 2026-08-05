@@ -110,7 +110,8 @@
       'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Ранг: по числу перерождений, затем по скорости производства',
       'lb.lifetime': '🍪 {n} за всё время', 'lb.perSec': 'печ/сек', 'lb.pioneer': '🚩 Пионер',
       'lb.you': 'Ты', 'lb.yourPlace': 'Твоё место', 'lb.selfOf': 'из {total}',
-      'lb.global': '🌍 Все', 'lb.myCountry': 'Моя страна',
+      'lb.global': '🌍 Все', 'lb.myCountry': 'Моя страна', 'lb.friendsView': '🤝 Друзья',
+      'lb.emptyFriends': 'Позови друзей — и соревнуйтесь, кто продвинется дальше!',
       'lb.rival': '⚡ Ещё {n} печ/сек — и обгонишь {name}!', 'lb.rankJump': '🚀 +{n} {w} в топе!',
       'lb.momentum': '🔥 {name} поднялся на {n} {w} за час',
       'lb.allTime': 'Всё время', 'lb.thisWeek': 'Эта неделя',
@@ -255,7 +256,8 @@
       'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Rank: by ascensions, then by production speed',
       'lb.lifetime': '🍪 {n} all-time', 'lb.perSec': '/sec', 'lb.pioneer': '🚩 Pioneer',
       'lb.you': 'You', 'lb.yourPlace': 'Your place', 'lb.selfOf': 'of {total}',
-      'lb.global': '🌍 Global', 'lb.myCountry': 'My country',
+      'lb.global': '🌍 Global', 'lb.myCountry': 'My country', 'lb.friendsView': '🤝 Friends',
+      'lb.emptyFriends': 'Invite friends — then race to see who climbs higher!',
       'lb.rival': '⚡ {n}/sec more and you pass {name}!', 'lb.rankJump': '🚀 +{n} {w} on the board!',
       'lb.momentum': '🔥 {name} climbed {n} {w} this hour',
       'lb.allTime': 'All time', 'lb.thisWeek': 'This week',
@@ -1295,11 +1297,15 @@
   function renderLeaderboardView() {
     if (!lbData) return;
     const hasCountry = !!(lbData.country && Array.isArray(lbData.countryEntries));
-    // Geo toggle is only meaningful when the server knows our geo; the period
-    // toggle is always available.
-    if (el.leaderboardToggle) el.leaderboardToggle.hidden = !hasCountry;
-    if (!hasCountry) lbMode = 'global';
+    // The country BUTTON only shows when the server knows our geo; the toggle row
+    // itself (Global / Friends) is always available.
+    if (el.lbToggleCountry) el.lbToggleCountry.hidden = !hasCountry;
+    if (lbMode === 'country' && !hasCountry) lbMode = 'global';
+    // Friends is always all-time — hide the period toggle in that view.
+    const isFriends = lbMode === 'friends';
+    if (el.leaderboardPeriodToggle) el.leaderboardPeriodToggle.hidden = isFriends;
     if (el.lbToggleGlobal) el.lbToggleGlobal.classList.toggle('active', lbMode === 'global');
+    if (el.lbToggleFriends) el.lbToggleFriends.classList.toggle('active', isFriends);
     if (el.lbToggleCountry) {
       el.lbToggleCountry.classList.toggle('active', lbMode === 'country');
       const flag = countryFlag(lbData.country);
@@ -1309,20 +1315,25 @@
     if (el.lbToggleWeek) el.lbToggleWeek.classList.toggle('active', lbPeriod === 'week');
 
     const useCountry = lbMode === 'country' && hasCountry;
-    const useWeek = lbPeriod === 'week';
-    // Pick the slice + its self row for the active (period × geo) combo.
+    const useWeek = lbPeriod === 'week' && !isFriends; // friends board is all-time only
+    // Pick the slice + its self row for the active view.
     let entries, selfRow;
-    if (useWeek) {
+    if (isFriends) {
+      entries = lbData.friendsEntries;
+      selfRow = lbData.friendsSelf;
+    } else if (useWeek) {
       entries = useCountry ? lbData.countryWeeklyEntries : lbData.weeklyEntries;
       selfRow = useCountry ? lbData.countryWeeklySelf : lbData.weeklySelf;
     } else {
       entries = useCountry ? lbData.countryEntries : lbData.entries;
       selfRow = useCountry ? lbData.countrySelf : lbData.self;
     }
+    // Friends ranks by the same criterion as the main board (prestige → cps).
     const critText = useWeek ? t('lb.criterionWeek') : leaderboardCriterionText();
     const explainer = `<div class="lb-explainer">${t('lb.explainer', { crit: critText })}</div>`;
     if (!entries || entries.length === 0) {
-      el.leaderboardList.innerHTML = explainer + `<div class="empty-hint">${t(useWeek ? 'lb.emptyWeek' : 'lb.empty')}</div>`;
+      const emptyKey = isFriends ? 'lb.emptyFriends' : (useWeek ? 'lb.emptyWeek' : 'lb.empty');
+      el.leaderboardList.innerHTML = explainer + `<div class="empty-hint">${t(emptyKey)}</div>`;
       renderLeaderboardSelf(null);
       return;
     }
@@ -1332,9 +1343,9 @@
       leaderboardRowHtml(entry, medals[i] || (i + 1), { me: !!(myId && entry.userId === myId), weekly: useWeek })
     ).join('');
     // Rival + momentum are computed on the ALL-TIME GLOBAL board, so they only
-    // make sense (and only show) in that view — not in country or weekly slices.
+    // show in that exact view — not in friends, country, or weekly slices.
     let rivalHtml = '', momentumHtml = '';
-    if (!useCountry && !useWeek) {
+    if (lbMode === 'global' && !useWeek) {
       if (lbData.rival && Number.isFinite(lbData.rival.deltaCps) && lbData.rival.deltaCps > 0) {
         rivalHtml = `<div class="lb-rival">${t('lb.rival', { n: formatNum(lbData.rival.deltaCps), name: escapeHtml(lbData.rival.name || '') })}</div>`;
       }
@@ -1383,7 +1394,7 @@
   }
 
   function setLbMode(mode) {
-    if (mode !== 'global' && mode !== 'country') return;
+    if (mode !== 'global' && mode !== 'country' && mode !== 'friends') return;
     lbMode = mode;
     renderLeaderboardView();
   }
@@ -1420,7 +1431,8 @@
   function loadLeaderboard() {
     el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.loading')}</div>`;
     renderLeaderboardSelf(null);
-    if (el.leaderboardToggle) el.leaderboardToggle.hidden = true;
+    // The Global / Friends toggle row stays visible during load; the per-button
+    // country visibility is set in renderLeaderboardView once data arrives.
     if (!LEADERBOARD_URL) {
       el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.comingSoon')}</div>`;
       return;
@@ -2414,7 +2426,9 @@
     rankJumpBurst: document.getElementById('rankJumpBurst'),
     weekTimer: document.getElementById('weekTimer'),
     leaderboardToggle: document.getElementById('leaderboardToggle'),
+    leaderboardPeriodToggle: document.getElementById('leaderboardPeriodToggle'),
     lbToggleGlobal: document.getElementById('lbToggleGlobal'),
+    lbToggleFriends: document.getElementById('lbToggleFriends'),
     lbToggleCountry: document.getElementById('lbToggleCountry'),
     lbToggleAll: document.getElementById('lbToggleAll'),
     lbToggleWeek: document.getElementById('lbToggleWeek'),
@@ -3559,6 +3573,7 @@
   el.refToggleWeekly.addEventListener('click', () => setRefPeriod('weekly'));
   el.refToggleAll.addEventListener('click', () => setRefPeriod('alltime'));
   if (el.lbToggleGlobal) el.lbToggleGlobal.addEventListener('click', () => setLbMode('global'));
+  if (el.lbToggleFriends) el.lbToggleFriends.addEventListener('click', () => setLbMode('friends'));
   if (el.lbToggleCountry) el.lbToggleCountry.addEventListener('click', () => setLbMode('country'));
   if (el.lbToggleAll) el.lbToggleAll.addEventListener('click', () => setLbPeriod('all'));
   if (el.lbToggleWeek) el.lbToggleWeek.addEventListener('click', () => setLbPeriod('week'));
