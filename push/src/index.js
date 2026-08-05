@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=96';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=97';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -38,6 +38,15 @@ const NUDGE_AFTER_MS = 3 * 3600 * 1000; // ~3h
 // actionable "spend it here". Below it, fall back to the generic "grab your first
 // upgrade" text. A segment-2 player bought nothing (cps=0), so cookies == totalBaked.
 const NUDGE_MIN_COOKIES = 15;
+
+// Unified per-user daily cap across ALL unsolicited pushes — retention stages,
+// activation nudges, event broadcasts, and the leaderboard-engagement pushes
+// added by this package. The guarantee: a user receives at most this many
+// pushes per UTC day no matter how many triggers fire, so the pack can't turn
+// into spam. Solicited bot replies (/start welcome, /help, /stats, /top) do NOT
+// count — they call sendPush directly, bypassing maybeSendPush. Config key
+// `daily_push_cap` overrides this default without a redeploy.
+const DAILY_PUSH_CAP_DEFAULT = 3;
 
 function computeOfflineGain(elapsedSeconds, cps) {
   if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
@@ -62,6 +71,21 @@ function dateKey(d) {
 // referral leaderboard.
 function weekId(ts) {
   return Math.floor((Math.floor(ts / 86400000) + 3) / 7);
+}
+
+// Start of the CURRENT Monday-anchored week (UTC), in ms. The weekly global
+// board resets at the next such boundary; the client renders a countdown to it.
+function weekStartMs(ts) {
+  // Days since epoch, shifted so Monday is the first day of the week (see weekId).
+  const dayIdx = Math.floor(ts / 86400000);
+  const shifted = dayIdx + 3;            // 1970-01-01 (Thu) -> index 3 in the week
+  const mondayDayIdx = dayIdx - (((shifted % 7) + 7) % 7);
+  return mondayDayIdx * 86400000;
+}
+
+// Epoch ms of the next Monday 00:00 UTC — the moment the weekly board rolls over.
+function weekEndsAt(ts) {
+  return weekStartMs(ts) + 7 * 86400000;
 }
 
 function getHappyHourWindows(d) {
@@ -465,11 +489,13 @@ async function getEconomyConfig(env) {
     channelBonusChatRu: CHANNEL_BONUS_CHAT_RU_DEFAULT, // RU channel
     channelBonusSeconds: CHANNEL_BONUS_SECONDS_DEFAULT,
     channelBonusMin: CHANNEL_BONUS_MIN_DEFAULT,
+    // Unified per-user daily push cap (all unsolicited pushes combined).
+    dailyPushCap: DAILY_PUSH_CAP_DEFAULT,
   };
   if (env.DB) {
     try {
       const rows = await env.DB.prepare(
-        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end', 'channel_bonus_chat', 'channel_bonus_chat_ru', 'channel_bonus_seconds', 'channel_bonus_min')"
+        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end', 'channel_bonus_chat', 'channel_bonus_chat_ru', 'channel_bonus_seconds', 'channel_bonus_min', 'daily_push_cap')"
       ).all();
       const map = {};
       const rawMap = {};
@@ -487,6 +513,7 @@ async function getEconomyConfig(env) {
       if (typeof rawMap.channel_bonus_chat_ru === 'string' && rawMap.channel_bonus_chat_ru.trim()) cfg.channelBonusChatRu = rawMap.channel_bonus_chat_ru.trim();
       if (Number.isFinite(map.channel_bonus_seconds) && map.channel_bonus_seconds >= 0) cfg.channelBonusSeconds = map.channel_bonus_seconds;
       if (Number.isFinite(map.channel_bonus_min) && map.channel_bonus_min >= 0) cfg.channelBonusMin = map.channel_bonus_min;
+      if (Number.isFinite(map.daily_push_cap) && map.daily_push_cap >= 0) cfg.dailyPushCap = map.daily_push_cap;
     } catch (e) { /* table may not exist yet — fall back to defaults */ }
   }
   _configCache = cfg;
@@ -1846,10 +1873,39 @@ async function handleCheckin(request, env) {
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
+  // Read this user's previous KV metadata once, to carry forward two things the
+  // freshly-rebuilt `data` object must NOT reset:
+  //   • the unified daily-push counter (pushDay/pushCount) — the cap is per UTC
+  //     day, independent of activity, so a checkin must not zero it (unlike
+  //     pushStage, which intentionally resets when the player is active);
+  //   • the weekly-board baseline (baked-this-week) — rebased only on the first
+  //     checkin of a new week, so the weekly GLOBAL board resets on the Monday
+  //     boundary with no cron (mirrors the referral weekly board's baseline).
+  const lifetimeNow = Number(body.lifetimeCookies) || 0;
+  let carryPushDay, carryPushCount, lbWeekBaseline = lifetimeNow, weeklyBaked = 0;
+  try {
+    const prev = await env.USERS.getWithMetadata(key, { type: 'json' });
+    const pm = prev && prev.metadata;
+    if (pm) {
+      if (Number.isFinite(pm.pushDay)) carryPushDay = pm.pushDay;
+      if (Number.isFinite(pm.pushCount)) carryPushCount = pm.pushCount;
+      if (pm.lbWeekId === curWeek && Number.isFinite(pm.lbWeekBaseline)) {
+        lbWeekBaseline = pm.lbWeekBaseline;
+        weeklyBaked = Math.max(0, lifetimeNow - lbWeekBaseline);
+      }
+      // else: new week (or first record) → baseline := current lifetime, weeklyBaked = 0
+    }
+  } catch (e) { /* best-effort: fresh push counter, weekly baseline = current lifetime */ }
+
   const data = {
     chatId: user.id,
     lastActiveTs: now,
     pushStage: 0,
+    pushDay: carryPushDay,     // unified daily-push cap counter (carried across checkins)
+    pushCount: carryPushCount, // "
+    lbWeekId: curWeek,          // week that weeklyBaked / lbWeekBaseline belong to
+    lbWeekBaseline,             // lifetime-cookies baseline at the start of this week
+    weeklyBaked,                // cookies baked this week (weekly global board score)
     lastDailyClaim: Number(body.lastDailyClaim) || 0,
     cps: Number(body.cps) || 0,
     totalBaked: Number(body.totalBaked) || 0,
@@ -1895,7 +1951,24 @@ async function handleCheckin(request, env) {
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed });
+  // Global + weekly rank for the always-on header indicator (feature: rank in
+  // the header). Read from the cached ranked board (one shared sweep, ≤60s
+  // stale) — plenty fresh for a rank badge; the header delta is computed
+  // client-side from the last rank it saw. weekEndsAt drives the weekly-board
+  // countdown (consumed by the week-timer feature). All best-effort.
+  let rank = null, rankTotal = null, weeklyRank = null, weeklyTotal = null;
+  try {
+    const ranked = await getRankedLeaderboard(env);
+    rankTotal = ranked.entries.length;
+    const idx = ranked.entries.findIndex(e => e.userId === user.id);
+    if (idx >= 0) rank = idx + 1;
+    const weekly = weeklyStandings(ranked.entries, curWeek);
+    weeklyTotal = weekly.length;
+    const widx = weekly.findIndex(e => e.userId === user.id);
+    if (widx >= 0) weeklyRank = widx + 1;
+  } catch (e) { /* rank views best-effort — never break checkin */ }
+
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed, rank, rankTotal, weeklyBaked, weeklyRank, weeklyTotal, weekEndsAt: weekEndsAt(now) });
 }
 
 // Builds the ranked leaderboard from KV metadata (one list() sweep, no per-user
@@ -1920,6 +1993,8 @@ async function computeLeaderboard(env) {
         lifetimeCookies: data.lifetimeCookies || 0, // never-resetting total, shown as a secondary figure
         crumbs: data.crumbs || 0, // this player's permanent bonus % (rank-badge tooltip)
         country: data.country || null, // ISO-2 geo, for the "my country" leaderboard filter
+        weeklyBaked: data.weeklyBaked || 0, // cookies baked THIS week (weekly board score)
+        lbWeekId: Number.isFinite(data.lbWeekId) ? data.lbWeekId : -1, // which week weeklyBaked belongs to (stale => 0)
       });
     }
     if (list.list_complete || !list.cursor) break;
@@ -1939,9 +2014,41 @@ async function computeLeaderboard(env) {
   return { entries, pioneerLimit };
 }
 
+// A leaderboard sweep is one list() pass over all KV keys — cheap, but not free
+// to run on every /checkin (every active user, every few minutes). Cache the
+// ranked result in-isolate for a short TTL so the header rank (returned on each
+// checkin) and the Top tab share one sweep. Freshness within LB_CACHE_TTL_MS is
+// plenty for a rank indicator; the requester's own cps/weekly figures are still
+// returned live (from their current checkin), only the RANK position may be a
+// few seconds stale.
+const LB_CACHE_TTL_MS = 60 * 1000;
+let _lbCache = null;
+let _lbCacheTs = 0;
+async function getRankedLeaderboard(env) {
+  const now = Date.now();
+  if (_lbCache && now - _lbCacheTs < LB_CACHE_TTL_MS) return _lbCache;
+  const res = await computeLeaderboard(env);
+  _lbCache = res;
+  _lbCacheTs = now;
+  return res;
+}
+
+// Weekly global board: cookies baked during the CURRENT week, sorted desc.
+// Entries whose stored week != the current week count as 0 (dropped) — that's
+// how the weekly board resets on the Monday boundary with no cron, exactly like
+// the referral weekly board. Built from the already-swept global `entries`.
+function weeklyStandings(entries, curWeek) {
+  return entries
+    .filter(e => e.lbWeekId === curWeek && (e.weeklyBaked || 0) > 0)
+    .map(e => ({ userId: e.userId, name: e.name, prestigeCount: e.prestigeCount, isPioneer: e.isPioneer, weeklyBaked: e.weeklyBaked }))
+    .sort((a, b) => b.weeklyBaked - a.weeklyBaked);
+}
+
 async function handleLeaderboard(request, env) {
-  const { entries, pioneerLimit } = await computeLeaderboard(env);
+  const { entries, pioneerLimit } = await getRankedLeaderboard(env);
   const top = entries.slice(0, 50);
+  const now = Date.now();
+  const weekEnds = weekEndsAt(now);
 
   const selfFrom = (e, rank, total) => ({
     rank, total,
@@ -1950,16 +2057,19 @@ async function handleLeaderboard(request, env) {
     isPioneer: e.isPioneer, crumbs: e.crumbs, country: e.country || null,
   });
 
-  // Identity (via initData POST) drives two things, both from the SAME already-built
-  // sorted array — no extra data source, no extra request:
-  //   • self          — the requester's GLOBAL rank when they're below the top-50
-  //                      cut (in-top-50 players are already highlighted in the list).
-  //   • country view  — the leaderboard filtered to the requester's own country
-  //                      (the "My country" toggle) + their rank within it. The
-  //                      filter keeps the global sort order, so it's still ranked.
+  // Identity (via initData POST) drives, all from the SAME already-built sorted
+  // array — no extra data source, no extra request:
+  //   • myRank/myTotal — the requester's global position (always, top-50 or not).
+  //   • rival          — the player one place ABOVE them + the CPS gap to close
+  //                      (feature: "nearest rival"). deltaCps uses the rival's
+  //                      board cps minus this player's board cps; the client shows
+  //                      "N/sec more and you pass <name>".
+  //   • self           — the pinned "your place" row when below the top-50 cut.
+  //   • country view   — the board filtered to the requester's country + rank.
   // Identity comes from initData, not ?me=<id>, so a crafted id can't scrape
   // another player's data. All best-effort: never break the board.
   let self = null, country = null, countryEntries = null, countrySelf = null;
+  let myRank = null, myTotal = entries.length, rival = null;
   try {
     let initData = '';
     if (request && request.method === 'POST') {
@@ -1971,6 +2081,11 @@ async function handleLeaderboard(request, env) {
         const meId = res.user.id;
         const idx = entries.findIndex(e => e.userId === meId);
         if (idx >= 0) {
+          myRank = idx + 1;
+          if (idx > 0) {
+            const up = entries[idx - 1];
+            rival = { name: up.name, rank: idx, deltaCps: Math.max(0, (up.cps || 0) - (entries[idx].cps || 0)) };
+          }
           if (idx >= 50) self = selfFrom(entries[idx], idx + 1, entries.length);
           country = entries[idx].country || null;
           if (country) {
@@ -1982,9 +2097,9 @@ async function handleLeaderboard(request, env) {
         }
       }
     }
-  } catch (e) { /* self / country views are best-effort */ }
+  } catch (e) { /* self / rival / country views are best-effort */ }
 
-  return jsonResponse({ ok: true, entries: top, pioneerLimit, self, country, countryEntries, countrySelf });
+  return jsonResponse({ ok: true, entries: top, pioneerLimit, self, country, countryEntries, countrySelf, myRank, myTotal, rival, weekEndsAt: weekEnds });
 }
 
 // Referral leaderboard: top referrers by all-time peak army size, plus a
@@ -2163,6 +2278,36 @@ async function sendPush(env, chatId, text, lang) {
   }
 }
 
+// Capped push: the single gateway for every UNSOLICITED push (retention stages,
+// activation nudges, event broadcasts, leaderboard-engagement pushes). It
+// enforces the unified per-user daily cap so the total across all push types
+// can never exceed `cap` in a UTC day, regardless of how many triggers fired.
+//   • `data`     — the user's KV metadata object (carries pushDay/pushCount).
+//   • `kvKey`    — the KV key, so the updated counter is persisted durably.
+//   • `onSent`   — optional mutation applied to `data` only if the push is sent
+//                  (e.g. advancing pushStage) — so a capped-out stage isn't
+//                  silently skipped forever.
+// Returns true iff a push was actually delivered. The counter and any onSent
+// mutation are persisted in a single KV put. Best-effort: a KV write failure
+// never throws (mirrors the checkin put).
+async function maybeSendPush(env, kvKey, data, text, lang, cap, onSent) {
+  const today = Math.floor(Date.now() / 86400000);
+  let changed = false;
+  if (data.pushDay !== today) { data.pushDay = today; data.pushCount = 0; changed = true; }
+  if ((data.pushCount || 0) >= cap) {
+    if (changed) { try { await env.USERS.put(kvKey, JSON.stringify(data), { metadata: data }); } catch (e) { /* degraded */ } }
+    return false;
+  }
+  const ok = await sendPush(env, data.chatId, text, lang);
+  if (ok) {
+    data.pushCount = (data.pushCount || 0) + 1;
+    if (onSent) onSent();
+    changed = true;
+  }
+  if (changed) { try { await env.USERS.put(kvKey, JSON.stringify(data), { metadata: data }); } catch (e) { /* degraded */ } }
+  return ok;
+}
+
 async function runPushCycle(env) {
   // Activation-segment membership and the one-shot dedup come from D1, read in
   // aggregate up front (three small queries) — the KV loop below still touches
@@ -2191,6 +2336,10 @@ async function runPushCycle(env) {
     } catch (e) { /* table missing / race — best effort, the in-memory Set still dedups this cycle */ }
   };
 
+  // Unified daily push cap (config-tunable). Every send below goes through
+  // maybeSendPush, so a user never exceeds `cap` pushes/day across all types.
+  const cap = (await getEconomyConfig(env)).dailyPushCap;
+
   let cursor;
   for (;;) {
     const list = await env.USERS.list({ prefix: 'user:', cursor });
@@ -2209,9 +2358,10 @@ async function runPushCycle(env) {
       if (!clicked.has(uid)) {
         // Segment 1: opened the app but never tapped the cookie.
         if (env.DB && elapsed >= NUDGE_AFTER_MS && !nudged.has(`${uid}:1`)) {
-          await sendPush(env, data.chatId, pt(data.lang, 'push.nudgeNoClick'), data.lang);
-          nudged.add(`${uid}:1`);
-          await markNudged(uid, 1);
+          // Only mark as nudged if it actually went out — if the daily cap
+          // deferred it, retry next cycle (still one-shot, just later).
+          const sent = await maybeSendPush(env, k.name, data, pt(data.lang, 'push.nudgeNoClick'), data.lang, cap);
+          if (sent) { nudged.add(`${uid}:1`); await markNudged(uid, 1); }
         }
         continue; // never send offline-income stages to a zero-production player
       }
@@ -2225,27 +2375,22 @@ async function runPushCycle(env) {
           const text = banked >= NUDGE_MIN_COOKIES
             ? pt(data.lang, 'push.nudgeHasCookies', { n: banked })
             : pt(data.lang, 'push.nudgeNoUpgrade');
-          await sendPush(env, data.chatId, text, data.lang);
-          nudged.add(`${uid}:2`);
-          await markNudged(uid, 2);
+          const sent = await maybeSendPush(env, k.name, data, text, data.lang, cap);
+          if (sent) { nudged.add(`${uid}:2`); await markNudged(uid, 2); }
         }
         continue; // replace the piling stages, don't stack on top
       }
 
       // --- Engaged players (have production, or already bought an upgrade) ------
-      // Normal 3-stage offline-income cycle.
+      // Normal 3-stage offline-income cycle. maybeSendPush persists the stage
+      // advance (via onSent) together with the cap counter in one KV put; a
+      // stage that's capped-out this cycle is retried next cycle, not skipped.
       if (data.pushStage < 1 && elapsed >= STAGE_EARLY_MS) {
-        await sendPush(env, data.chatId, stageEarlyText(data.lang), data.lang);
-        data.pushStage = 1;
-        await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
+        await maybeSendPush(env, k.name, data, stageEarlyText(data.lang), data.lang, cap, () => { data.pushStage = 1; });
       } else if (data.pushStage < 2 && elapsed >= STAGE_PILING_MS) {
-        await sendPush(env, data.chatId, stagePilingText(data), data.lang);
-        data.pushStage = 2;
-        await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
+        await maybeSendPush(env, k.name, data, stagePilingText(data), data.lang, cap, () => { data.pushStage = 2; });
       } else if (data.pushStage < 3 && elapsed >= STAGE_REWARD_MS) {
-        await sendPush(env, data.chatId, stageRewardText(data.lang), data.lang);
-        data.pushStage = 3;
-        await env.USERS.put(k.name, JSON.stringify(data), { metadata: data });
+        await maybeSendPush(env, k.name, data, stageRewardText(data.lang), data.lang, cap, () => { data.pushStage = 3; });
       }
     }
     if (list.list_complete || !list.cursor) break;
@@ -2255,7 +2400,11 @@ async function runPushCycle(env) {
 
 // buildText(lang) → localized message, so each user gets it in their own
 // language (data.lang from KV metadata). One list() sweep, no per-user reads.
+// Event broadcasts are unsolicited, so they also respect the unified daily
+// push cap — a user who has already hit their cap from retention/nudge/
+// leaderboard pushes won't get an extra event announcement on top.
 async function broadcastToAllUsers(env, buildText) {
+  const cap = (await getEconomyConfig(env)).dailyPushCap;
   let cursor;
   for (;;) {
     const list = await env.USERS.list({ prefix: 'user:', cursor });
@@ -2263,7 +2412,7 @@ async function broadcastToAllUsers(env, buildText) {
       const data = k.metadata;
       if (data && data.chatId) {
         const lang = data.lang || 'en';
-        await sendPush(env, data.chatId, buildText(lang), lang);
+        await maybeSendPush(env, k.name, data, buildText(lang), lang, cap);
       }
     }
     if (list.list_complete || !list.cursor) break;

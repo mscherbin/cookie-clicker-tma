@@ -167,6 +167,30 @@ html, body {
   font-weight: 800;
 }
 
+/* Always-on leaderboard rank in the header (feature: rank in the header). A
+   small tappable chip that opens the Top tab; the ▲/▼ delta shows the last
+   rank change. */
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 2px 9px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--gold);
+  background: rgba(255, 209, 102, 0.12);
+  border: 1px solid rgba(255, 209, 102, 0.35);
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rank-badge:active { opacity: 0.6; }
+.rank-badge .rank-delta { font-size: 11px; font-weight: 800; }
+.rank-badge .rank-delta.up { color: #46c96a; }
+.rank-badge .rank-delta.down { color: #e0733b; }
+
 .cps.boosted {
   color: var(--gold);
   font-weight: 800;
@@ -1311,6 +1335,40 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   border-radius: 10px;
   padding: 8px 12px;
   line-height: 1.35;
+}
+
+/* Nearest-rival hint (feature): the concrete CPS gap to the player one place
+   above — gold-accented so it reads as a live target, not static info. */
+.lb-rival {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--gold);
+  background: rgba(255, 209, 102, 0.10);
+  border: 1px solid rgba(255, 209, 102, 0.3);
+  border-radius: 10px;
+  padding: 8px 12px;
+  line-height: 1.35;
+}
+
+/* "+N places!" burst on opening the Top tab after a climb (feature: live
+   rank-change animation). */
+.rank-jump-burst {
+  font-size: 15px;
+  font-weight: 900;
+  color: #1c1206;
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  border-radius: 12px;
+  padding: 10px 14px;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(255, 209, 102, 0.35);
+}
+.rank-jump-burst.show { animation: rankJump 2.6s ease both; }
+@keyframes rankJump {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.9); }
+  12%  { opacity: 1; transform: translateY(0) scale(1.04); }
+  20%  { transform: translateY(0) scale(1); }
+  82%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-6px) scale(0.98); }
 }
 
 /* "Пионер перерождения" — rare, distinct pink-gold so it stands out from the

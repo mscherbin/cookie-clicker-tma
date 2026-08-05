@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=96" />
+<link rel="stylesheet" href="style.css?v=97" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 </head>
@@ -19,6 +19,7 @@
       <div id="boost2xLine" class="boost2x-line" hidden>⚡ ×2 производство · ещё 1ч</div>
       <div id="clickPowerLine" class="click-power">Сила клика: 1 &middot; апгрейдов клика: 0/0</div>
       <div id="offlineInfoLine" class="offline-info">💤 Офлайн 100%: 2ч 0мин</div>
+      <button id="rankBadge" class="rank-badge" type="button" hidden aria-label="Место в рейтинге">🏆 #—</button>
     </div>
     <button id="settingsBtn" class="settings-badge" aria-label="Настройки">⚙️</button>
     <button id="dailyBadge" class="daily-badge" aria-label="Ежедневная награда" hidden>🎁</button>
@@ -125,6 +126,9 @@
     </section>
 
     <section id="tab-leaderboard" class="tab-panel">
+      <!-- "+N places!" burst, shown once when the tab opens and the player's rank
+           improved since the last visit (feature: live rank-change animation). -->
+      <div id="rankJumpBurst" class="rank-jump-burst" hidden></div>
       <!-- Global / My-country filter — shown only when the server knows the
            player's geo (data.country). -->
       <div id="leaderboardToggle" class="ref-toggle" hidden>
@@ -259,6 +263,6 @@
   </div>
 </div>
 
-<script src="game.js?v=96"></script>
+<script src="game.js?v=97"></script>
 </body>
 </html>

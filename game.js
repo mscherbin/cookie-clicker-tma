@@ -35,6 +35,7 @@
       'top.cps': '{n} печенек/сек', 'top.clickPower': 'Сила клика: {p} · апгрейдов клика: {a}/{total}',
       'top.boost2x': '⚡ ×2 производство · ещё {t}',
       'top.offlineBoost': '🚀 Офлайн без ограничений · ещё {t}', 'top.offline100': '💤 Офлайн 100%: {t}',
+      'top.rank': '🏆 #{n}', 'top.rankOf': '🏆 #{n} из {total}',
       'time.h': 'ч', 'time.m': 'мин', 'time.s': 'сек', 'evt.remain': 'осталось {t}',
       // Settings
       'set.head': '⚙️ Настройки', 'set.lang': 'Язык', 'set.syncTitle': 'Синхронизация между устройствами',
@@ -110,6 +111,7 @@
       'lb.lifetime': '🍪 {n} за всё время', 'lb.perSec': 'печ/сек', 'lb.pioneer': '🚩 Пионер',
       'lb.you': 'Ты', 'lb.yourPlace': 'Твоё место', 'lb.selfOf': 'из {total}',
       'lb.global': '🌍 Все', 'lb.myCountry': 'Моя страна',
+      'lb.rival': '⚡ Ещё {n} печ/сек — и обгонишь {name}!', 'lb.rankJump': '🚀 +{n} {w} в топе!',
       'lb.empty': 'Пока никого нет — станьте первым!', 'lb.loading': 'Загрузка…',
       'lb.comingSoon': 'Лидерборд скоро появится', 'lb.loadFail': 'Не удалось загрузить лидерборд. Попробуйте позже.',
       'lb.refActive': '🤝 активных друзей', 'lb.refWord': '{word}',
@@ -185,6 +187,7 @@
       'top.cps': '{n} cookies/sec', 'top.clickPower': 'Click power: {p} · click upgrades: {a}/{total}',
       'top.boost2x': '⚡ ×2 production · {t} left',
       'top.offlineBoost': '🚀 Offline uncapped · {t} left', 'top.offline100': '💤 Offline 100%: {t}',
+      'top.rank': '🏆 #{n}', 'top.rankOf': '🏆 #{n} of {total}',
       'time.h': 'h', 'time.m': 'm', 'time.s': 's', 'evt.remain': '{t} left',
       'set.head': '⚙️ Settings', 'set.lang': 'Language', 'set.syncTitle': 'Sync across devices',
       'set.push': '⬆️ Save to cloud', 'set.pull': '⬇️ Load from cloud',
@@ -247,6 +250,7 @@
       'lb.lifetime': '🍪 {n} all-time', 'lb.perSec': '/sec', 'lb.pioneer': '🚩 Pioneer',
       'lb.you': 'You', 'lb.yourPlace': 'Your place', 'lb.selfOf': 'of {total}',
       'lb.global': '🌍 Global', 'lb.myCountry': 'My country',
+      'lb.rival': '⚡ {n}/sec more and you pass {name}!', 'lb.rankJump': '🚀 +{n} {w} on the board!',
       'lb.empty': 'No one here yet — be the first!', 'lb.loading': 'Loading…',
       'lb.comingSoon': 'Leaderboard coming soon', 'lb.loadFail': 'Couldn’t load the leaderboard. Try again later.',
       'lb.refActive': '🤝 active friends', 'lb.refWord': '{word}',
@@ -751,6 +755,10 @@
     adClickBypassTarget: 30, // views needed to unlock the click-bypass (server-authoritative)
     channelBonusClaimed: false, // one-time channel-subscription bonus taken (server-authoritative)
     welcomeBonusGiven: false, // first-launch starting cookies granted once (activation: makes the first purchase reachable without a click grind)
+    lastKnownRank: null, // last global leaderboard rank seen (server-authoritative, from checkin); drives the header rank + its ▲/▼ delta
+    rankDelta: 0,        // signed change since the previous distinct rank: + = climbed, - = dropped; shown next to the header rank until it changes again
+    rankTotal: null,     // total ranked players, for the "#N of M" context
+    lastTopRank: null,   // rank the last time the Top tab was opened; drives the "+N places!" open animation (feature: live rank-change)
   });
 
   let state = defaultState();
@@ -1080,6 +1088,23 @@
             if (added.length) showToast(t('toast.upgradeUnlockedGeneric'), 4000);
           }
         }
+        // Global leaderboard rank for the always-on header indicator. The ▲/▼
+        // delta is derived here from the last DISTINCT rank we saw, so it reads
+        // "#23 ▲2" (climbed 2 since it last changed) and holds that until the
+        // rank moves again — not a noisy per-checkin flicker. Server-authoritative
+        // position; the client only diffs it.
+        if (data && Number.isFinite(data.rank)) {
+          const prev = Number.isFinite(state.lastKnownRank) ? state.lastKnownRank : null;
+          if (prev === null) {
+            state.rankDelta = 0;
+          } else if (prev !== data.rank) {
+            state.rankDelta = prev - data.rank; // + climbed (rank got smaller), - dropped
+          } // else unchanged: keep the last delta shown
+          state.lastKnownRank = data.rank;
+          state.rankTotal = Number.isFinite(data.rankTotal) ? data.rankTotal : state.rankTotal;
+          saveState();
+          renderTopbar();
+        }
       })
       .catch(() => {});
   }
@@ -1262,8 +1287,49 @@
     const rows = entries.map((entry, i) =>
       leaderboardRowHtml(entry, medals[i] || (i + 1), { me: !!(myId && entry.userId === myId) })
     ).join('');
-    el.leaderboardList.innerHTML = explainer + rows;
+    // Nearest rival (feature): the concrete CPS gap to the player right above,
+    // named — "N/sec more and you pass <name>". Only in the global view (the
+    // rival is computed on the global board); shown only when there IS someone
+    // above (rank > 1) and the gap is positive.
+    let rivalHtml = '';
+    if (!useCountry && lbData.rival && Number.isFinite(lbData.rival.deltaCps) && lbData.rival.deltaCps > 0) {
+      rivalHtml = `<div class="lb-rival">${t('lb.rival', { n: formatNum(lbData.rival.deltaCps), name: escapeHtml(lbData.rival.name || '') })}</div>`;
+    }
+    el.leaderboardList.innerHTML = explainer + rivalHtml + rows;
     renderLeaderboardSelf(selfRow);
+  }
+
+  // Russian pluralization for "мест(о/а)"; EN is a simple 1-vs-many.
+  function placesWord(n) {
+    if ((state.lang || 'en') !== 'ru') return Math.abs(n) === 1 ? 'place' : 'places';
+    const a = Math.abs(n) % 100, b = a % 10;
+    if (a > 10 && a < 20) return 'мест';
+    if (b === 1) return 'место';
+    if (b >= 2 && b <= 4) return 'места';
+    return 'мест';
+  }
+
+  // "+N places!" burst on opening the Top tab when the player climbed since the
+  // last visit (feature: live rank-change animation). Compares the server's
+  // current global rank with state.lastTopRank (persisted), animates once, then
+  // stores the new value. Only celebrates climbs (delta > 0).
+  function maybeShowRankJump(myRank) {
+    if (!Number.isFinite(myRank) || myRank <= 0) return;
+    const prev = Number.isFinite(state.lastTopRank) ? state.lastTopRank : null;
+    if (prev !== null && myRank < prev) {
+      const jump = prev - myRank;
+      if (el.rankJumpBurst) {
+        el.rankJumpBurst.textContent = t('lb.rankJump', { n: jump, w: placesWord(jump) });
+        el.rankJumpBurst.hidden = false;
+        el.rankJumpBurst.classList.remove('show');
+        void el.rankJumpBurst.offsetWidth; // restart the CSS animation
+        el.rankJumpBurst.classList.add('show');
+        haptic('medium');
+        setTimeout(() => { if (el.rankJumpBurst) el.rankJumpBurst.hidden = true; }, 2600);
+      }
+    }
+    state.lastTopRank = myRank;
+    saveState();
   }
 
   function setLbMode(mode) {
@@ -1300,6 +1366,9 @@
         if (Number.isFinite(data.pioneerLimit)) leaderboardPioneerLimit = data.pioneerLimit;
         lbData = data;
         renderLeaderboardView();
+        // Celebrate a climb since the last time this tab was open (feature: live
+        // rank-change). Uses the server's authoritative global rank.
+        maybeShowRankJump(Number.isFinite(data.myRank) ? data.myRank : (data.self && data.self.rank));
       })
       .catch(() => {
         lbData = null;
@@ -2206,6 +2275,7 @@
     cps: document.getElementById('cps'),
     clickPowerLine: document.getElementById('clickPowerLine'),
     offlineInfoLine: document.getElementById('offlineInfoLine'),
+    rankBadge: document.getElementById('rankBadge'),
     boost2xLine: document.getElementById('boost2xLine'),
     bigCookie: document.getElementById('bigCookie'),
     clickHint: document.getElementById('clickHint'),
@@ -2260,6 +2330,7 @@
     refEventBannerText: document.getElementById('refEventBannerText'),
     leaderboardList: document.getElementById('leaderboardList'),
     leaderboardSelf: document.getElementById('leaderboardSelf'),
+    rankJumpBurst: document.getElementById('rankJumpBurst'),
     leaderboardToggle: document.getElementById('leaderboardToggle'),
     lbToggleGlobal: document.getElementById('lbToggleGlobal'),
     lbToggleCountry: document.getElementById('lbToggleCountry'),
@@ -2315,6 +2386,23 @@
     el.clickPowerLine.textContent = t('top.clickPower', { p: formatNum(getClickPower()), a: clickUpgradesOwned, total: CLICK_UPGRADES_TOTAL });
     renderOfflineInfo();
     renderBoost2xInfo();
+    renderRankBadge();
+  }
+
+  // Always-on leaderboard rank in the header (feature: rank in the header). Shows
+  // "🏆 #23" plus a ▲/▼ delta since the rank last changed. Hidden until the
+  // server has told us a rank (new players, or offline). Tapping it opens the Top
+  // tab. Rank + delta are maintained in state by the checkin handler.
+  function renderRankBadge() {
+    if (!el.rankBadge) return;
+    const r = state.lastKnownRank;
+    if (!Number.isFinite(r) || r <= 0) { el.rankBadge.hidden = true; return; }
+    const d = state.rankDelta || 0;
+    let arrow = '';
+    if (d > 0) arrow = ` <span class="rank-delta up">▲${d}</span>`;
+    else if (d < 0) arrow = ` <span class="rank-delta down">▼${-d}</span>`;
+    el.rankBadge.innerHTML = t('top.rank', { n: formatNum(r) }) + arrow;
+    el.rankBadge.hidden = false;
   }
 
   // x2-production boost timer, shown next to the CPS indicator only while active.
@@ -3388,6 +3476,11 @@
   el.refToggleAll.addEventListener('click', () => setRefPeriod('alltime'));
   if (el.lbToggleGlobal) el.lbToggleGlobal.addEventListener('click', () => setLbMode('global'));
   if (el.lbToggleCountry) el.lbToggleCountry.addEventListener('click', () => setLbMode('country'));
+  // Header rank badge → jump to the Top tab.
+  if (el.rankBadge) el.rankBadge.addEventListener('click', () => {
+    const btn = document.querySelector('.tab-btn[data-tab="leaderboard"]');
+    if (btn) btn.click();
+  });
 
   // ---------- Passive income loop ----------
   let lastTick = Date.now();
