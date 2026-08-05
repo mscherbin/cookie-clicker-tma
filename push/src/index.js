@@ -847,6 +847,166 @@ async function handleCountries(request, env) {
   return jsonResponse({ ok: true, source: rawSource || 'all', period: win.label, countries });
 }
 
+// Shared filter for the cohort analytics endpoints (/retention, /stickiness).
+// Validates ?source= (same semantics as /funnel: organic / <src> / all) and an
+// optional ?country=<ISO-2> geo narrow, and returns SQL conditions on the users
+// alias `u` plus their binds. Returns { error } on bad input for a 400.
+function cohortFilter(url) {
+  const rawSource = url.searchParams.get('source');
+  if (rawSource && rawSource !== 'organic' && !sanitizeSource(rawSource)) return { error: 'bad_source' };
+  const country = url.searchParams.get('country');
+  if (country && !/^[A-Za-z]{2}$/.test(country)) return { error: 'bad_country' };
+  const cc = country ? country.toUpperCase() : null;
+  const conds = [], binds = [];
+  if (rawSource === 'organic') conds.push('u.source IS NULL');
+  else if (rawSource) { conds.push('u.source = ?'); binds.push(sanitizeSource(rawSource)); }
+  if (cc) { conds.push('u.country = ?'); binds.push(cc); }
+  return { rawSource: rawSource || 'all', country: cc || 'all', conds, binds };
+}
+
+// Count values into labelled buckets (first matching def wins).
+function bucketCounts(values, defs) {
+  const out = defs.map(d => ({ v: d.v, users: 0 }));
+  for (const val of values) {
+    for (let i = 0; i < defs.length; i++) { if (defs[i].test(val)) { out[i].users++; break; } }
+  }
+  return out;
+}
+
+const DAY_MS = 86400000;
+
+// GET /retention?key=<ADMIN_KEY>[&source=][&country=]&cohort=YYYY-MM-DD|all —
+// classic day-N retention curve. Cohort = users (matching filters) who actually
+// entered the app (>=1 app_open); day 0 = their first_seen day. Dn = share of the
+// cohort with any activity on their calendar day (first_seen + N). A user only
+// counts toward Dn once their day N has fully passed; if NO cohort member is that
+// mature yet, Dn = null. app_open is logged on every checkin, so events == activity.
+async function handleRetention(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+  const f = cohortFilter(url);
+  if (f.error) return jsonResponse({ ok: false, error: f.error }, 400);
+
+  const cohortRaw = url.searchParams.get('cohort') || 'all';
+  let cohortDay = null;
+  if (cohortRaw !== 'all') {
+    const ms = /^\d{4}-\d{2}-\d{2}$/.test(cohortRaw) ? Date.parse(cohortRaw + 'T00:00:00Z') : NaN;
+    if (!Number.isFinite(ms)) return jsonResponse({ ok: false, error: 'bad_cohort' }, 400);
+    cohortDay = Math.floor(ms / DAY_MS);
+  }
+  const conds = f.conds.slice(), binds = f.binds.slice();
+  if (cohortDay !== null) { conds.push('u.first_seen_ts / 86400000 = ?'); binds.push(cohortDay); }
+  const whereU = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  const todayDay = Math.floor(Date.now() / DAY_MS);
+
+  try {
+    // Cohort: filtered users who have entered the app at least once.
+    const cohortRes = await env.DB.prepare(
+      `SELECT u.user_id AS uid, u.first_seen_ts / 86400000 AS fday FROM users u ${whereU}` +
+      `${whereU ? ' AND' : ' WHERE'} EXISTS (SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.event = 'app_open')`
+    ).bind(...binds).all();
+    const cohort = cohortRes.results || [];
+    const cohortSize = cohort.length;
+
+    // Distinct active day-offsets per filtered user (any event = active that day).
+    const actRes = await env.DB.prepare(
+      `SELECT e.user_id AS uid, (e.ts / 86400000 - u.first_seen_ts / 86400000) AS off
+       FROM events e JOIN users u ON u.user_id = e.user_id ${whereU}
+       GROUP BY e.user_id, e.ts / 86400000`
+    ).bind(...binds).all();
+    const offsetsByUid = new Map();
+    for (const r of (actRes.results || [])) {
+      let s = offsetsByUid.get(r.uid); if (!s) { s = new Set(); offsetsByUid.set(r.uid, s); }
+      s.add(r.off);
+    }
+
+    const retention = {};
+    for (const N of [1, 2, 3, 7, 14, 30]) {
+      let mature = 0, active = 0;
+      for (const c of cohort) {
+        if (c.fday + N <= todayDay) { // day N has fully passed for this user
+          mature++;
+          const s = offsetsByUid.get(c.uid);
+          if (s && s.has(N)) active++;
+        }
+      }
+      retention['d' + N] = mature > 0 ? Math.round((active / mature) * 1000) / 1000 : null;
+    }
+    return jsonResponse({ ok: true, source: f.rawSource, country: f.country, cohort: cohortRaw, cohort_size: cohortSize, retention });
+  } catch (e) { return jsonResponse({ ok: false, error: 'db', detail: String(e) }, 500); }
+}
+
+// GET /stickiness?key=<ADMIN_KEY>[&source=][&country=][&period=] — per-user
+// return-days and session counts over the cohort (filtered app-entrants,
+// optionally windowed by acquisition time via period). return_days = distinct
+// active days after day 0 (retention depth). sessions = app_open runs split by a
+// >30min gap — NOT raw checkins (a single long visit = 1 session, not N pings).
+async function handleStickiness(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+  const f = cohortFilter(url);
+  if (f.error) return jsonResponse({ ok: false, error: f.error }, 400);
+  const win = parsePeriod(url); // acquisition window on first_seen_ts
+  if (win.error) return jsonResponse({ ok: false, error: win.error }, 400);
+
+  const conds = f.conds.slice(), binds = f.binds.slice();
+  conds.push('u.first_seen_ts >= ? AND u.first_seen_ts < ?'); binds.push(win.since, win.until);
+  const whereU = 'WHERE ' + conds.join(' AND ');
+
+  try {
+    // Cohort: filtered app-entrants (>=1 app_open) in the window.
+    const cohortRes = await env.DB.prepare(
+      `SELECT u.user_id AS uid FROM users u ${whereU} AND EXISTS (SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.event = 'app_open')`
+    ).bind(...binds).all();
+    const cohortUids = new Set((cohortRes.results || []).map(r => r.uid));
+    const cohortSize = cohortUids.size;
+
+    // return_days per user = distinct active days minus day 0 (always present).
+    const rdRes = await env.DB.prepare(
+      `SELECT u.user_id AS uid, COUNT(DISTINCT e.ts / 86400000) - 1 AS rd
+       FROM users u JOIN events e ON e.user_id = u.user_id ${whereU} GROUP BY u.user_id`
+    ).bind(...binds).all();
+    const rdByUid = new Map((rdRes.results || []).map(r => [r.uid, Math.max(0, r.rd)]));
+
+    // sessions per user = app_open events collapsed by a >30min gap (window fn).
+    const sessRes = await env.DB.prepare(
+      `SELECT uid, SUM(CASE WHEN prev IS NULL OR ts - prev > 1800000 THEN 1 ELSE 0 END) AS sessions FROM (
+         SELECT e.user_id AS uid, e.ts AS ts, LAG(e.ts) OVER (PARTITION BY e.user_id ORDER BY e.ts) AS prev
+         FROM events e JOIN users u ON u.user_id = e.user_id ${whereU} AND e.event = 'app_open'
+       ) GROUP BY uid`
+    ).bind(...binds).all();
+    const sessByUid = new Map((sessRes.results || []).map(r => [r.uid, r.sessions]));
+
+    const returnDays = [], sessions = [];
+    for (const uid of cohortUids) {
+      returnDays.push(rdByUid.has(uid) ? rdByUid.get(uid) : 0);
+      sessions.push(sessByUid.has(uid) ? sessByUid.get(uid) : 0);
+    }
+    const avg = arr => arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 100) / 100 : 0;
+    const repeatRate = cohortSize ? Math.round((returnDays.filter(v => v >= 1).length / cohortSize) * 1000) / 1000 : 0;
+
+    return jsonResponse({
+      ok: true, source: f.rawSource, country: f.country, period: win.label, cohort_size: cohortSize,
+      return_days: {
+        avg: avg(returnDays), repeat_rate: repeatRate,
+        buckets: bucketCounts(returnDays, [
+          { v: '0', test: v => v === 0 }, { v: '1-2', test: v => v >= 1 && v <= 2 },
+          { v: '3-6', test: v => v >= 3 && v <= 6 }, { v: '7+', test: v => v >= 7 },
+        ]),
+      },
+      sessions: {
+        avg: avg(sessions),
+        buckets: bucketCounts(sessions, [
+          { v: '1', test: v => v === 1 }, { v: '2-3', test: v => v >= 2 && v <= 3 },
+          { v: '4-9', test: v => v >= 4 && v <= 9 }, { v: '10+', test: v => v >= 10 },
+        ]),
+      },
+    });
+  } catch (e) { return jsonResponse({ ok: false, error: 'db', detail: String(e) }, 500); }
+}
+
 // GET /online?key=<ADMIN_KEY> — live activity snapshot from KV metadata (no
 // per-user reads). "online" = pinged /checkin in the last 6 min (checkin fires
 // every ~4 min while the tab is visible, so 6 min ≈ "in the app right now");
@@ -1976,6 +2136,14 @@ export default {
 
     if (url.pathname === '/countries' && request.method === 'GET') {
       return handleCountries(request, env);
+    }
+
+    if (url.pathname === '/retention' && request.method === 'GET') {
+      return handleRetention(request, env);
+    }
+
+    if (url.pathname === '/stickiness' && request.method === 'GET') {
+      return handleStickiness(request, env);
     }
 
     if (url.pathname === '/online' && request.method === 'GET') {
