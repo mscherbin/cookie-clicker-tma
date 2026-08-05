@@ -109,6 +109,7 @@
       'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Ранг: по числу перерождений, затем по скорости производства',
       'lb.lifetime': '🍪 {n} за всё время', 'lb.perSec': 'печ/сек', 'lb.pioneer': '🚩 Пионер',
       'lb.you': 'Ты', 'lb.yourPlace': 'Твоё место', 'lb.selfOf': 'из {total}',
+      'lb.global': '🌍 Все', 'lb.myCountry': 'Моя страна',
       'lb.empty': 'Пока никого нет — станьте первым!', 'lb.loading': 'Загрузка…',
       'lb.comingSoon': 'Лидерборд скоро появится', 'lb.loadFail': 'Не удалось загрузить лидерборд. Попробуйте позже.',
       'lb.refActive': '🤝 активных друзей', 'lb.refWord': '{word}',
@@ -245,6 +246,7 @@
       'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Rank: by ascensions, then by production speed',
       'lb.lifetime': '🍪 {n} all-time', 'lb.perSec': '/sec', 'lb.pioneer': '🚩 Pioneer',
       'lb.you': 'You', 'lb.yourPlace': 'Your place', 'lb.selfOf': 'of {total}',
+      'lb.global': '🌍 Global', 'lb.myCountry': 'My country',
       'lb.empty': 'No one here yet — be the first!', 'lb.loading': 'Loading…',
       'lb.comingSoon': 'Leaderboard coming soon', 'lb.loadFail': 'Couldn’t load the leaderboard. Try again later.',
       'lb.refActive': '🤝 active friends', 'lb.refWord': '{word}',
@@ -1223,15 +1225,64 @@
     box.hidden = false;
   }
 
+  let lbMode = 'global';   // 'global' | 'country' — which slice the Top tab shows
+  let lbData = null;       // last /leaderboard response (both slices), so the toggle re-renders without re-fetching
+
+  // ISO-2 → flag emoji (regional indicator letters). '' for unknown/invalid.
+  function countryFlag(cc) {
+    if (typeof cc !== 'string' || !/^[A-Za-z]{2}$/.test(cc)) return '';
+    return String.fromCodePoint(...cc.toUpperCase().split('').map(c => 0x1f1e6 + c.charCodeAt(0) - 65));
+  }
+
+  // Render the currently-selected leaderboard slice from lbData (no network).
+  function renderLeaderboardView() {
+    if (!lbData) return;
+    const hasCountry = !!(lbData.country && Array.isArray(lbData.countryEntries));
+    // Toggle is only meaningful when the server knows our geo.
+    if (el.leaderboardToggle) el.leaderboardToggle.hidden = !hasCountry;
+    if (!hasCountry) lbMode = 'global';
+    if (el.lbToggleGlobal) el.lbToggleGlobal.classList.toggle('active', lbMode === 'global');
+    if (el.lbToggleCountry) {
+      el.lbToggleCountry.classList.toggle('active', lbMode === 'country');
+      const flag = countryFlag(lbData.country);
+      el.lbToggleCountry.textContent = (flag ? flag + ' ' : '') + t('lb.myCountry');
+    }
+
+    const useCountry = lbMode === 'country' && hasCountry;
+    const entries = useCountry ? lbData.countryEntries : lbData.entries;
+    const selfRow = useCountry ? lbData.countrySelf : lbData.self;
+    const explainer = `<div class="lb-explainer">${t('lb.explainer', { crit: leaderboardCriterionText() })}</div>`;
+    if (!entries || entries.length === 0) {
+      el.leaderboardList.innerHTML = explainer + `<div class="empty-hint">${t('lb.empty')}</div>`;
+      renderLeaderboardSelf(null);
+      return;
+    }
+    const myId = ownTelegramUserId();
+    const medals = ['🥇', '🥈', '🥉'];
+    const rows = entries.map((entry, i) =>
+      leaderboardRowHtml(entry, medals[i] || (i + 1), { me: !!(myId && entry.userId === myId) })
+    ).join('');
+    el.leaderboardList.innerHTML = explainer + rows;
+    renderLeaderboardSelf(selfRow);
+  }
+
+  function setLbMode(mode) {
+    if (mode !== 'global' && mode !== 'country') return;
+    lbMode = mode;
+    renderLeaderboardView();
+  }
+
   function loadLeaderboard() {
     el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.loading')}</div>`;
     renderLeaderboardSelf(null);
+    if (el.leaderboardToggle) el.leaderboardToggle.hidden = true;
     if (!LEADERBOARD_URL) {
       el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.comingSoon')}</div>`;
       return;
     }
-    // POST with initData so the server can identify us and return our rank if we're
-    // below the top-50 (no extra request). Works without initData too (self=null).
+    // POST with initData so the server can identify us: it returns our rank if we're
+    // below the top-50, and a country-filtered slice for the "My country" toggle —
+    // all in this one call. Works without initData too (no self / no country slice).
     fetch(LEADERBOARD_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1239,22 +1290,19 @@
     })
       .then(r => r.json())
       .then(data => {
-        const explainer = `<div class="lb-explainer">${t('lb.explainer', { crit: leaderboardCriterionText() })}</div>`;
         if (!data.ok || !data.entries || data.entries.length === 0) {
+          lbData = null;
+          const explainer = `<div class="lb-explainer">${t('lb.explainer', { crit: leaderboardCriterionText() })}</div>`;
           el.leaderboardList.innerHTML = explainer + `<div class="empty-hint">${t('lb.empty')}</div>`;
           renderLeaderboardSelf(null);
           return;
         }
         if (Number.isFinite(data.pioneerLimit)) leaderboardPioneerLimit = data.pioneerLimit;
-        const myId = ownTelegramUserId();
-        const medals = ['🥇', '🥈', '🥉'];
-        const rows = data.entries.map((entry, i) =>
-          leaderboardRowHtml(entry, medals[i] || (i + 1), { me: !!(myId && entry.userId === myId) })
-        ).join('');
-        el.leaderboardList.innerHTML = explainer + rows;
-        renderLeaderboardSelf(data.self);
+        lbData = data;
+        renderLeaderboardView();
       })
       .catch(() => {
+        lbData = null;
         el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.loadFail')}</div>`;
         renderLeaderboardSelf(null);
       });
@@ -2212,6 +2260,9 @@
     refEventBannerText: document.getElementById('refEventBannerText'),
     leaderboardList: document.getElementById('leaderboardList'),
     leaderboardSelf: document.getElementById('leaderboardSelf'),
+    leaderboardToggle: document.getElementById('leaderboardToggle'),
+    lbToggleGlobal: document.getElementById('lbToggleGlobal'),
+    lbToggleCountry: document.getElementById('lbToggleCountry'),
     referralLeaderboardList: document.getElementById('referralLeaderboardList'),
     fsFriends: document.getElementById('fsFriends'),
     fsBoost: document.getElementById('fsBoost'),
@@ -3335,6 +3386,8 @@
 
   el.refToggleWeekly.addEventListener('click', () => setRefPeriod('weekly'));
   el.refToggleAll.addEventListener('click', () => setRefPeriod('alltime'));
+  if (el.lbToggleGlobal) el.lbToggleGlobal.addEventListener('click', () => setLbMode('global'));
+  if (el.lbToggleCountry) el.lbToggleCountry.addEventListener('click', () => setLbMode('country'));
 
   // ---------- Passive income loop ----------
   let lastTick = Date.now();

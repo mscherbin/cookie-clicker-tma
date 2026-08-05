@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=94';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=95';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -1684,6 +1684,7 @@ async function handleCheckin(request, env) {
   let adsRewardsUsed = 0; // rewarded-ad boosts already used today (for the client's daily counter)
   let adClickBypassViews = 0; // ad views accumulated toward the free click-bypass unlock
   let channelBonusClaimed = false; // one-time channel-subscription bonus already taken
+  let userCountry = null; // ISO-2 country (first-touch, from D1) — mirrored into KV for the country leaderboard filter
   if (env.DB) {
     try {
       await logEvent(env, user.id, 'app_open');
@@ -1741,7 +1742,7 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv, channel_bonus_claimed AS chan FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv, channel_bonus_claimed AS chan, country AS country FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
@@ -1752,6 +1753,7 @@ async function handleCheckin(request, env) {
       if (boostRow && boostRow.ad === Math.floor(now / 86400000)) adsRewardsUsed = boostRow.ac || 0;
       if (boostRow && Number.isFinite(boostRow.abv)) adClickBypassViews = boostRow.abv;
       if (boostRow && boostRow.chan) channelBonusClaimed = true;
+      if (boostRow && boostRow.country) userCountry = boostRow.country;
     } catch (e) { /* analytics/rewards must never break checkin */ }
   }
 
@@ -1771,6 +1773,7 @@ async function handleCheckin(request, env) {
     isPioneer: isPrestigePioneer,       // "prestige pioneer" title flag
     lifetimeCookies: Number(body.lifetimeCookies) || 0, // never-resetting total across runs (client-sent, like cps)
     crumbs: Number(body.crumbs) || 0,   // permanent bonus % (client-sent, like cps); for the rank-badge tooltip
+    country: userCountry,               // ISO-2 geo (first-touch) for the "my country" leaderboard filter
     // Player language for localized pushes / bot replies. Prefer the client's
     // explicit choice (may be a manual override), else Telegram's language_code.
     lang: (body.lang === 'ru' || body.lang === 'en') ? body.lang : (/^ru/i.test(user.language_code || '') ? 'ru' : 'en'),
@@ -1827,6 +1830,7 @@ async function computeLeaderboard(env) {
         isPioneer: !!data.isPioneer,
         lifetimeCookies: data.lifetimeCookies || 0, // never-resetting total, shown as a secondary figure
         crumbs: data.crumbs || 0, // this player's permanent bonus % (rank-badge tooltip)
+        country: data.country || null, // ISO-2 geo, for the "my country" leaderboard filter
       });
     }
     if (list.list_complete || !list.cursor) break;
@@ -1850,14 +1854,23 @@ async function handleLeaderboard(request, env) {
   const { entries, pioneerLimit } = await computeLeaderboard(env);
   const top = entries.slice(0, 50);
 
-  // "Your place" for players below the top-50 cut: find the requester's index in
-  // the FULL sorted array we already built (no extra data / no extra request) and
-  // return their rank + figures so the client can pin a "You: #N" row. Identity
-  // comes from initData (POST) — not a ?me=<id> — so a crafted id can't scrape
-  // another player's cps/rank. Only set when they're a real, non-top-50 player;
-  // in-top-50 players are already highlighted (.me) in the list. Best-effort:
-  // never let this break the board.
-  let self = null;
+  const selfFrom = (e, rank, total) => ({
+    rank, total,
+    name: e.name, cps: e.cps, totalBaked: e.totalBaked, lifetimeCookies: e.lifetimeCookies,
+    prestigeCount: e.prestigeCount, maxActiveFriendsEver: e.maxActiveFriendsEver,
+    isPioneer: e.isPioneer, crumbs: e.crumbs, country: e.country || null,
+  });
+
+  // Identity (via initData POST) drives two things, both from the SAME already-built
+  // sorted array — no extra data source, no extra request:
+  //   • self          — the requester's GLOBAL rank when they're below the top-50
+  //                      cut (in-top-50 players are already highlighted in the list).
+  //   • country view  — the leaderboard filtered to the requester's own country
+  //                      (the "My country" toggle) + their rank within it. The
+  //                      filter keeps the global sort order, so it's still ranked.
+  // Identity comes from initData, not ?me=<id>, so a crafted id can't scrape
+  // another player's data. All best-effort: never break the board.
+  let self = null, country = null, countryEntries = null, countrySelf = null;
   try {
     let initData = '';
     if (request && request.method === 'POST') {
@@ -1866,21 +1879,23 @@ async function handleLeaderboard(request, env) {
     if (initData) {
       const res = await validateInitData(initData, env.BOT_TOKEN);
       if (res && res.user) {
-        const idx = entries.findIndex(e => e.userId === res.user.id);
-        if (idx >= 50) { // real player, below the cut
-          const e = entries[idx];
-          self = {
-            rank: idx + 1, total: entries.length,
-            name: e.name, cps: e.cps, totalBaked: e.totalBaked, lifetimeCookies: e.lifetimeCookies,
-            prestigeCount: e.prestigeCount, maxActiveFriendsEver: e.maxActiveFriendsEver,
-            isPioneer: e.isPioneer, crumbs: e.crumbs,
-          };
+        const meId = res.user.id;
+        const idx = entries.findIndex(e => e.userId === meId);
+        if (idx >= 0) {
+          if (idx >= 50) self = selfFrom(entries[idx], idx + 1, entries.length);
+          country = entries[idx].country || null;
+          if (country) {
+            const filtered = entries.filter(e => e.country === country); // still globally sorted
+            countryEntries = filtered.slice(0, 50);
+            const cidx = filtered.findIndex(e => e.userId === meId);
+            if (cidx >= 50) countrySelf = selfFrom(filtered[cidx], cidx + 1, filtered.length);
+          }
         }
       }
     }
-  } catch (e) { /* self is best-effort */ }
+  } catch (e) { /* self / country views are best-effort */ }
 
-  return jsonResponse({ ok: true, entries: top, pioneerLimit, self });
+  return jsonResponse({ ok: true, entries: top, pioneerLimit, self, country, countryEntries, countrySelf });
 }
 
 // Referral leaderboard: top referrers by all-time peak army size, plus a
