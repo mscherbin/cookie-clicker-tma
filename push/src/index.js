@@ -183,6 +183,23 @@ function sanitizeSource(raw) {
   return s;
 }
 
+// Coarse acquisition channels whose links carry a STATIC ?start=<channel> token
+// (unlike Keitaro, which injects a per-click subid). Optionally a '-<subtag>' may
+// follow for sub-segments — e.g. `adsgram-b1`, `adsgram-b2` for different banners
+// (channel = 'adsgram', subtag kept in kt_subid). Extend this list as catalogs
+// come online (tgapp, miniappsme, minitelegram, …) — no logic change needed.
+const KNOWN_CHANNELS = ['adsgram'];
+
+// Map a sanitized start_param to a coarse channel, or null if it isn't one (→
+// treated as a Keitaro click id). Matches the channel exactly or as a
+// 'channel-<subtag>' prefix.
+function channelFromStartParam(clean) {
+  for (const ch of KNOWN_CHANNELS) {
+    if (clean === ch || clean.startsWith(ch + '-')) return ch;
+  }
+  return null;
+}
+
 // Read a raw string value from the key/value `config` table (e.g. the Keitaro
 // postback URL). No cache — read rarely.
 async function getConfigStr(env, key) {
@@ -203,14 +220,20 @@ async function captureAttribution(env, userId, startParam) {
   if (!env.DB) return;
   const clean = sanitizeSource(startParam);
   if (!clean) return;
-  // Reverse the /go redirect's dot→dash encoding: Keitaro subids contain dots
-  // (e.g. 37o23c7.1f.381o), which Telegram strips from start params, so /go sends
-  // them dashed and we restore the original dotted subid here. Keitaro subids have
-  // no native dashes, so this is lossless for them (see /go).
-  const subid = clean.replace(/-/g, '.');
+  // Coarse channel: a known static channel token (adsgram, catalogs…) becomes the
+  // source; anything else is a Keitaro click id → source 'keitaro' (unchanged).
+  const channel = channelFromStartParam(clean);
+  const source = channel || 'keitaro';
+  // kt_subid: for Keitaro, the dotted per-click subid for the CAPI postback —
+  // reverse the /go redirect's dot→dash encoding (Telegram strips dots; Keitaro
+  // subids have no native dashes, so it's lossless). Static channels have no
+  // postback, so we just store the raw label (incl. any '-<subtag>') to trip the
+  // first-touch gate; maybeFireKeitaroFirstClick only ever posts back for
+  // source='keitaro', so a channel label never reaches Keitaro's CAPI.
+  const subid = channel ? clean : clean.replace(/-/g, '.');
   try {
-    await env.DB.prepare("UPDATE users SET kt_subid = ?, source = COALESCE(source, 'keitaro') WHERE user_id = ? AND kt_subid IS NULL")
-      .bind(subid, userId).run();
+    await env.DB.prepare("UPDATE users SET kt_subid = ?, source = COALESCE(source, ?) WHERE user_id = ? AND kt_subid IS NULL")
+      .bind(subid, source, userId).run();
   } catch (e) { /* column may not be migrated yet — degrade */ }
 }
 
@@ -298,16 +321,18 @@ async function handleKtTest(request, env) {
 
 // Fire the FIRST_CLICK conversion postback exactly once per user. The conditional
 // UPDATE on kt_sent_first_click is the idempotency guard (only the first caller
-// flips 0→1 and sends). No kt_subid (organic) → nothing sent.
+// flips 0→1 and sends). No kt_subid (organic) → nothing sent. Gated on
+// source='keitaro' so static channels (adsgram, catalogs) — which have no reverse
+// postback — never send their channel label to Keitaro's CAPI.
 async function maybeFireKeitaroFirstClick(env, userId) {
   if (!env.DB) return;
   let row;
   try {
-    row = await env.DB.prepare('SELECT kt_subid AS s, kt_sent_first_click AS sent FROM users WHERE user_id = ?').bind(userId).first();
+    row = await env.DB.prepare('SELECT kt_subid AS s, kt_sent_first_click AS sent, source AS src FROM users WHERE user_id = ?').bind(userId).first();
   } catch (e) { return; } // columns not migrated yet
-  if (!row || !row.s || row.sent) return;
+  if (!row || !row.s || row.sent || row.src !== 'keitaro') return;
   try {
-    const upd = await env.DB.prepare('UPDATE users SET kt_sent_first_click = 1 WHERE user_id = ? AND kt_subid IS NOT NULL AND kt_sent_first_click = 0')
+    const upd = await env.DB.prepare("UPDATE users SET kt_sent_first_click = 1 WHERE user_id = ? AND kt_subid IS NOT NULL AND kt_sent_first_click = 0 AND source = 'keitaro'")
       .bind(userId).run();
     if (!upd.meta || !upd.meta.changes) return; // another request already claimed it
   } catch (e) { return; }
