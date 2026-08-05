@@ -133,6 +133,20 @@ CREATE TABLE IF NOT EXISTS refunds (
   ts INTEGER NOT NULL
 );
 
+-- One-shot activation nudges (runPushCycle). A row means "this user already got
+-- the nudge for this segment", so the push cron sends each at most once ever:
+--   segment 1 = opened but never clicked; segment 2 = clicked but never upgraded.
+-- Durable dedup that survives checkin (which rebuilds KV metadata and resets
+-- pushStage), unlike a KV metadata flag would. PK(user_id, segment) allows one of
+-- each segment per user (a player can pass through both milestones over time).
+-- CREATE TABLE IF NOT EXISTS is idempotent — no ALTER needed on an existing DB.
+CREATE TABLE IF NOT EXISTS push_nudges (
+  user_id INTEGER NOT NULL,
+  segment INTEGER NOT NULL,
+  ts INTEGER NOT NULL,
+  PRIMARY KEY (user_id, segment)
+);
+
 -- NOTE for an ALREADY-DEPLOYED database: CREATE TABLE IF NOT EXISTS above will
 -- NOT add new columns to a users table that already exists. Run these ONCE
 -- against prod (NOT idempotent — a "duplicate column" error just means it's

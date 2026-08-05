@@ -29,6 +29,10 @@ const OFFLINE_RATE = 0.1;
 const STAGE_EARLY_MS = OFFLINE_FULL_RATE_SECONDS * 1000 - 15 * 60 * 1000;
 const STAGE_PILING_MS = 5 * 3600 * 1000; // ~5h: "cookies piling up"
 const STAGE_REWARD_MS = 24 * 3600 * 1000; // 24h: "daily reward + cookies waiting"
+// Activation nudge for zero-production newcomers (never clicked, or clicked but
+// bought nothing): a single message after ~3h idle. Separate from the stages
+// above, which all assume the player has offline income to come back to.
+const NUDGE_AFTER_MS = 3 * 3600 * 1000; // ~3h
 
 function computeOfflineGain(elapsedSeconds, cps) {
   if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
@@ -1569,6 +1573,8 @@ const PUSH_STRINGS = {
     'push.piling': '🍪 Твои печеньки скучают без присмотра!{extra} Заходи, пока курсоры не разбежались.',
     'push.pilingExtra': ' Уже накопилось ~{n} 🍪.',
     'push.reward': '🎁 Ежедневная награда уже ждёт тебя в игре — а печеньки всё это время копились. Не заставляй бабушку печь зря!',
+    'push.nudgeNoClick': '🍪 Не успел попробовать? Тапни печеньку — и понеслось!',
+    'push.nudgeNoUpgrade': '🍪 Ты начал печь печеньки — вернись и купи первое улучшение, теперь это проще!',
     'push.openGame': '🍪 Открыть игру',
     'evt.happyHour': '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
     'evt.weekend': '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
@@ -1588,6 +1594,8 @@ const PUSH_STRINGS = {
     'push.piling': '🍪 Your cookies miss you!{extra} Come back before the cursors wander off.',
     'push.pilingExtra': ' ~{n} 🍪 already piled up.',
     'push.reward': '🎁 Your daily reward is waiting in the game — and cookies have been piling up. Don’t let grandma bake for nothing!',
+    'push.nudgeNoClick': '🍪 Didn\'t get a chance to try it? Tap the cookie and go!',
+    'push.nudgeNoUpgrade': '🍪 You started baking — come back and grab your first upgrade, it\'s easier now!',
     'push.openGame': '🍪 Open game',
     'evt.happyHour': '🎉 Cookie Hour has started! All cookies ×2 for the next hour — jump in!',
     'evt.weekend': '🎊 Cookie Weekend has started! ×1.5 production and golden cookies twice as often — all weekend.',
@@ -1672,14 +1680,69 @@ async function sendPush(env, chatId, text, lang) {
 }
 
 async function runPushCycle(env) {
+  // Activation-segment membership and the one-shot dedup come from D1, read in
+  // aggregate up front (three small queries) — the KV loop below still touches
+  // only metadata (cps/lastActiveTs/pushStage), no per-user D1/KV reads. Which
+  // users have ever clicked / upgraded, and which already got each nudge.
+  const clicked = new Set();
+  const upgraded = new Set();
+  const nudged = new Set(); // "uid:segment"
+  if (env.DB) {
+    try {
+      const [fc, fu, nu] = await Promise.all([
+        env.DB.prepare("SELECT DISTINCT user_id AS id FROM events WHERE event = 'first_click'").all(),
+        env.DB.prepare("SELECT DISTINCT user_id AS id FROM events WHERE event = 'first_upgrade'").all(),
+        env.DB.prepare('SELECT user_id AS id, segment AS seg FROM push_nudges').all(),
+      ]);
+      for (const r of (fc.results || [])) clicked.add(r.id);
+      for (const r of (fu.results || [])) upgraded.add(r.id);
+      for (const r of (nu.results || [])) nudged.add(`${r.id}:${r.seg}`);
+    } catch (e) { console.log('push segment query failed — activation nudges skipped this cycle', e); }
+  }
+  const markNudged = async (uid, seg) => {
+    if (!env.DB) return;
+    try {
+      await env.DB.prepare('INSERT OR IGNORE INTO push_nudges (user_id, segment, ts) VALUES (?, ?, ?)')
+        .bind(uid, seg, Date.now()).run();
+    } catch (e) { /* table missing / race — best effort, the in-memory Set still dedups this cycle */ }
+  };
+
   let cursor;
   for (;;) {
     const list = await env.USERS.list({ prefix: 'user:', cursor });
     for (const k of list.keys) {
       const data = k.metadata;
-      if (!data) continue; // older record written before metadata was added; heals on next checkin
+      if (!data || !data.chatId) continue; // older record written before metadata was added; heals on next checkin
+      const uid = data.chatId;
       const elapsed = Date.now() - data.lastActiveTs;
+      const cps = data.cps || 0;
 
+      // --- Activation segments (zero production) --------------------------------
+      // These players have nothing "piling up" offline, so the STAGE_* texts below
+      // (all built around offline income) are wrong for them. Each gets ONE nudge
+      // then nothing — the lowest-engagement, highest spam-risk cohort. We `continue`
+      // so the offline-income stages are REPLACED, not sent on top.
+      if (!clicked.has(uid)) {
+        // Segment 1: opened the app but never tapped the cookie.
+        if (env.DB && elapsed >= NUDGE_AFTER_MS && !nudged.has(`${uid}:1`)) {
+          await sendPush(env, data.chatId, pt(data.lang, 'push.nudgeNoClick'), data.lang);
+          nudged.add(`${uid}:1`);
+          await markNudged(uid, 1);
+        }
+        continue; // never send offline-income stages to a zero-production player
+      }
+      if (!upgraded.has(uid) && cps <= 0) {
+        // Segment 2: tapped but bought nothing → still no production, nothing piling.
+        if (env.DB && elapsed >= NUDGE_AFTER_MS && !nudged.has(`${uid}:2`)) {
+          await sendPush(env, data.chatId, pt(data.lang, 'push.nudgeNoUpgrade'), data.lang);
+          nudged.add(`${uid}:2`);
+          await markNudged(uid, 2);
+        }
+        continue; // replace the piling stages, don't stack on top
+      }
+
+      // --- Engaged players (have production, or already bought an upgrade) ------
+      // Normal 3-stage offline-income cycle.
       if (data.pushStage < 1 && elapsed >= STAGE_EARLY_MS) {
         await sendPush(env, data.chatId, stageEarlyText(data.lang), data.lang);
         data.pushStage = 1;
