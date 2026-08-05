@@ -69,6 +69,20 @@ const WEEK_CLOSE_GRACE_MS = 6 * 3600 * 1000;    // only award within this long a
 const WEEK_LAST_HOURS_DEFAULT = 3;              // last-hours push fires inside this many hours before the reset (config: week_last_hours)
 const WEEK_CATCH_MAX_RANK = 8;                  // last-hours push targets weekly ranks 4..this (a realistic shot at the top-3)
 
+// Anti-cheat guardrail (light server layer, 0C). cps / cookies / lifetimeCookies
+// are still client-reported; the leaderboard + weekly rewards read them, so we
+// clamp the BOARD-FACING copies to plausible bounds before mirroring them into
+// KV metadata. This never rejects the checkin and never touches the player's own
+// save (CloudStorage) — a false positive at worst mildly under-reports a board
+// figure, never breaks gameplay. Deliberately generous: catches injected garbage
+// (Infinity / 1e300 / negatives), lifetime rollbacks, and lifetime spikes far
+// beyond what the reported cps could produce; sophisticated self-consistent
+// tampering under the ceiling is left to the full server-economy sprint.
+const ANTICHEAT_MAX_CPS = 1e40;                 // no legit run approaches this — pure garbage ceiling
+const ANTICHEAT_MAX_LIFETIME = 1e45;            // lifetime accumulates, so a higher ceiling than cps
+const ANTICHEAT_PROD_FACTOR = 10;               // allow up to 10× (reported cps × elapsed) of new lifetime per checkin
+const ANTICHEAT_FLAT_ALLOWANCE = 1e4;           // plus a flat floor, so early-game manual clicking never trips it
+
 function computeOfflineGain(elapsedSeconds, cps) {
   if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
   return OFFLINE_FULL_RATE_SECONDS * cps + (elapsedSeconds - OFFLINE_FULL_RATE_SECONDS) * cps * OFFLINE_RATE;
@@ -1909,8 +1923,17 @@ async function handleCheckin(request, env) {
   //     the Monday boundary with no cron (mirrors the referral weekly board).
   //     Tiebreak uses lifetimeCookies (never resets on ascend) — NOT totalBaked
   //     (which resets to 0 each ascension and would invert the metric).
-  const lifetimeNow = Number(body.lifetimeCookies) || 0;
-  let carryPushDay, carryPushCount;
+  // Anti-cheat guardrail (0C): clamp the board-facing figures. Ceiling + non-
+  // negative first (works even with no prior record); the monotonic + plausible-
+  // delta checks run inside the pm block below, where we have the previous
+  // lifetime and checkin time. rawCps feeds nothing but the plausibility math.
+  const rawCps = Number(body.cps) || 0;
+  const rawLifetime = Number(body.lifetimeCookies) || 0;
+  const rawTotalBaked = Number(body.totalBaked) || 0;
+  let boardCps = Math.min(Math.max(rawCps, 0), ANTICHEAT_MAX_CPS);
+  let lifetimeNow = Math.min(Math.max(rawLifetime, 0), ANTICHEAT_MAX_LIFETIME);
+  let cheatHit = (boardCps !== rawCps) || (lifetimeNow !== rawLifetime);
+  let carryPushDay, carryPushCount, carryCheatHits;
   // Cron-owned rank/engagement fields must survive the checkin's full rebuild of
   // `data` — otherwise every checkin wipes them and, for active players, the
   // momentum anchor keeps resetting and the lost-place baseline is lost. Carried
@@ -1934,6 +1957,20 @@ async function handleCheckin(request, env) {
       carryLbRankHourTs = pm.lbRankHourTs;
       carryLbF2Day = pm.lbF2Day;
       carryWeekLastPushId = pm.lbWeekLastPushId;
+      if (Number.isFinite(pm.cheatHits)) carryCheatHits = pm.cheatHits;
+      // Anti-cheat: lifetime never decreases, and can't jump more per checkin than
+      // the reported cps could have produced (× a generous factor) plus known
+      // grants and a flat floor. Clamp the board copy; the player's own save is
+      // untouched. Runs before weeklyBaked is derived below, so a spike can't
+      // inflate this week's score / rewards.
+      if (Number.isFinite(pm.lifetimeCookies)) {
+        const prevLife = Math.max(0, pm.lifetimeCookies);
+        if (lifetimeNow < prevLife) { lifetimeNow = prevLife; cheatHit = true; }
+        const elapsedS = Math.max(0, (now - (Number.isFinite(pm.lastActiveTs) ? pm.lastActiveTs : now)) / 1000);
+        const plausible = boardCps * elapsedS * ANTICHEAT_PROD_FACTOR + (pendingReward || 0) + (paidOfflineCredit || 0) + ANTICHEAT_FLAT_ALLOWANCE;
+        const maxLife = prevLife + Math.max(0, plausible);
+        if (lifetimeNow > maxLife) { lifetimeNow = maxLife; cheatHit = true; }
+      }
       if (pm.lbWeekId === curWeek) {
         // Same week: keep accumulating, and carry the stored prev-week snapshot.
         if (Number.isFinite(pm.lbWeekBaseline)) {
@@ -1977,9 +2014,10 @@ async function handleCheckin(request, env) {
     lbRankHourTs: carryLbRankHourTs,   // "
     lbF2Day: carryLbF2Day,             // cron-owned lost-place once-per-day dedup — carried
     lbWeekLastPushId: carryWeekLastPushId, // cron-owned last-hours push once-per-week dedup — carried
+    cheatHits: (carryCheatHits || 0) + (cheatHit ? 1 : 0), // anti-cheat: times a board figure was clamped (observability, sticky)
     lastDailyClaim: Number(body.lastDailyClaim) || 0,
-    cps: Number(body.cps) || 0,
-    totalBaked: Number(body.totalBaked) || 0,
+    cps: boardCps,                                    // anti-cheat clamped (board copy; player's save untouched)
+    totalBaked: Math.min(Math.max(rawTotalBaked, 0), lifetimeNow), // ≤ lifetime by construction
     displayName,
     activeReferrals,     // current active friends (for the /stats bot command)
     maxActiveFriendsEver,
@@ -1987,7 +2025,7 @@ async function handleCheckin(request, env) {
     weeklyWeekId: curWeek, // which week weeklyReferrals belongs to (stale => 0 on the board)
     prestigeCount: serverPrestigeCount, // server-authoritative; leaderboard's primary rank key
     isPioneer: isPrestigePioneer,       // "prestige pioneer" title flag
-    lifetimeCookies: Number(body.lifetimeCookies) || 0, // never-resetting total across runs (client-sent, like cps)
+    lifetimeCookies: lifetimeNow, // never-resetting total across runs (anti-cheat clamped board copy)
     crumbs: Number(body.crumbs) || 0,   // permanent bonus % (client-sent, like cps); for the rank-badge tooltip
     country: userCountry,               // ISO-2 geo (first-touch) for the "my country" leaderboard filter
     // Player language for localized pushes / bot replies. Prefer the client's
