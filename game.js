@@ -688,7 +688,18 @@
   const CREATE_UPGRADE_SKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-upgrade-skip-invoice';
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
   const CLAIM_CHANNEL_BONUS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/claim-channel-bonus';
-  const CHANNEL_URL = 'https://t.me/bestcookieclicker'; // our channel (bonus for subscribing)
+  // Our channels, one per language. The subscription bonus is granted server-side
+  // for membership of EITHER channel (see push/handleClaimChannelBonus), but we
+  // send each player to THEIR language's channel so the RU loop stays on the RU
+  // channel. Routed by state.lang (which respects a manual Settings override).
+  const CHANNEL_URL_BY_LANG = {
+    ru: 'https://t.me/bestcookiclickerru',  // ⚠ handle has a typo, kept intentionally
+    en: 'https://t.me/bestcookieclicker',
+  };
+  function channelUrl() {
+    const lang = (typeof state !== 'undefined' && state && state.lang) || detectLang();
+    return CHANNEL_URL_BY_LANG[lang] || CHANNEL_URL_BY_LANG.en;
+  }
 
   // Offline claim: below this, offline income auto-applies silently (as before);
   // at/above it we show the claim card with the free x1 / paid x2 choice.
@@ -1100,8 +1111,9 @@
   // Open our channel (subscribing happens outside the mini-app, so we can't
   // detect it automatically — the player taps "Check & claim" on return).
   function openChannel() {
-    if (tg && tg.openTelegramLink) tg.openTelegramLink(CHANNEL_URL);
-    else window.open(CHANNEL_URL, '_blank');
+    const url = channelUrl();
+    if (tg && tg.openTelegramLink) tg.openTelegramLink(url);
+    else window.open(url, '_blank');
   }
 
   // Verify subscription + claim the one-time bonus. The server checks membership
