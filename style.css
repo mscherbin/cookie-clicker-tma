@@ -890,6 +890,26 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   background: #33280f;
 }
 
+/* Pinned "your place" row — sticks to the bottom of the scrolling leaderboard
+   panel so a player below the top-50 always sees their own rank. Opaque bg so
+   the scrolling list doesn't bleed through. */
+.leaderboard-self {
+  position: sticky;
+  bottom: 0;
+  margin: 10px -12px 0;
+  padding: 8px 12px calc(env(safe-area-inset-bottom, 0px) + 8px);
+  background: var(--bg);
+  box-shadow: 0 -10px 14px -8px rgba(0, 0, 0, 0.55);
+}
+.lb-self-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--hint);
+  margin: 0 2px 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .leaderboard-rank {
   font-size: 15px;
   font-weight: 800;

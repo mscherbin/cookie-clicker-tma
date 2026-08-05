@@ -108,6 +108,7 @@
       // Leaderboard
       'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Ранг: по числу перерождений, затем по скорости производства',
       'lb.lifetime': '🍪 {n} за всё время', 'lb.perSec': 'печ/сек', 'lb.pioneer': '🚩 Пионер',
+      'lb.you': 'Ты', 'lb.yourPlace': 'Твоё место', 'lb.selfOf': 'из {total}',
       'lb.empty': 'Пока никого нет — станьте первым!', 'lb.loading': 'Загрузка…',
       'lb.comingSoon': 'Лидерборд скоро появится', 'lb.loadFail': 'Не удалось загрузить лидерборд. Попробуйте позже.',
       'lb.refActive': '🤝 активных друзей', 'lb.refWord': '{word}',
@@ -243,6 +244,7 @@
       'fr.offlineExtra': '{cap} · +{extra} from friends',
       'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Rank: by ascensions, then by production speed',
       'lb.lifetime': '🍪 {n} all-time', 'lb.perSec': '/sec', 'lb.pioneer': '🚩 Pioneer',
+      'lb.you': 'You', 'lb.yourPlace': 'Your place', 'lb.selfOf': 'of {total}',
       'lb.empty': 'No one here yet — be the first!', 'lb.loading': 'Loading…',
       'lb.comingSoon': 'Leaderboard coming soon', 'lb.loadFail': 'Couldn’t load the leaderboard. Try again later.',
       'lb.refActive': '🤝 active friends', 'lb.refWord': '{word}',
@@ -1178,50 +1180,83 @@
     return pluralRu(n, 'вознесение', 'вознесения', 'вознесений');
   }
 
+  // One leaderboard row's HTML — shared by the top-50 list and the pinned "your
+  // place" row so both render identically (badges, titles, cps). `rankLabel` is
+  // a medal / number / "#N"; opts.me adds the highlight, opts.nameOverride swaps
+  // the display name (e.g. "Ты" for the self row), opts.subExtra appends to the
+  // lifetime sub-line (e.g. "of 231").
+  function leaderboardRowHtml(entry, rankLabel, opts = {}) {
+    const rt = titleFor(entry.maxActiveFriendsEver);
+    const refTitleHtml = rt ? `<span class="lb-title">${rt.icon} ${escapeHtml(t(rt.nameKey))}</span>` : '';
+    const pioneerHtml = entry.isPioneer ? `<span class="lb-title lb-pioneer" data-pioneer="1">${t('lb.pioneer')}</span>` : '';
+    const p = entry.prestigeCount || 0;
+    const bonus = entry.crumbs || 0; // this player's real permanent bonus %
+    const prestigeHtml = p > 0 ? `<span class="lb-prestige ${prestigeBadgeClass(p)}" data-prestige="${p}" data-bonus="${bonus}">⭐×${p}</span>` : '';
+    // Prestige-tier milestone title (tiers 5 & 10) from their prestige count.
+    const pTitle = prestigeTitleForTier(p + 1);
+    const prestigeTitleHtml = pTitle ? `<span class="lb-title lb-epoch">${pTitle.icon} ${escapeHtml(t(pTitle.nameKey))}</span>` : '';
+    // Lifetime (never resets) as the secondary figure — a just-ascended player
+    // would otherwise show ~0 baked and look empty.
+    const lifetime = entry.lifetimeCookies || entry.totalBaked || 0;
+    const name = opts.nameOverride != null ? opts.nameOverride : escapeHtml(entry.name);
+    const sub = opts.subExtra ? `${t('lb.lifetime', { n: formatNum(lifetime) })} · ${opts.subExtra}` : t('lb.lifetime', { n: formatNum(lifetime) });
+    return `
+          <div class="leaderboard-row${opts.me ? ' me' : ''}">
+            <div class="leaderboard-rank">${rankLabel}</div>
+            <div class="leaderboard-info">
+              <div class="leaderboard-name">${prestigeHtml}${name}${pioneerHtml}${prestigeTitleHtml}${refTitleHtml}</div>
+              <div class="leaderboard-total">${sub}</div>
+            </div>
+            <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">${t('lb.perSec')}</span></div>
+          </div>`;
+  }
+
+  // Pinned "your place" row for players below the top-50 cut (server sends `self`
+  // in the /leaderboard response — same call, no extra request). Hidden when the
+  // player is in the top-50 (already highlighted in the list) or unknown.
+  function renderLeaderboardSelf(self) {
+    const box = el.leaderboardSelf;
+    if (!box) return;
+    if (!self || !Number.isFinite(self.rank)) { box.hidden = true; box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="lb-self-label">${t('lb.yourPlace')}</div>` +
+      leaderboardRowHtml(self, '#' + self.rank, { me: true, nameOverride: t('lb.you'), subExtra: t('lb.selfOf', { total: self.total }) });
+    box.hidden = false;
+  }
+
   function loadLeaderboard() {
     el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.loading')}</div>`;
+    renderLeaderboardSelf(null);
     if (!LEADERBOARD_URL) {
       el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.comingSoon')}</div>`;
       return;
     }
-    fetch(LEADERBOARD_URL)
+    // POST with initData so the server can identify us and return our rank if we're
+    // below the top-50 (no extra request). Works without initData too (self=null).
+    fetch(LEADERBOARD_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: (tg && tg.initData) || '' }),
+    })
       .then(r => r.json())
       .then(data => {
         const explainer = `<div class="lb-explainer">${t('lb.explainer', { crit: leaderboardCriterionText() })}</div>`;
         if (!data.ok || !data.entries || data.entries.length === 0) {
           el.leaderboardList.innerHTML = explainer + `<div class="empty-hint">${t('lb.empty')}</div>`;
+          renderLeaderboardSelf(null);
           return;
         }
         if (Number.isFinite(data.pioneerLimit)) leaderboardPioneerLimit = data.pioneerLimit;
         const myId = ownTelegramUserId();
         const medals = ['🥇', '🥈', '🥉'];
-        const rows = data.entries.map((entry, i) => {
-          const rt = titleFor(entry.maxActiveFriendsEver);
-          const refTitleHtml = rt ? `<span class="lb-title">${rt.icon} ${escapeHtml(t(rt.nameKey))}</span>` : '';
-          const pioneerHtml = entry.isPioneer ? `<span class="lb-title lb-pioneer" data-pioneer="1">${t('lb.pioneer')}</span>` : '';
-          const p = entry.prestigeCount || 0;
-          const bonus = entry.crumbs || 0; // this player's real permanent bonus %
-          const prestigeHtml = p > 0 ? `<span class="lb-prestige ${prestigeBadgeClass(p)}" data-prestige="${p}" data-bonus="${bonus}">⭐×${p}</span>` : '';
-          // Prestige-tier milestone title (tiers 5 & 10) from their prestige count.
-          const pTitle = prestigeTitleForTier(p + 1);
-          const prestigeTitleHtml = pTitle ? `<span class="lb-title lb-epoch">${pTitle.icon} ${escapeHtml(t(pTitle.nameKey))}</span>` : '';
-          // Lifetime (never resets) as the secondary figure — a just-ascended
-          // player would otherwise show ~0 baked and look empty.
-          const lifetime = entry.lifetimeCookies || entry.totalBaked || 0;
-          return `
-          <div class="leaderboard-row${myId && entry.userId === myId ? ' me' : ''}">
-            <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
-            <div class="leaderboard-info">
-              <div class="leaderboard-name">${prestigeHtml}${escapeHtml(entry.name)}${pioneerHtml}${prestigeTitleHtml}${refTitleHtml}</div>
-              <div class="leaderboard-total">${t('lb.lifetime', { n: formatNum(lifetime) })}</div>
-            </div>
-            <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">${t('lb.perSec')}</span></div>
-          </div>`;
-        }).join('');
+        const rows = data.entries.map((entry, i) =>
+          leaderboardRowHtml(entry, medals[i] || (i + 1), { me: !!(myId && entry.userId === myId) })
+        ).join('');
         el.leaderboardList.innerHTML = explainer + rows;
+        renderLeaderboardSelf(data.self);
       })
       .catch(() => {
         el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.loadFail')}</div>`;
+        renderLeaderboardSelf(null);
       });
   }
 
@@ -2176,6 +2211,7 @@
     refEventBanner: document.getElementById('refEventBanner'),
     refEventBannerText: document.getElementById('refEventBannerText'),
     leaderboardList: document.getElementById('leaderboardList'),
+    leaderboardSelf: document.getElementById('leaderboardSelf'),
     referralLeaderboardList: document.getElementById('referralLeaderboardList'),
     fsFriends: document.getElementById('fsFriends'),
     fsBoost: document.getElementById('fsBoost'),
@@ -3373,6 +3409,7 @@
   if (el.settingsModal) el.settingsModal.addEventListener('click', (e) => { if (e.target === el.settingsModal) el.settingsModal.classList.remove('show'); });
   el.rewardTeaser.addEventListener('click', onRewardTeaserClick);
   if (el.leaderboardList) el.leaderboardList.addEventListener('click', onLeaderboardBadgeTap);
+  if (el.leaderboardSelf) el.leaderboardSelf.addEventListener('click', onLeaderboardBadgeTap);
   if (el.prestigeBanner) el.prestigeBanner.addEventListener('click', onPrestigeBannerClick);
 
   initAdsgram();

@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=92';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=94';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -606,6 +606,98 @@ async function handleEvent(request, env) {
   return jsonResponse({ ok: true });
 }
 
+// Read a single raw string value from the D1 `config` table (null if missing).
+async function getConfigValue(env, key) {
+  if (!env.DB) return null;
+  try {
+    const r = await env.DB.prepare('SELECT value FROM config WHERE key = ?').bind(key).first();
+    return r ? r.value : null;
+  } catch (e) { return null; }
+}
+
+// Max characters we keep from one feedback submission (Telegram messages can be
+// long; we cap so one user can't dump megabytes into D1 / the admin chat).
+const FEEDBACK_MAX_LEN = 1000;
+
+// Persist one feedback submission to D1 and, if configured, forward it live to
+// the admin chat. `text` is already the user's message body (no command prefix).
+// Returns a status string for the caller's localized reply: 'ok' | 'empty' |
+// 'too_fast'. Rate-limited to one submission per user per 30s via a KV flag.
+async function captureFeedback(env, msg, text) {
+  const userId = msg.from.id;
+  // Sanitize: strip control chars (keep \n \t), collapse, cap length.
+  const clean = String(text || '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .trim()
+    .slice(0, FEEDBACK_MAX_LEN);
+  if (!clean) return 'empty';
+
+  // Light anti-spam: one accepted feedback per user per 30s.
+  const rateKey = `fb_rate:${userId}`;
+  try {
+    if (await env.USERS.get(rateKey)) return 'too_fast';
+    await env.USERS.put(rateKey, '1', { expirationTtl: 30 });
+  } catch (e) { /* KV hiccup — don't block the write */ }
+
+  // Actionable context snapshot from the player's KV metadata.
+  let meta = null;
+  try { meta = (await env.USERS.getWithMetadata(`user:${userId}`)).metadata; } catch (e) { /* ignore */ }
+  const lang = await getUserLang(env, userId, msg.from.language_code);
+  const context = {
+    lang,
+    cps: meta && meta.cps ? meta.cps : 0,
+    ascensions: meta && meta.prestigeCount ? meta.prestigeCount : 0,
+    friends: meta && meta.activeReferrals ? meta.activeReferrals : 0,
+    version: GAME_URL.split('?v=')[1] || null,
+  };
+  const username = msg.from.username ? '@' + msg.from.username : null;
+  const now = Date.now();
+
+  let feedbackId = null;
+  if (env.DB) {
+    try {
+      const r = await env.DB.prepare(
+        'INSERT INTO feedback (user_id, username, lang, text, context, status, created_at) VALUES (?, ?, ?, ?, ?, \'new\', ?)'
+      ).bind(userId, username, lang, clean, JSON.stringify(context), now).run();
+      feedbackId = r.meta ? r.meta.last_row_id : null;
+    } catch (e) { /* table may be missing on a not-yet-migrated DB — still forward below */ }
+  }
+
+  // Forward to the admin chat if one is configured.
+  const adminChat = await getConfigValue(env, 'feedback_chat_id');
+  if (adminChat && adminChat.trim()) {
+    const who = username || `id ${userId}`;
+    const head = `📝 New feedback #${feedbackId ?? '?'}\n👤 ${who} · ${lang} · ⭐×${context.ascensions} · cps ${fmtBig(context.cps)} · v${context.version || '?'}`;
+    await tgCall(env, 'sendMessage', {
+      chat_id: adminChat.trim(),
+      text: `${head}\n—\n${clean}`,
+      disable_web_page_preview: true,
+    });
+  }
+  return 'ok';
+}
+
+// GET /admin/feedback?key=<ADMIN_KEY>[&status=new|read|resolved|all][&limit=n]
+// Browse collected feedback, newest first.
+async function handleListFeedback(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) {
+    return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  }
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+  const status = url.searchParams.get('status') || 'all';
+  const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
+  try {
+    const q = status === 'all'
+      ? env.DB.prepare('SELECT id, user_id, username, lang, text, context, status, created_at FROM feedback ORDER BY created_at DESC LIMIT ?').bind(limit)
+      : env.DB.prepare('SELECT id, user_id, username, lang, text, context, status, created_at FROM feedback WHERE status = ? ORDER BY created_at DESC LIMIT ?').bind(status, limit);
+    const res = await q.all();
+    return jsonResponse({ ok: true, count: (res.results || []).length, feedback: res.results || [] });
+  } catch (e) {
+    return jsonResponse({ ok: false, error: 'query_failed', detail: String(e) }, 500);
+  }
+}
+
 // Telegram calls this on every message once a webhook is registered (see
 // push/README.md for the setWebhook command). Only handles /start — that's
 // all we need for bot_start / ref_click attribution.
@@ -660,8 +752,48 @@ async function handleTelegramWebhook(request, env) {
   } else if (msg && msg.text && msg.from) {
     // Other slash commands (menu is set in BotFather; here are the replies). They
     // work right in the chat — no mini-app needed. `/help@botname` is normalized.
-    const cmd = msg.text.trim().split(/\s+/)[0].split('@')[0];
+    const rawText = msg.text.trim();
+    const cmd = rawText.split(/\s+/)[0].split('@')[0];
     const userId = msg.from.id;
+    const isPrivate = !msg.chat || msg.chat.type === 'private';
+
+    // /chatid — echo THIS chat's id. Used once to wire the feedback admin group:
+    // add the bot to a private group, run /chatid there, put the id into
+    // config.feedback_chat_id. Harmless (ids aren't secret) and works in groups.
+    if (cmd === '/chatid') {
+      await sendBotText(env, msg.chat.id, `chat_id: ${msg.chat.id}`);
+      return jsonResponse({ ok: true });
+    }
+
+    // Feedback (private chats only). `/feedback <text>` captures inline; a bare
+    // `/feedback` arms a short-lived flag so the NEXT plain message is captured.
+    if (isPrivate && cmd === '/feedback') {
+      const lang = await getUserLang(env, userId, msg.from.language_code);
+      const sp = rawText.indexOf(' ');
+      const inline = sp === -1 ? '' : rawText.slice(sp + 1).trim();
+      if (inline) {
+        const res = await captureFeedback(env, msg, inline);
+        await sendBotText(env, userId, pt(lang, res === 'too_fast' ? 'cmd.fbTooFast' : res === 'empty' ? 'cmd.fbEmpty' : 'cmd.fbThanks'));
+      } else {
+        try { await env.USERS.put(`fb_pending:${userId}`, '1', { expirationTtl: 600 }); } catch (e) { /* KV hiccup */ }
+        await sendBotText(env, userId, pt(lang, 'cmd.fbPrompt'));
+      }
+      return jsonResponse({ ok: true });
+    }
+
+    // A plain (non-command) message while a feedback flag is armed → capture it.
+    if (isPrivate && !rawText.startsWith('/')) {
+      let pending = null;
+      try { pending = await env.USERS.get(`fb_pending:${userId}`); } catch (e) { /* ignore */ }
+      if (pending) {
+        const lang = await getUserLang(env, userId, msg.from.language_code);
+        const res = await captureFeedback(env, msg, rawText);
+        if (res === 'ok') { try { await env.USERS.delete(`fb_pending:${userId}`); } catch (e) { /* ignore */ } }
+        await sendBotText(env, userId, pt(lang, res === 'too_fast' ? 'cmd.fbTooFast' : res === 'empty' ? 'cmd.fbEmpty' : 'cmd.fbThanks'));
+        return jsonResponse({ ok: true });
+      }
+    }
+
     if (cmd === '/help' || cmd === '/stats' || cmd === '/top' || cmd === '/invite' || cmd === '/channel') {
       const lang = await getUserLang(env, userId, msg.from.language_code);
       if (cmd === '/help') {
@@ -1714,9 +1846,41 @@ async function computeLeaderboard(env) {
   return { entries, pioneerLimit };
 }
 
-async function handleLeaderboard(env) {
+async function handleLeaderboard(request, env) {
   const { entries, pioneerLimit } = await computeLeaderboard(env);
-  return jsonResponse({ ok: true, entries: entries.slice(0, 50), pioneerLimit });
+  const top = entries.slice(0, 50);
+
+  // "Your place" for players below the top-50 cut: find the requester's index in
+  // the FULL sorted array we already built (no extra data / no extra request) and
+  // return their rank + figures so the client can pin a "You: #N" row. Identity
+  // comes from initData (POST) — not a ?me=<id> — so a crafted id can't scrape
+  // another player's cps/rank. Only set when they're a real, non-top-50 player;
+  // in-top-50 players are already highlighted (.me) in the list. Best-effort:
+  // never let this break the board.
+  let self = null;
+  try {
+    let initData = '';
+    if (request && request.method === 'POST') {
+      try { const body = await request.json(); initData = body.initData || ''; } catch (e) { /* no body */ }
+    }
+    if (initData) {
+      const res = await validateInitData(initData, env.BOT_TOKEN);
+      if (res && res.user) {
+        const idx = entries.findIndex(e => e.userId === res.user.id);
+        if (idx >= 50) { // real player, below the cut
+          const e = entries[idx];
+          self = {
+            rank: idx + 1, total: entries.length,
+            name: e.name, cps: e.cps, totalBaked: e.totalBaked, lifetimeCookies: e.lifetimeCookies,
+            prestigeCount: e.prestigeCount, maxActiveFriendsEver: e.maxActiveFriendsEver,
+            isPioneer: e.isPioneer, crumbs: e.crumbs,
+          };
+        }
+      }
+    }
+  } catch (e) { /* self is best-effort */ }
+
+  return jsonResponse({ ok: true, entries: top, pioneerLimit, self });
 }
 
 // Referral leaderboard: top referrers by all-time peak army size, plus a
@@ -1770,7 +1934,7 @@ const PUSH_STRINGS = {
     'evt.weekend': '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
     'evt.refEvent': '🎉 Событие рефералов! Награда за приглашённых друзей ×{mult}.{tail}',
     'evt.refEventTail': ' Успей позвать друзей!',
-    'start.welcome': '🍪 Привет! Это Cookie Clicker — пеки печеньки, прокачивай здания и возносись ради постоянного буста.\n👇 Жми кнопку — и погнали печь.\n📢 Гайды, топ игроков и ×2-ивенты (+ бонус подписчикам) — в канале: {link}',
+    'start.welcome': '🍪 Привет! Это Cookie Clicker — пеки печеньки, покупай здания и апгрейды, возносись ради постоянного буста.\n🎯 Цель — построить самую большую печеньковую империю и ворваться в топ игроков.\n👇 Жми кнопку — и погнали печь!\n📢 Гайды, топ игроков и ×2-ивенты (+ бонус подписчикам) — в канале: {link}',
     'cmd.help': '🍪 Как играть в Cookie Clicker:\n👆 Тапай печеньку — получай печеньки\n🏗 Покупай здания и апгрейды — производство растёт само\n⭐ Когда всё раскуплено — вознесись: сброс прогресса даёт постоянный бонус навсегда\n🤝 Зови друзей — получай бонус к производству за каждого активного\nОткрой игру и начинай печь!',
     'cmd.stats': '📊 Твоя статистика:\n🍪 Всего испечено: {total}\n⚡ Печенек/сек: {cps}\n⭐ Вознесений: {ascensions}\n🤝 Активных друзей: {friends}',
     'cmd.statsEmpty': '📊 Пока нет статистики — открой игру и начни печь печеньки!',
@@ -1778,6 +1942,10 @@ const PUSH_STRINGS = {
     'cmd.topEmpty': '🏆 Топ пока пуст — стань первым! Открой игру и начни печь.',
     'cmd.invite': '🤝 Зови друзей в игру!\nТвоя ссылка: {link}\nТы и друг получите бонус печенек сразу, а с каждым активным другом твоё производство растёт навсегда.',
     'cmd.channel': '📢 Наш канал: {link}\nАнонсы событий, новых уровней и обновлений — всё там.',
+    'cmd.fbPrompt': '✍️ Напиши свой отзыв или идею одним сообщением — прочитаем все. Что улучшить, что сломано, чего не хватает?',
+    'cmd.fbThanks': '🙏 Спасибо за отзыв! Мы его получили.',
+    'cmd.fbEmpty': 'Кажется, сообщение пустое — напиши текст отзыва.',
+    'cmd.fbTooFast': 'Секундочку 🙂 Отправляй по одному отзыву — попробуй ещё раз чуть позже.',
   },
   en: {
     'push.early': '⏰ Your cookies are about to slow down! In 15 minutes your offline baking rate drops 10×. Hop in while we’re still baking at full speed.',
@@ -1791,7 +1959,7 @@ const PUSH_STRINGS = {
     'evt.weekend': '🎊 Cookie Weekend has started! ×1.5 production and golden cookies twice as often — all weekend.',
     'evt.refEvent': '🎉 Referral event! Reward for invited friends ×{mult}.{tail}',
     'evt.refEventTail': ' Invite friends now!',
-    'start.welcome': '🍪 Hi! This is Cookie Clicker — bake cookies, upgrade buildings, and ascend for a permanent boost.\n👇 Tap the button and start baking.\n📢 Guides, top players & ×2 events (+ a subscriber bonus) — in our channel: {link}',
+    'start.welcome': '🍪 Hi! This is Cookie Clicker — bake cookies, buy buildings and upgrades, and ascend for a permanent boost.\n🎯 Goal: build the biggest cookie empire and climb into the top players.\n👇 Tap the button and start baking!\n📢 Guides, top players & ×2 events (+ a subscriber bonus) — in our channel: {link}',
     'cmd.help': "🍪 How to play Cookie Clicker:\n👆 Tap the cookie to earn cookies\n🏗 Buy buildings and upgrades — production grows on its own\n⭐ Once everything's bought — ascend: resetting gives a permanent bonus forever\n🤝 Invite friends — get a production boost for each active friend\nOpen the game and start baking!",
     'cmd.stats': '📊 Your stats:\n🍪 Total baked: {total}\n⚡ Cookies/sec: {cps}\n⭐ Ascensions: {ascensions}\n🤝 Active friends: {friends}',
     'cmd.statsEmpty': '📊 No stats yet — open the game and start baking cookies!',
@@ -1799,6 +1967,10 @@ const PUSH_STRINGS = {
     'cmd.topEmpty': '🏆 The leaderboard is empty — be the first! Open the game and start baking.',
     'cmd.invite': '🤝 Invite friends to play!\nYour link: {link}\nYou and your friend both get an instant cookie bonus, and each active friend permanently boosts your production.',
     'cmd.channel': '📢 Our channel: {link}\nEvent announcements, new levels and updates — all there.',
+    'cmd.fbPrompt': '✍️ Send your feedback or idea in one message — we read them all. What to improve, what\'s broken, what\'s missing?',
+    'cmd.fbThanks': '🙏 Thanks for the feedback! We got it.',
+    'cmd.fbEmpty': 'Looks empty — send the text of your feedback.',
+    'cmd.fbTooFast': 'One sec 🙂 One feedback at a time — try again in a moment.',
   },
 };
 function pt(lang, key, vars) {
@@ -2128,8 +2300,8 @@ export default {
       return handleCheckin(request, env);
     }
 
-    if (url.pathname === '/leaderboard' && request.method === 'GET') {
-      return handleLeaderboard(env);
+    if (url.pathname === '/leaderboard' && (request.method === 'GET' || request.method === 'POST')) {
+      return handleLeaderboard(request, env);
     }
 
     if (url.pathname === '/referral-leaderboard' && request.method === 'GET') {
@@ -2178,6 +2350,9 @@ export default {
 
     if (url.pathname === '/online' && request.method === 'GET') {
       return handleOnline(request, env);
+    }
+    if (url.pathname === '/admin/feedback' && request.method === 'GET') {
+      return handleListFeedback(request, env);
     }
 
     if (url.pathname === '/kt-test' && request.method === 'GET') {
