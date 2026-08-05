@@ -1350,6 +1350,9 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   line-height: 1.35;
 }
 
+/* Two stacked Top-tab toggles (period + geo) need a little breathing room. */
+#leaderboardPeriodToggle { margin-bottom: 8px; }
+
 /* Momentum "hot movers" (feature): the board's biggest climbers this hour —
    warm/red so it reads as heat, distinct from the gold rival hint. */
 .lb-momentum {

@@ -113,6 +113,10 @@
       'lb.global': '🌍 Все', 'lb.myCountry': 'Моя страна',
       'lb.rival': '⚡ Ещё {n} печ/сек — и обгонишь {name}!', 'lb.rankJump': '🚀 +{n} {w} в топе!',
       'lb.momentum': '🔥 {name} поднялся на {n} {w} за час',
+      'lb.allTime': 'Всё время', 'lb.thisWeek': 'Эта неделя',
+      'lb.criterionWeek': 'Ранг за неделю: по вознесениям, затем по выпечке',
+      'lb.weekAsc': '⭐ +{n} {w} за неделю', 'lb.weekBakedLabel': '🍪 испечено за неделю',
+      'lb.perWeek': 'за нед.', 'lb.emptyWeek': 'На этой неделе пока никто не отметился — стань первым!',
       'lb.empty': 'Пока никого нет — станьте первым!', 'lb.loading': 'Загрузка…',
       'lb.comingSoon': 'Лидерборд скоро появится', 'lb.loadFail': 'Не удалось загрузить лидерборд. Попробуйте позже.',
       'lb.refActive': '🤝 активных друзей', 'lb.refWord': '{word}',
@@ -253,6 +257,10 @@
       'lb.global': '🌍 Global', 'lb.myCountry': 'My country',
       'lb.rival': '⚡ {n}/sec more and you pass {name}!', 'lb.rankJump': '🚀 +{n} {w} on the board!',
       'lb.momentum': '🔥 {name} climbed {n} {w} this hour',
+      'lb.allTime': 'All time', 'lb.thisWeek': 'This week',
+      'lb.criterionWeek': 'This week: by ascensions, then by cookies baked',
+      'lb.weekAsc': '⭐ +{n} {w} this week', 'lb.weekBakedLabel': '🍪 baked this week',
+      'lb.perWeek': '/wk', 'lb.emptyWeek': 'No one has scored yet this week — be the first!',
       'lb.empty': 'No one here yet — be the first!', 'lb.loading': 'Loading…',
       'lb.comingSoon': 'Leaderboard coming soon', 'lb.loadFail': 'Couldn’t load the leaderboard. Try again later.',
       'lb.refActive': '🤝 active friends', 'lb.refWord': '{word}',
@@ -1224,11 +1232,26 @@
     // Prestige-tier milestone title (tiers 5 & 10) from their prestige count.
     const pTitle = prestigeTitleForTier(p + 1);
     const prestigeTitleHtml = pTitle ? `<span class="lb-title lb-epoch">${pTitle.icon} ${escapeHtml(t(pTitle.nameKey))}</span>` : '';
-    // Lifetime (never resets) as the secondary figure — a just-ascended player
-    // would otherwise show ~0 baked and look empty.
-    const lifetime = entry.lifetimeCookies || entry.totalBaked || 0;
     const name = opts.nameOverride != null ? opts.nameOverride : escapeHtml(entry.name);
-    const sub = opts.subExtra ? `${t('lb.lifetime', { n: formatNum(lifetime) })} · ${opts.subExtra}` : t('lb.lifetime', { n: formatNum(lifetime) });
+    // Weekly view (Task #40): the score is cookies baked THIS week and the sub
+    // line leads with ascensions THIS week (the primary weekly rank key). All-
+    // time view: current CPS as the score, lifetime cookies as the sub.
+    let scoreHtml, sub;
+    if (opts.weekly) {
+      const wPres = entry.weeklyPrestige || 0;
+      const wBaked = entry.weeklyBaked || 0;
+      const base = wPres > 0
+        ? t('lb.weekAsc', { n: wPres, w: ascendWord(wPres) })
+        : t('lb.weekBakedLabel');
+      sub = opts.subExtra ? `${base} · ${opts.subExtra}` : base;
+      scoreHtml = `${formatNum(wBaked)}<span class="leaderboard-score-unit">${t('lb.perWeek')}</span>`;
+    } else {
+      // Lifetime (never resets) as the secondary figure — a just-ascended player
+      // would otherwise show ~0 baked and look empty.
+      const lifetime = entry.lifetimeCookies || entry.totalBaked || 0;
+      sub = opts.subExtra ? `${t('lb.lifetime', { n: formatNum(lifetime) })} · ${opts.subExtra}` : t('lb.lifetime', { n: formatNum(lifetime) });
+      scoreHtml = `${formatNum(entry.cps)}<span class="leaderboard-score-unit">${t('lb.perSec')}</span>`;
+    }
     return `
           <div class="leaderboard-row${opts.me ? ' me' : ''}">
             <div class="leaderboard-rank">${rankLabel}</div>
@@ -1236,24 +1259,25 @@
               <div class="leaderboard-name">${prestigeHtml}${name}${pioneerHtml}${prestigeTitleHtml}${refTitleHtml}</div>
               <div class="leaderboard-total">${sub}</div>
             </div>
-            <div class="leaderboard-score">${formatNum(entry.cps)}<span class="leaderboard-score-unit">${t('lb.perSec')}</span></div>
+            <div class="leaderboard-score">${scoreHtml}</div>
           </div>`;
   }
 
   // Pinned "your place" row for players below the top-50 cut (server sends `self`
   // in the /leaderboard response — same call, no extra request). Hidden when the
   // player is in the top-50 (already highlighted in the list) or unknown.
-  function renderLeaderboardSelf(self) {
+  function renderLeaderboardSelf(self, weekly) {
     const box = el.leaderboardSelf;
     if (!box) return;
     if (!self || !Number.isFinite(self.rank)) { box.hidden = true; box.innerHTML = ''; return; }
     box.innerHTML = `<div class="lb-self-label">${t('lb.yourPlace')}</div>` +
-      leaderboardRowHtml(self, '#' + self.rank, { me: true, nameOverride: t('lb.you'), subExtra: t('lb.selfOf', { total: self.total }) });
+      leaderboardRowHtml(self, '#' + self.rank, { me: true, weekly: !!weekly, nameOverride: t('lb.you'), subExtra: t('lb.selfOf', { total: self.total }) });
     box.hidden = false;
   }
 
-  let lbMode = 'global';   // 'global' | 'country' — which slice the Top tab shows
-  let lbData = null;       // last /leaderboard response (both slices), so the toggle re-renders without re-fetching
+  let lbMode = 'global';   // 'global' | 'country' — geo slice the Top tab shows
+  let lbPeriod = 'all';    // 'all' | 'week' — time slice (Task #40); independent of lbMode → 4 combos
+  let lbData = null;       // last /leaderboard response (all slices), so the toggles re-render without re-fetching
 
   // ISO-2 → flag emoji (regional indicator letters). '' for unknown/invalid.
   function countryFlag(cc) {
@@ -1262,10 +1286,13 @@
   }
 
   // Render the currently-selected leaderboard slice from lbData (no network).
+  // Two independent toggles pick the slice: period (all / week) × geo (global /
+  // country) → 4 combinations, all delivered in the one response.
   function renderLeaderboardView() {
     if (!lbData) return;
     const hasCountry = !!(lbData.country && Array.isArray(lbData.countryEntries));
-    // Toggle is only meaningful when the server knows our geo.
+    // Geo toggle is only meaningful when the server knows our geo; the period
+    // toggle is always available.
     if (el.leaderboardToggle) el.leaderboardToggle.hidden = !hasCountry;
     if (!hasCountry) lbMode = 'global';
     if (el.lbToggleGlobal) el.lbToggleGlobal.classList.toggle('active', lbMode === 'global');
@@ -1274,40 +1301,48 @@
       const flag = countryFlag(lbData.country);
       el.lbToggleCountry.textContent = (flag ? flag + ' ' : '') + t('lb.myCountry');
     }
+    if (el.lbToggleAll) el.lbToggleAll.classList.toggle('active', lbPeriod === 'all');
+    if (el.lbToggleWeek) el.lbToggleWeek.classList.toggle('active', lbPeriod === 'week');
 
     const useCountry = lbMode === 'country' && hasCountry;
-    const entries = useCountry ? lbData.countryEntries : lbData.entries;
-    const selfRow = useCountry ? lbData.countrySelf : lbData.self;
-    const explainer = `<div class="lb-explainer">${t('lb.explainer', { crit: leaderboardCriterionText() })}</div>`;
+    const useWeek = lbPeriod === 'week';
+    // Pick the slice + its self row for the active (period × geo) combo.
+    let entries, selfRow;
+    if (useWeek) {
+      entries = useCountry ? lbData.countryWeeklyEntries : lbData.weeklyEntries;
+      selfRow = useCountry ? lbData.countryWeeklySelf : lbData.weeklySelf;
+    } else {
+      entries = useCountry ? lbData.countryEntries : lbData.entries;
+      selfRow = useCountry ? lbData.countrySelf : lbData.self;
+    }
+    const critText = useWeek ? t('lb.criterionWeek') : leaderboardCriterionText();
+    const explainer = `<div class="lb-explainer">${t('lb.explainer', { crit: critText })}</div>`;
     if (!entries || entries.length === 0) {
-      el.leaderboardList.innerHTML = explainer + `<div class="empty-hint">${t('lb.empty')}</div>`;
+      el.leaderboardList.innerHTML = explainer + `<div class="empty-hint">${t(useWeek ? 'lb.emptyWeek' : 'lb.empty')}</div>`;
       renderLeaderboardSelf(null);
       return;
     }
     const myId = ownTelegramUserId();
     const medals = ['🥇', '🥈', '🥉'];
     const rows = entries.map((entry, i) =>
-      leaderboardRowHtml(entry, medals[i] || (i + 1), { me: !!(myId && entry.userId === myId) })
+      leaderboardRowHtml(entry, medals[i] || (i + 1), { me: !!(myId && entry.userId === myId), weekly: useWeek })
     ).join('');
-    // Nearest rival (feature): the concrete CPS gap to the player right above,
-    // named — "N/sec more and you pass <name>". Only in the global view (the
-    // rival is computed on the global board); shown only when there IS someone
-    // above (rank > 1) and the gap is positive.
-    let rivalHtml = '';
-    if (!useCountry && lbData.rival && Number.isFinite(lbData.rival.deltaCps) && lbData.rival.deltaCps > 0) {
-      rivalHtml = `<div class="lb-rival">${t('lb.rival', { n: formatNum(lbData.rival.deltaCps), name: escapeHtml(lbData.rival.name || '') })}</div>`;
-    }
-    // Momentum (feature): the board's hottest climbers this hour — makes it feel
-    // live, not a static snapshot. Global view only; server sends up to 3.
-    let momentumHtml = '';
-    if (!useCountry && Array.isArray(lbData.movers) && lbData.movers.length) {
-      momentumHtml = lbData.movers
-        .filter(m => m && Number.isFinite(m.up) && m.up > 0)
-        .map(m => `<div class="lb-momentum">${t('lb.momentum', { name: escapeHtml(m.name || ''), n: m.up, w: placesWord(m.up) })}</div>`)
-        .join('');
+    // Rival + momentum are computed on the ALL-TIME GLOBAL board, so they only
+    // make sense (and only show) in that view — not in country or weekly slices.
+    let rivalHtml = '', momentumHtml = '';
+    if (!useCountry && !useWeek) {
+      if (lbData.rival && Number.isFinite(lbData.rival.deltaCps) && lbData.rival.deltaCps > 0) {
+        rivalHtml = `<div class="lb-rival">${t('lb.rival', { n: formatNum(lbData.rival.deltaCps), name: escapeHtml(lbData.rival.name || '') })}</div>`;
+      }
+      if (Array.isArray(lbData.movers) && lbData.movers.length) {
+        momentumHtml = lbData.movers
+          .filter(m => m && Number.isFinite(m.up) && m.up > 0)
+          .map(m => `<div class="lb-momentum">${t('lb.momentum', { name: escapeHtml(m.name || ''), n: m.up, w: placesWord(m.up) })}</div>`)
+          .join('');
+      }
     }
     el.leaderboardList.innerHTML = explainer + momentumHtml + rivalHtml + rows;
-    renderLeaderboardSelf(selfRow);
+    renderLeaderboardSelf(selfRow, useWeek);
   }
 
   // Russian pluralization for "мест(о/а)"; EN is a simple 1-vs-many.
@@ -1346,6 +1381,12 @@
   function setLbMode(mode) {
     if (mode !== 'global' && mode !== 'country') return;
     lbMode = mode;
+    renderLeaderboardView();
+  }
+
+  function setLbPeriod(period) {
+    if (period !== 'all' && period !== 'week') return;
+    lbPeriod = period;
     renderLeaderboardView();
   }
 
@@ -2345,6 +2386,8 @@
     leaderboardToggle: document.getElementById('leaderboardToggle'),
     lbToggleGlobal: document.getElementById('lbToggleGlobal'),
     lbToggleCountry: document.getElementById('lbToggleCountry'),
+    lbToggleAll: document.getElementById('lbToggleAll'),
+    lbToggleWeek: document.getElementById('lbToggleWeek'),
     referralLeaderboardList: document.getElementById('referralLeaderboardList'),
     fsFriends: document.getElementById('fsFriends'),
     fsBoost: document.getElementById('fsBoost'),
@@ -3487,6 +3530,8 @@
   el.refToggleAll.addEventListener('click', () => setRefPeriod('alltime'));
   if (el.lbToggleGlobal) el.lbToggleGlobal.addEventListener('click', () => setLbMode('global'));
   if (el.lbToggleCountry) el.lbToggleCountry.addEventListener('click', () => setLbMode('country'));
+  if (el.lbToggleAll) el.lbToggleAll.addEventListener('click', () => setLbPeriod('all'));
+  if (el.lbToggleWeek) el.lbToggleWeek.addEventListener('click', () => setLbPeriod('week'));
   // Header rank badge → jump to the Top tab.
   if (el.rankBadge) el.rankBadge.addEventListener('click', () => {
     const btn = document.querySelector('.tab-btn[data-tab="leaderboard"]');

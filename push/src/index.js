@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=98';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=99';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -1889,24 +1889,36 @@ async function handleCheckin(request, env) {
   //   • the unified daily-push counter (pushDay/pushCount) — the cap is per UTC
   //     day, independent of activity, so a checkin must not zero it (unlike
   //     pushStage, which intentionally resets when the player is active);
-  //   • the weekly-board baseline (baked-this-week) — rebased only on the first
-  //     checkin of a new week, so the weekly GLOBAL board resets on the Monday
-  //     boundary with no cron (mirrors the referral weekly board's baseline).
+  //   • the weekly-board baselines — the weekly main leaderboard ranks by
+  //     ASCENSIONS this week (primary) then COOKIES BAKED this week (tiebreak),
+  //     each = current value minus a start-of-week baseline. Baselines rebase
+  //     only on the first checkin of a new week, so the weekly board resets on
+  //     the Monday boundary with no cron (mirrors the referral weekly board).
+  //     Tiebreak uses lifetimeCookies (never resets on ascend) — NOT totalBaked
+  //     (which resets to 0 each ascension and would invert the metric).
   const lifetimeNow = Number(body.lifetimeCookies) || 0;
-  let carryPushDay, carryPushCount, lbWeekBaseline = lifetimeNow, weeklyBaked = 0;
+  let carryPushDay, carryPushCount;
+  let lbWeekBaseline = lifetimeNow, weeklyBaked = 0;
+  let lbWeekPrestigeBaseline = serverPrestigeCount, weeklyPrestige = 0;
   try {
     const prev = await env.USERS.getWithMetadata(key, { type: 'json' });
     const pm = prev && prev.metadata;
     if (pm) {
       if (Number.isFinite(pm.pushDay)) carryPushDay = pm.pushDay;
       if (Number.isFinite(pm.pushCount)) carryPushCount = pm.pushCount;
-      if (pm.lbWeekId === curWeek && Number.isFinite(pm.lbWeekBaseline)) {
-        lbWeekBaseline = pm.lbWeekBaseline;
-        weeklyBaked = Math.max(0, lifetimeNow - lbWeekBaseline);
+      if (pm.lbWeekId === curWeek) {
+        if (Number.isFinite(pm.lbWeekBaseline)) {
+          lbWeekBaseline = pm.lbWeekBaseline;
+          weeklyBaked = Math.max(0, lifetimeNow - lbWeekBaseline);
+        }
+        if (Number.isFinite(pm.lbWeekPrestigeBaseline)) {
+          lbWeekPrestigeBaseline = pm.lbWeekPrestigeBaseline;
+          weeklyPrestige = Math.max(0, serverPrestigeCount - lbWeekPrestigeBaseline);
+        }
       }
-      // else: new week (or first record) → baseline := current lifetime, weeklyBaked = 0
+      // else: new week (or first record) → baselines := current values, weekly counters = 0
     }
-  } catch (e) { /* best-effort: fresh push counter, weekly baseline = current lifetime */ }
+  } catch (e) { /* best-effort: fresh push counter, weekly baselines = current values */ }
 
   const data = {
     chatId: user.id,
@@ -1914,9 +1926,11 @@ async function handleCheckin(request, env) {
     pushStage: 0,
     pushDay: carryPushDay,     // unified daily-push cap counter (carried across checkins)
     pushCount: carryPushCount, // "
-    lbWeekId: curWeek,          // week that weeklyBaked / lbWeekBaseline belong to
+    lbWeekId: curWeek,          // week that the weekly baselines/counters below belong to
     lbWeekBaseline,             // lifetime-cookies baseline at the start of this week
-    weeklyBaked,                // cookies baked this week (weekly global board score)
+    weeklyBaked,                // cookies baked this week (weekly board tiebreak)
+    lbWeekPrestigeBaseline,     // prestige-count baseline at the start of this week
+    weeklyPrestige,             // ascensions this week (weekly board primary key)
     lastDailyClaim: Number(body.lastDailyClaim) || 0,
     cps: Number(body.cps) || 0,
     totalBaked: Number(body.totalBaked) || 0,
@@ -2004,8 +2018,9 @@ async function computeLeaderboard(env) {
         lifetimeCookies: data.lifetimeCookies || 0, // never-resetting total, shown as a secondary figure
         crumbs: data.crumbs || 0, // this player's permanent bonus % (rank-badge tooltip)
         country: data.country || null, // ISO-2 geo, for the "my country" leaderboard filter
-        weeklyBaked: data.weeklyBaked || 0, // cookies baked THIS week (weekly board score)
-        lbWeekId: Number.isFinite(data.lbWeekId) ? data.lbWeekId : -1, // which week weeklyBaked belongs to (stale => 0)
+        weeklyBaked: data.weeklyBaked || 0, // cookies baked THIS week (weekly board tiebreak)
+        weeklyPrestige: data.weeklyPrestige || 0, // ascensions THIS week (weekly board primary key)
+        lbWeekId: Number.isFinite(data.lbWeekId) ? data.lbWeekId : -1, // which week the weekly counters belong to (stale => 0)
         lbRankHour: Number.isFinite(data.lbRankHour) ? data.lbRankHour : null, // rank at the last hourly anchor, for the momentum "hot movers"
       });
     }
@@ -2045,15 +2060,21 @@ async function getRankedLeaderboard(env) {
   return res;
 }
 
-// Weekly global board: cookies baked during the CURRENT week, sorted desc.
-// Entries whose stored week != the current week count as 0 (dropped) — that's
-// how the weekly board resets on the Monday boundary with no cron, exactly like
-// the referral weekly board. Built from the already-swept global `entries`.
+// Weekly main leaderboard: this week's ASCENSIONS (primary) then cookies BAKED
+// this week (tiebreak), both = current minus the start-of-week baseline. Entries
+// whose stored week != the current week count as 0 (dropped) — that's how the
+// weekly board resets on the Monday boundary with no cron, exactly like the
+// referral weekly board. Built from the already-swept global `entries`. A player
+// is on the board once they've done ANYTHING this week (ascended or baked > 0).
 function weeklyStandings(entries, curWeek) {
   return entries
-    .filter(e => e.lbWeekId === curWeek && (e.weeklyBaked || 0) > 0)
-    .map(e => ({ userId: e.userId, name: e.name, prestigeCount: e.prestigeCount, isPioneer: e.isPioneer, weeklyBaked: e.weeklyBaked }))
-    .sort((a, b) => b.weeklyBaked - a.weeklyBaked);
+    .filter(e => e.lbWeekId === curWeek && ((e.weeklyPrestige || 0) > 0 || (e.weeklyBaked || 0) > 0))
+    .map(e => ({
+      userId: e.userId, name: e.name, isPioneer: e.isPioneer, country: e.country || null,
+      prestigeCount: e.prestigeCount, // total prestige, for context in the row
+      weeklyPrestige: e.weeklyPrestige || 0, weeklyBaked: e.weeklyBaked || 0,
+    }))
+    .sort((a, b) => (b.weeklyPrestige - a.weeklyPrestige) || (b.weeklyBaked - a.weeklyBaked));
 }
 
 // Momentum "hot movers": players who CLIMBED the most since their hourly anchor
@@ -2078,7 +2099,15 @@ async function handleLeaderboard(request, env) {
   const top = entries.slice(0, 50);
   const now = Date.now();
   const weekEnds = weekEndsAt(now);
+  const curWeek = weekId(now);
   const movers = hotMovers(entries); // momentum: hottest climbers this hour
+
+  // Weekly slice of the main board (Task #40): ascensions-this-week then
+  // baked-this-week, resets Monday. Built from the same swept array. Sent
+  // alongside the all-time slices so the client's "This week / All time" toggle
+  // switches views with no extra request (same pattern as the country toggle).
+  const weeklyAll = weeklyStandings(entries, curWeek);
+  const weeklyEntries = weeklyAll.slice(0, 50);
 
   const selfFrom = (e, rank, total) => ({
     rank, total,
@@ -2086,6 +2115,8 @@ async function handleLeaderboard(request, env) {
     prestigeCount: e.prestigeCount, maxActiveFriendsEver: e.maxActiveFriendsEver,
     isPioneer: e.isPioneer, crumbs: e.crumbs, country: e.country || null,
   });
+  // A weekly entry already carries exactly the fields a weekly row/self needs.
+  const weeklySelfFrom = (e, rank, total) => ({ rank, total, ...e });
 
   // Identity (via initData POST) drives, all from the SAME already-built sorted
   // array — no extra data source, no extra request:
@@ -2100,6 +2131,9 @@ async function handleLeaderboard(request, env) {
   // another player's data. All best-effort: never break the board.
   let self = null, country = null, countryEntries = null, countrySelf = null;
   let myRank = null, myTotal = entries.length, rival = null;
+  // Weekly counterparts (same shape as the all-time ones, but from weeklyAll).
+  let weeklySelf = null, weeklyMyRank = null, weeklyMyTotal = weeklyAll.length;
+  let countryWeeklyEntries = null, countryWeeklySelf = null;
   try {
     let initData = '';
     if (request && request.method === 'POST') {
@@ -2125,11 +2159,28 @@ async function handleLeaderboard(request, env) {
             if (cidx >= 50) countrySelf = selfFrom(filtered[cidx], cidx + 1, filtered.length);
           }
         }
+        // Weekly rank/self (global), and the weekly country slice. Independent of
+        // the all-time index — a player can be top-50 all-time but not this week.
+        const widx = weeklyAll.findIndex(e => e.userId === meId);
+        if (widx >= 0) {
+          weeklyMyRank = widx + 1;
+          if (widx >= 50) weeklySelf = weeklySelfFrom(weeklyAll[widx], widx + 1, weeklyAll.length);
+        }
+        if (country) {
+          const wFiltered = weeklyAll.filter(e => e.country === country); // keeps weekly sort
+          countryWeeklyEntries = wFiltered.slice(0, 50);
+          const wcidx = wFiltered.findIndex(e => e.userId === meId);
+          if (wcidx >= 50) countryWeeklySelf = weeklySelfFrom(wFiltered[wcidx], wcidx + 1, wFiltered.length);
+        }
       }
     }
-  } catch (e) { /* self / rival / country views are best-effort */ }
+  } catch (e) { /* self / rival / country / weekly views are best-effort */ }
 
-  return jsonResponse({ ok: true, entries: top, pioneerLimit, self, country, countryEntries, countrySelf, myRank, myTotal, rival, movers, weekEndsAt: weekEnds });
+  return jsonResponse({
+    ok: true, entries: top, pioneerLimit, self, country, countryEntries, countrySelf,
+    myRank, myTotal, rival, movers, weekEndsAt: weekEnds,
+    weeklyEntries, weeklySelf, weeklyMyRank, weeklyMyTotal, countryWeeklyEntries, countryWeeklySelf,
+  });
 }
 
 // Referral leaderboard: top referrers by all-time peak army size, plus a

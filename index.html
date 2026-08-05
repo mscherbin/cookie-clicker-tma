@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=98" />
+<link rel="stylesheet" href="style.css?v=99" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 </head>
@@ -129,6 +129,12 @@
       <!-- "+N places!" burst, shown once when the tab opens and the player's rank
            improved since the last visit (feature: live rank-change animation). -->
       <div id="rankJumpBurst" class="rank-jump-burst" hidden></div>
+      <!-- This week / All time period filter (Task #40) — always available,
+           independent of the geo filter below (4 combinations total). -->
+      <div id="leaderboardPeriodToggle" class="ref-toggle">
+        <button id="lbToggleAll" class="ref-toggle-btn active" data-lbperiod="all" data-i18n="lb.allTime">Всё время</button>
+        <button id="lbToggleWeek" class="ref-toggle-btn" data-lbperiod="week" data-i18n="lb.thisWeek">Эта неделя</button>
+      </div>
       <!-- Global / My-country filter — shown only when the server knows the
            player's geo (data.country). -->
       <div id="leaderboardToggle" class="ref-toggle" hidden>
@@ -263,6 +269,6 @@
   </div>
 </div>
 
-<script src="game.js?v=98"></script>
+<script src="game.js?v=99"></script>
 </body>
 </html>
