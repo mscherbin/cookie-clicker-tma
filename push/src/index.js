@@ -33,6 +33,11 @@ const STAGE_REWARD_MS = 24 * 3600 * 1000; // 24h: "daily reward + cookies waitin
 // bought nothing): a single message after ~3h idle. Separate from the stages
 // above, which all assume the player has offline income to come back to.
 const NUDGE_AFTER_MS = 3 * 3600 * 1000; // ~3h
+// Segment-2 nudge: if the player has at least this many cookies banked, the nudge
+// names the amount and points them at the first BUILDING (Cursor costs 15) — an
+// actionable "spend it here". Below it, fall back to the generic "grab your first
+// upgrade" text. A segment-2 player bought nothing (cps=0), so cookies == totalBaked.
+const NUDGE_MIN_COOKIES = 15;
 
 function computeOfflineGain(elapsedSeconds, cps) {
   if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
@@ -1192,6 +1197,65 @@ async function handleOnline(request, env) {
   return jsonResponse({ ok: true, online, day, total });
 }
 
+// GET /admin/push-audit?key=<ADMIN_KEY>[&source=] — is the push system actually
+// reaching a traffic cohort? Cross-references D1 (who's in the cohort + their
+// milestones) with KV (who's in the push loop + how far the stage cycle got) and
+// push_nudges (activation nudges sent). `in_kv` < cohort ⇒ users who never checked
+// in (can't be pushed). `stage_pushes_sent` = Σ pushStage (each stage is one send);
+// `nudges_by_segment` = one-shot activation pushes. cps0 = players with nothing to
+// "pile up" (get nudges, not stages). Answers "did pushes reach this cohort".
+async function handlePushAudit(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+  const rawSource = url.searchParams.get('source');
+  if (rawSource && rawSource !== 'organic' && !sanitizeSource(rawSource)) return jsonResponse({ ok: false, error: 'bad_source' }, 400);
+
+  let where = '', binds = [];
+  if (rawSource === 'organic') where = 'WHERE source IS NULL';
+  else if (rawSource) { where = 'WHERE source = ?'; binds.push(sanitizeSource(rawSource)); }
+
+  try {
+    const cohortRes = await env.DB.prepare(`SELECT user_id AS id FROM users ${where}`).bind(...binds).all();
+    const cohort = new Set((cohortRes.results || []).map(r => r.id));
+    // Activation nudges sent to this cohort, by segment.
+    const nu = await env.DB.prepare(
+      `SELECT segment AS seg, COUNT(*) AS n FROM push_nudges WHERE user_id IN (SELECT user_id FROM users ${where}) GROUP BY segment`
+    ).bind(...binds).all();
+    const nudgesBySegment = {};
+    for (const r of (nu.results || [])) nudgesBySegment['segment' + r.seg] = r.n;
+
+    // KV scan: who from the cohort is in the push loop, and their stage progress.
+    let inKV = 0, cps0 = 0, stagePushesSent = 0;
+    const stageHist = { 0: 0, 1: 0, 2: 0, 3: 0 };
+    let cursor;
+    for (;;) {
+      const list = await env.USERS.list({ prefix: 'user:', cursor });
+      for (const k of list.keys) {
+        const d = k.metadata;
+        if (!d || !d.chatId || !cohort.has(d.chatId)) continue;
+        inKV++;
+        const ps = Math.max(0, Math.min(3, d.pushStage || 0));
+        stageHist[ps]++;
+        stagePushesSent += ps;
+        if ((d.cps || 0) <= 0) cps0++;
+      }
+      if (list.list_complete || !list.cursor) break;
+      cursor = list.cursor;
+    }
+    const nudgesTotal = Object.values(nudgesBySegment).reduce((a, b) => a + b, 0);
+    return jsonResponse({
+      ok: true, source: rawSource || 'all',
+      cohort_size: cohort.size,
+      in_kv: inKV, not_in_kv: cohort.size - inKV, // not_in_kv = never checked in → unpushable
+      cps0, // zero-production players (get activation nudges, not stage pushes)
+      stage_pushes_sent: stagePushesSent, pushStage_histogram: stageHist,
+      nudges_by_segment: nudgesBySegment, nudges_total: nudgesTotal,
+      total_pushes_sent: stagePushesSent + nudgesTotal,
+    });
+  } catch (e) { return jsonResponse({ ok: false, error: 'db', detail: String(e) }, 500); }
+}
+
 // GET /webhook-info?key=<ADMIN_KEY> — proxies getWebhookInfo so we can check
 // allowed_updates (must include pre_checkout_query for Stars) without exposing
 // the bot token.
@@ -1943,7 +2007,8 @@ const PUSH_STRINGS = {
     'push.pilingExtra': ' Уже накопилось ~{n} 🍪.',
     'push.reward': '🎁 Ежедневная награда уже ждёт тебя в игре — а печеньки всё это время копились. Не заставляй бабушку печь зря!',
     'push.nudgeNoClick': '🍪 Не успел попробовать? Тапни печеньку — и понеслось!',
-    'push.nudgeNoUpgrade': '🍪 Ты начал печь печеньки — вернись и купи первое улучшение, теперь это проще!',
+    'push.nudgeHasCookies': '🍪 У тебя {n} печенек — купи первое здание и производство пойдёт само! Плюс мы упростили первую покупку, так что теперь это займёт секунды.',
+    'push.nudgeNoUpgrade': '🍪 Вернись и купи первое улучшение — теперь это проще!',
     'push.openGame': '🍪 Открыть игру',
     'evt.happyHour': '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
     'evt.weekend': '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
@@ -1968,7 +2033,8 @@ const PUSH_STRINGS = {
     'push.pilingExtra': ' ~{n} 🍪 already piled up.',
     'push.reward': '🎁 Your daily reward is waiting in the game — and cookies have been piling up. Don’t let grandma bake for nothing!',
     'push.nudgeNoClick': '🍪 Didn\'t get a chance to try it? Tap the cookie and go!',
-    'push.nudgeNoUpgrade': '🍪 You started baking — come back and grab your first upgrade, it\'s easier now!',
+    'push.nudgeHasCookies': '🍪 You\'ve got {n} cookies — buy your first building and production runs on its own! We also made the first purchase easier, so it only takes a few taps now.',
+    'push.nudgeNoUpgrade': '🍪 Come back and grab your first upgrade — it\'s easier now!',
     'push.openGame': '🍪 Open game',
     'evt.happyHour': '🎉 Cookie Hour has started! All cookies ×2 for the next hour — jump in!',
     'evt.weekend': '🎊 Cookie Weekend has started! ×1.5 production and golden cookies twice as often — all weekend.',
@@ -2043,17 +2109,33 @@ function stageRewardText(lang) {
 }
 
 async function sendPush(env, chatId, text, lang) {
-  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      reply_markup: {
-        inline_keyboard: [[{ text: pt(lang, 'push.openGame'), web_app: { url: GAME_URL } }]],
-      },
-    }),
-  });
+  // Returns true on delivery. Telegram rejects (silently, before this change) with
+  // 403 "bot was blocked"/"user is deactivated" or 400 "chat not found" — logging
+  // the outcome makes push deliverability visible (e.g. per traffic channel) in
+  // `wrangler tail` instead of vanishing. Callers still fire-and-forget.
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        reply_markup: {
+          inline_keyboard: [[{ text: pt(lang, 'push.openGame'), web_app: { url: GAME_URL } }]],
+        },
+      }),
+    });
+    if (!res.ok) {
+      let desc = '';
+      try { const j = await res.json(); desc = (j && j.description) || ''; } catch (e) { /* non-JSON */ }
+      console.log(`push FAILED chat=${chatId} http=${res.status} ${desc}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.log(`push ERROR chat=${chatId}`, e);
+    return false;
+  }
 }
 
 async function runPushCycle(env) {
@@ -2111,7 +2193,14 @@ async function runPushCycle(env) {
       if (!upgraded.has(uid) && cps <= 0) {
         // Segment 2: tapped but bought nothing → still no production, nothing piling.
         if (env.DB && elapsed >= NUDGE_AFTER_MS && !nudged.has(`${uid}:2`)) {
-          await sendPush(env, data.chatId, pt(data.lang, 'push.nudgeNoUpgrade'), data.lang);
+          // Give a concrete next step: if they have cookies banked (cps=0 ⇒ nothing
+          // spent ⇒ cookies == totalBaked), name the amount and point them at the
+          // first building; otherwise the generic "grab your first upgrade".
+          const banked = Math.floor(data.totalBaked || 0);
+          const text = banked >= NUDGE_MIN_COOKIES
+            ? pt(data.lang, 'push.nudgeHasCookies', { n: banked })
+            : pt(data.lang, 'push.nudgeNoUpgrade');
+          await sendPush(env, data.chatId, text, data.lang);
           nudged.add(`${uid}:2`);
           await markNudged(uid, 2);
         }
@@ -2365,6 +2454,9 @@ export default {
 
     if (url.pathname === '/online' && request.method === 'GET') {
       return handleOnline(request, env);
+    }
+    if (url.pathname === '/admin/push-audit' && request.method === 'GET') {
+      return handlePushAudit(request, env);
     }
     if (url.pathname === '/admin/feedback' && request.method === 'GET') {
       return handleListFeedback(request, env);
