@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=97';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=98';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -47,6 +47,17 @@ const NUDGE_MIN_COOKIES = 15;
 // count — they call sendPush directly, bypassing maybeSendPush. Config key
 // `daily_push_cap` overrides this default without a redeploy.
 const DAILY_PUSH_CAP_DEFAULT = 3;
+
+// Rank-change engagement (Phase 1). The push cron snapshots each engaged
+// player's global rank so it can (a) push when they're notably overtaken
+// [feature: lost-place push] and (b) surface the board's hottest climbers
+// [feature: momentum]. All rank state lives in KV metadata (lbRank, lbRankHour,
+// lbRankHourTs, lbF2Day), snapshotted only on change to keep KV writes down.
+const RANK_DROP_MIN = 3;                        // lost-place push: notify on a drop of ≥ this many places since the last cron snapshot
+const RANK_PRESTIGE_THRESHOLDS = [3, 10, 50];  // …or when falling OUT of one of these prestige tiers (top-3 / top-10 / top-50)
+const RANK_HOUR_MS = 55 * 60 * 1000;           // momentum anchor: the "~1h ago" reference rank is re-anchored after this long
+const MOVER_MIN_PLACES = 5;                     // momentum: minimum climb (places gained since the hour anchor) to count as a "hot mover"
+const MOVERS_SHOWN = 3;                         // momentum: how many hot movers the Top tab surfaces
 
 function computeOfflineGain(elapsedSeconds, cps) {
   if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
@@ -1995,6 +2006,7 @@ async function computeLeaderboard(env) {
         country: data.country || null, // ISO-2 geo, for the "my country" leaderboard filter
         weeklyBaked: data.weeklyBaked || 0, // cookies baked THIS week (weekly board score)
         lbWeekId: Number.isFinite(data.lbWeekId) ? data.lbWeekId : -1, // which week weeklyBaked belongs to (stale => 0)
+        lbRankHour: Number.isFinite(data.lbRankHour) ? data.lbRankHour : null, // rank at the last hourly anchor, for the momentum "hot movers"
       });
     }
     if (list.list_complete || !list.cursor) break;
@@ -2044,11 +2056,29 @@ function weeklyStandings(entries, curWeek) {
     .sort((a, b) => b.weeklyBaked - a.weeklyBaked);
 }
 
+// Momentum "hot movers": players who CLIMBED the most since their hourly anchor
+// (lbRankHour, maintained by the push cron). `entries` is the current sorted
+// board, so a player's current rank is their index+1. up = places gained. Only
+// climbs of ≥ MOVER_MIN_PLACES qualify; returns the top few. Makes the board
+// feel live ("someone is charging up the ranks right now").
+function hotMovers(entries) {
+  const movers = [];
+  entries.forEach((e, i) => {
+    if (Number.isFinite(e.lbRankHour)) {
+      const up = e.lbRankHour - (i + 1);
+      if (up >= MOVER_MIN_PLACES) movers.push({ name: e.name, up });
+    }
+  });
+  movers.sort((a, b) => b.up - a.up);
+  return movers.slice(0, MOVERS_SHOWN);
+}
+
 async function handleLeaderboard(request, env) {
   const { entries, pioneerLimit } = await getRankedLeaderboard(env);
   const top = entries.slice(0, 50);
   const now = Date.now();
   const weekEnds = weekEndsAt(now);
+  const movers = hotMovers(entries); // momentum: hottest climbers this hour
 
   const selfFrom = (e, rank, total) => ({
     rank, total,
@@ -2099,7 +2129,7 @@ async function handleLeaderboard(request, env) {
     }
   } catch (e) { /* self / rival / country views are best-effort */ }
 
-  return jsonResponse({ ok: true, entries: top, pioneerLimit, self, country, countryEntries, countrySelf, myRank, myTotal, rival, weekEndsAt: weekEnds });
+  return jsonResponse({ ok: true, entries: top, pioneerLimit, self, country, countryEntries, countrySelf, myRank, myTotal, rival, movers, weekEndsAt: weekEnds });
 }
 
 // Referral leaderboard: top referrers by all-time peak army size, plus a
@@ -2149,6 +2179,7 @@ const PUSH_STRINGS = {
     'push.nudgeNoClick': '🍪 Не успел попробовать? Тапни печеньку — и понеслось!',
     'push.nudgeHasCookies': '🍪 У тебя {n} печенек — купи первое здание и производство пойдёт само! Плюс мы упростили первую покупку, так что теперь это займёт секунды.',
     'push.nudgeNoUpgrade': '🍪 Вернись и купи первое улучшение — теперь это проще!',
+    'push.rankLost': '📉 Тебя обогнали — теперь ты #{rank} в топе. Вернись и отыграй позицию!',
     'push.openGame': '🍪 Открыть игру',
     'evt.happyHour': '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
     'evt.weekend': '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
@@ -2175,6 +2206,7 @@ const PUSH_STRINGS = {
     'push.nudgeNoClick': '🍪 Didn\'t get a chance to try it? Tap the cookie and go!',
     'push.nudgeHasCookies': '🍪 You\'ve got {n} cookies — buy your first building and production runs on its own! We also made the first purchase easier, so it only takes a few taps now.',
     'push.nudgeNoUpgrade': '🍪 Come back and grab your first upgrade — it\'s easier now!',
+    'push.rankLost': '📉 You\'ve been overtaken — you\'re #{rank} now. Jump back in and reclaim your spot!',
     'push.openGame': '🍪 Open game',
     'evt.happyHour': '🎉 Cookie Hour has started! All cookies ×2 for the next hour — jump in!',
     'evt.weekend': '🎊 Cookie Weekend has started! ×1.5 production and golden cookies twice as often — all weekend.',
@@ -2340,6 +2372,15 @@ async function runPushCycle(env) {
   // maybeSendPush, so a user never exceeds `cap` pushes/day across all types.
   const cap = (await getEconomyConfig(env)).dailyPushCap;
 
+  // Ranked board (one cached sweep), so this cycle can (a) detect a player being
+  // overtaken [lost-place push] and (b) re-anchor each player's hourly rank
+  // reference [momentum]. rankOf: userId -> current global rank (1-based).
+  let rankOf = new Map();
+  try {
+    const { entries } = await getRankedLeaderboard(env);
+    entries.forEach((e, i) => rankOf.set(e.userId, i + 1));
+  } catch (e) { /* rank features are best-effort — the retention cron still runs */ }
+
   let cursor;
   for (;;) {
     const list = await env.USERS.list({ prefix: 'user:', cursor });
@@ -2379,6 +2420,42 @@ async function runPushCycle(env) {
           if (sent) { nudged.add(`${uid}:2`); await markNudged(uid, 2); }
         }
         continue; // replace the piling stages, don't stack on top
+      }
+
+      // --- Rank-change tracking (lost-place push + momentum) -------------------
+      // Only for engaged players who are actually on the board. Maintains the
+      // rank snapshot (lbRank) and the hourly momentum anchor (lbRankHour), and
+      // pushes when the player is NOTABLY overtaken. Writes metadata only when a
+      // snapshot field actually changed, to keep KV writes down.
+      const curRank = rankOf.get(uid);
+      if (curRank) {
+        const now = Date.now();
+        let snapChanged = false;
+        // Momentum anchor: the "~1h ago" reference rank, re-anchored hourly. The
+        // Top tab reads (lbRankHour - currentRank) to surface hot climbers.
+        if (!Number.isFinite(data.lbRankHourTs) || (now - data.lbRankHourTs) >= RANK_HOUR_MS) {
+          data.lbRankHour = curRank;
+          data.lbRankHourTs = now;
+          snapChanged = true;
+        }
+        // Lost-place push: fire only on a NOTABLE drop since the previous cron
+        // snapshot — a jump of ≥ RANK_DROP_MIN places, OR falling out of a
+        // prestige tier (top-3 / top-10 / top-50). Deduped to once per UTC day
+        // (lbF2Day) on top of the global daily cap, so a bad day can't spam.
+        const prevRank = Number.isFinite(data.lbRank) ? data.lbRank : null;
+        const today = Math.floor(now / 86400000);
+        if (prevRank !== null && curRank > prevRank && data.lbF2Day !== today) {
+          const dropped = curRank - prevRank;
+          const crossed = RANK_PRESTIGE_THRESHOLDS.some(T => prevRank <= T && curRank > T);
+          if (dropped >= RANK_DROP_MIN || crossed) {
+            await maybeSendPush(env, k.name, data, pt(data.lang, 'push.rankLost', { rank: curRank }), data.lang, cap,
+              () => { data.lbF2Day = today; });
+            // maybeSendPush persisted lbF2Day (+ cap counter) on send; lbRank is
+            // written just below regardless, so no separate write needed here.
+          }
+        }
+        if (data.lbRank !== curRank) { data.lbRank = curRank; snapChanged = true; }
+        if (snapChanged) { try { await env.USERS.put(k.name, JSON.stringify(data), { metadata: data }); } catch (e) { /* degraded */ } }
       }
 
       // --- Engaged players (have production, or already bought an upgrade) ------

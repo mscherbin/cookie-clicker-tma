@@ -112,6 +112,7 @@
       'lb.you': 'Ты', 'lb.yourPlace': 'Твоё место', 'lb.selfOf': 'из {total}',
       'lb.global': '🌍 Все', 'lb.myCountry': 'Моя страна',
       'lb.rival': '⚡ Ещё {n} печ/сек — и обгонишь {name}!', 'lb.rankJump': '🚀 +{n} {w} в топе!',
+      'lb.momentum': '🔥 {name} поднялся на {n} {w} за час',
       'lb.empty': 'Пока никого нет — станьте первым!', 'lb.loading': 'Загрузка…',
       'lb.comingSoon': 'Лидерборд скоро появится', 'lb.loadFail': 'Не удалось загрузить лидерборд. Попробуйте позже.',
       'lb.refActive': '🤝 активных друзей', 'lb.refWord': '{word}',
@@ -251,6 +252,7 @@
       'lb.you': 'You', 'lb.yourPlace': 'Your place', 'lb.selfOf': 'of {total}',
       'lb.global': '🌍 Global', 'lb.myCountry': 'My country',
       'lb.rival': '⚡ {n}/sec more and you pass {name}!', 'lb.rankJump': '🚀 +{n} {w} on the board!',
+      'lb.momentum': '🔥 {name} climbed {n} {w} this hour',
       'lb.empty': 'No one here yet — be the first!', 'lb.loading': 'Loading…',
       'lb.comingSoon': 'Leaderboard coming soon', 'lb.loadFail': 'Couldn’t load the leaderboard. Try again later.',
       'lb.refActive': '🤝 active friends', 'lb.refWord': '{word}',
@@ -1295,7 +1297,16 @@
     if (!useCountry && lbData.rival && Number.isFinite(lbData.rival.deltaCps) && lbData.rival.deltaCps > 0) {
       rivalHtml = `<div class="lb-rival">${t('lb.rival', { n: formatNum(lbData.rival.deltaCps), name: escapeHtml(lbData.rival.name || '') })}</div>`;
     }
-    el.leaderboardList.innerHTML = explainer + rivalHtml + rows;
+    // Momentum (feature): the board's hottest climbers this hour — makes it feel
+    // live, not a static snapshot. Global view only; server sends up to 3.
+    let momentumHtml = '';
+    if (!useCountry && Array.isArray(lbData.movers) && lbData.movers.length) {
+      momentumHtml = lbData.movers
+        .filter(m => m && Number.isFinite(m.up) && m.up > 0)
+        .map(m => `<div class="lb-momentum">${t('lb.momentum', { name: escapeHtml(m.name || ''), n: m.up, w: placesWord(m.up) })}</div>`)
+        .join('');
+    }
+    el.leaderboardList.innerHTML = explainer + momentumHtml + rivalHtml + rows;
     renderLeaderboardSelf(selfRow);
   }
 

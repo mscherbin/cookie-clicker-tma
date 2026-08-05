@@ -1350,6 +1350,19 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   line-height: 1.35;
 }
 
+/* Momentum "hot movers" (feature): the board's biggest climbers this hour —
+   warm/red so it reads as heat, distinct from the gold rival hint. */
+.lb-momentum {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #ff8a5b;
+  background: rgba(255, 122, 71, 0.10);
+  border: 1px solid rgba(255, 122, 71, 0.28);
+  border-radius: 10px;
+  padding: 7px 12px;
+  line-height: 1.3;
+}
+
 /* "+N places!" burst on opening the Top tab after a climb (feature: live
    rank-change animation). */
 .rank-jump-burst {
