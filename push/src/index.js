@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=99';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=100';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -58,6 +58,16 @@ const RANK_PRESTIGE_THRESHOLDS = [3, 10, 50];  // …or when falling OUT of one 
 const RANK_HOUR_MS = 55 * 60 * 1000;           // momentum anchor: the "~1h ago" reference rank is re-anchored after this long
 const MOVER_MIN_PLACES = 5;                     // momentum: minimum climb (places gained since the hour anchor) to count as a "hot mover"
 const MOVERS_SHOWN = 3;                         // momentum: how many hot movers the Top tab surfaces
+
+// Weekly finale (Phase 2). The week-close cron awards the top-3 of the ended
+// week a temporary ×2 production boost (tiered hours) and pushes everyone in the
+// top-N their final place + a new-week invite. The last-hours push nudges those
+// within striking distance of the top-3 as the week runs out.
+const WEEK_PRIZE_BOOST_HOURS = [48, 24, 12];    // ×2 production prize for weekly #1 / #2 / #3 (tunable)
+const WEEK_SUMMARY_TOP_N = 50;                  // how many of the ended week's players get the "you finished #N" push
+const WEEK_CLOSE_GRACE_MS = 6 * 3600 * 1000;    // only award within this long after Monday 00:00 UTC (avoids awarding a stale week on a mid-week deploy)
+const WEEK_LAST_HOURS_DEFAULT = 3;              // last-hours push fires inside this many hours before the reset (config: week_last_hours)
+const WEEK_CATCH_MAX_RANK = 8;                  // last-hours push targets weekly ranks 4..this (a realistic shot at the top-3)
 
 function computeOfflineGain(elapsedSeconds, cps) {
   if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
@@ -502,11 +512,13 @@ async function getEconomyConfig(env) {
     channelBonusMin: CHANNEL_BONUS_MIN_DEFAULT,
     // Unified per-user daily push cap (all unsolicited pushes combined).
     dailyPushCap: DAILY_PUSH_CAP_DEFAULT,
+    // Hours-before-reset window for the weekly "last hours" push.
+    weekLastHours: WEEK_LAST_HOURS_DEFAULT,
   };
   if (env.DB) {
     try {
       const rows = await env.DB.prepare(
-        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end', 'channel_bonus_chat', 'channel_bonus_chat_ru', 'channel_bonus_seconds', 'channel_bonus_min', 'daily_push_cap')"
+        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end', 'channel_bonus_chat', 'channel_bonus_chat_ru', 'channel_bonus_seconds', 'channel_bonus_min', 'daily_push_cap', 'week_last_hours')"
       ).all();
       const map = {};
       const rawMap = {};
@@ -525,6 +537,7 @@ async function getEconomyConfig(env) {
       if (Number.isFinite(map.channel_bonus_seconds) && map.channel_bonus_seconds >= 0) cfg.channelBonusSeconds = map.channel_bonus_seconds;
       if (Number.isFinite(map.channel_bonus_min) && map.channel_bonus_min >= 0) cfg.channelBonusMin = map.channel_bonus_min;
       if (Number.isFinite(map.daily_push_cap) && map.daily_push_cap >= 0) cfg.dailyPushCap = map.daily_push_cap;
+      if (Number.isFinite(map.week_last_hours) && map.week_last_hours > 0) cfg.weekLastHours = map.week_last_hours;
     } catch (e) { /* table may not exist yet — fall back to defaults */ }
   }
   _configCache = cfg;
@@ -1898,15 +1911,31 @@ async function handleCheckin(request, env) {
   //     (which resets to 0 each ascension and would invert the metric).
   const lifetimeNow = Number(body.lifetimeCookies) || 0;
   let carryPushDay, carryPushCount;
+  // Cron-owned rank/engagement fields must survive the checkin's full rebuild of
+  // `data` — otherwise every checkin wipes them and, for active players, the
+  // momentum anchor keeps resetting and the lost-place baseline is lost. Carried
+  // through verbatim; the push cron is the only writer of their values.
+  let carryLbRank, carryLbRankHour, carryLbRankHourTs, carryLbF2Day, carryWeekLastPushId;
   let lbWeekBaseline = lifetimeNow, weeklyBaked = 0;
   let lbWeekPrestigeBaseline = serverPrestigeCount, weeklyPrestige = 0;
+  // Preserved final standing of the week that JUST ended (Task #40 → Phase 2):
+  // when a checkin crosses into a new week and rebases the weekly counters to 0,
+  // the outgoing week's figures are copied here first — so the week-close cron
+  // can still rank the ended week fairly after players have started rebasing.
+  let prevWeekId, prevWeekBaked, prevWeekPrestige;
   try {
     const prev = await env.USERS.getWithMetadata(key, { type: 'json' });
     const pm = prev && prev.metadata;
     if (pm) {
       if (Number.isFinite(pm.pushDay)) carryPushDay = pm.pushDay;
       if (Number.isFinite(pm.pushCount)) carryPushCount = pm.pushCount;
+      carryLbRank = pm.lbRank;
+      carryLbRankHour = pm.lbRankHour;
+      carryLbRankHourTs = pm.lbRankHourTs;
+      carryLbF2Day = pm.lbF2Day;
+      carryWeekLastPushId = pm.lbWeekLastPushId;
       if (pm.lbWeekId === curWeek) {
+        // Same week: keep accumulating, and carry the stored prev-week snapshot.
         if (Number.isFinite(pm.lbWeekBaseline)) {
           lbWeekBaseline = pm.lbWeekBaseline;
           weeklyBaked = Math.max(0, lifetimeNow - lbWeekBaseline);
@@ -1915,8 +1944,17 @@ async function handleCheckin(request, env) {
           lbWeekPrestigeBaseline = pm.lbWeekPrestigeBaseline;
           weeklyPrestige = Math.max(0, serverPrestigeCount - lbWeekPrestigeBaseline);
         }
+        prevWeekId = pm.prevWeekId;
+        prevWeekBaked = pm.prevWeekBaked;
+        prevWeekPrestige = pm.prevWeekPrestige;
+      } else if (Number.isFinite(pm.lbWeekId)) {
+        // Crossing into a new week: the week we're leaving becomes prevWeek, so
+        // its final score survives the rebase for the week-close cron to award.
+        prevWeekId = pm.lbWeekId;
+        prevWeekBaked = pm.weeklyBaked || 0;
+        prevWeekPrestige = pm.weeklyPrestige || 0;
       }
-      // else: new week (or first record) → baselines := current values, weekly counters = 0
+      // else: first record → baselines := current values, weekly counters = 0
     }
   } catch (e) { /* best-effort: fresh push counter, weekly baselines = current values */ }
 
@@ -1931,6 +1969,14 @@ async function handleCheckin(request, env) {
     weeklyBaked,                // cookies baked this week (weekly board tiebreak)
     lbWeekPrestigeBaseline,     // prestige-count baseline at the start of this week
     weeklyPrestige,             // ascensions this week (weekly board primary key)
+    prevWeekId,                 // the just-ended week's id + its final weekly figures, preserved
+    prevWeekBaked,              //   across the rebase so the week-close cron can award/announce it
+    prevWeekPrestige,           //   fairly even after the player has moved into the new week
+    lbRank: carryLbRank,               // cron-owned rank snapshot (lost-place baseline) — carried, not reset
+    lbRankHour: carryLbRankHour,       // cron-owned hourly momentum anchor — carried, not reset
+    lbRankHourTs: carryLbRankHourTs,   // "
+    lbF2Day: carryLbF2Day,             // cron-owned lost-place once-per-day dedup — carried
+    lbWeekLastPushId: carryWeekLastPushId, // cron-owned last-hours push once-per-week dedup — carried
     lastDailyClaim: Number(body.lastDailyClaim) || 0,
     cps: Number(body.cps) || 0,
     totalBaked: Number(body.totalBaked) || 0,
@@ -2231,6 +2277,9 @@ const PUSH_STRINGS = {
     'push.nudgeHasCookies': '🍪 У тебя {n} печенек — купи первое здание и производство пойдёт само! Плюс мы упростили первую покупку, так что теперь это займёт секунды.',
     'push.nudgeNoUpgrade': '🍪 Вернись и купи первое улучшение — теперь это проще!',
     'push.rankLost': '📉 Тебя обогнали — теперь ты #{rank} в топе. Вернись и отыграй позицию!',
+    'push.weekLastHours': '⏰ Осталось {h}ч — ты #{rank} в недельном топе! Ещё можно догнать топ-3.',
+    'push.weekSummary': '🏁 Неделя завершена — ты финишировал #{place}! Новая неделя началась. Поднимешься выше?',
+    'push.weekSummaryWinner': '🏆 Ты в топ-3 недели — финиш #{place}! Награда: ×2 производство на {h}ч. Новая неделя пошла — держи планку!',
     'push.openGame': '🍪 Открыть игру',
     'evt.happyHour': '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
     'evt.weekend': '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
@@ -2258,6 +2307,9 @@ const PUSH_STRINGS = {
     'push.nudgeHasCookies': '🍪 You\'ve got {n} cookies — buy your first building and production runs on its own! We also made the first purchase easier, so it only takes a few taps now.',
     'push.nudgeNoUpgrade': '🍪 Come back and grab your first upgrade — it\'s easier now!',
     'push.rankLost': '📉 You\'ve been overtaken — you\'re #{rank} now. Jump back in and reclaim your spot!',
+    'push.weekLastHours': '⏰ {h}h left — you\'re #{rank} on the weekly board! You can still catch the top-3.',
+    'push.weekSummary': '🏁 The week is over — you finished #{place}! A new week has begun. Can you climb higher?',
+    'push.weekSummaryWinner': '🏆 Top-3 this week — you finished #{place}! Reward: ×2 production for {h}h. The new week is on — keep it up!',
     'push.openGame': '🍪 Open game',
     'evt.happyHour': '🎉 Cookie Hour has started! All cookies ×2 for the next hour — jump in!',
     'evt.weekend': '🎊 Cookie Weekend has started! ×1.5 production and golden cookies twice as often — all weekend.',
@@ -2423,14 +2475,23 @@ async function runPushCycle(env) {
   // maybeSendPush, so a user never exceeds `cap` pushes/day across all types.
   const cap = (await getEconomyConfig(env)).dailyPushCap;
 
-  // Ranked board (one cached sweep), so this cycle can (a) detect a player being
-  // overtaken [lost-place push] and (b) re-anchor each player's hourly rank
-  // reference [momentum]. rankOf: userId -> current global rank (1-based).
-  let rankOf = new Map();
+  // Ranked boards (one cached sweep), so this cycle can (a) detect a player being
+  // overtaken [lost-place push], (b) re-anchor each player's hourly rank
+  // reference [momentum], and (c) nudge players near the weekly top-3 in the
+  // final hours [last-hours push]. rankOf / weeklyRankOf: userId -> 1-based rank.
+  const rankOf = new Map();
+  const weeklyRankOf = new Map();
   try {
     const { entries } = await getRankedLeaderboard(env);
     entries.forEach((e, i) => rankOf.set(e.userId, i + 1));
+    weeklyStandings(entries, weekId(Date.now())).forEach((e, i) => weeklyRankOf.set(e.userId, i + 1));
   } catch (e) { /* rank features are best-effort — the retention cron still runs */ }
+  // Last-hours push window: how long before the reset it fires, and how much time
+  // is actually left right now.
+  const weekLastHoursMs = (await getEconomyConfig(env)).weekLastHours * 3600 * 1000;
+  const weekLeftMs = weekEndsAt(Date.now()) - Date.now();
+  const inWeekFinale = weekLeftMs > 0 && weekLeftMs <= weekLastHoursMs;
+  const curWeekId = weekId(Date.now());
 
   let cursor;
   for (;;) {
@@ -2509,6 +2570,19 @@ async function runPushCycle(env) {
         if (snapChanged) { try { await env.USERS.put(k.name, JSON.stringify(data), { metadata: data }); } catch (e) { /* degraded */ } }
       }
 
+      // --- Last-hours push (weekly finale) -------------------------------------
+      // In the final hours of the week, nudge players who are within striking
+      // distance of the weekly top-3 (rank 4..WEEK_CATCH_MAX_RANK) — peak
+      // motivation. Once per week (lbWeekLastPushId), through the daily cap.
+      if (inWeekFinale && data.lbWeekLastPushId !== curWeekId) {
+        const wr = weeklyRankOf.get(uid);
+        if (wr && wr >= 4 && wr <= WEEK_CATCH_MAX_RANK) {
+          const hrsLeft = Math.max(1, Math.ceil(weekLeftMs / 3600000));
+          await maybeSendPush(env, k.name, data, pt(data.lang, 'push.weekLastHours', { h: hrsLeft, rank: wr }), data.lang, cap,
+            () => { data.lbWeekLastPushId = curWeekId; });
+        }
+      }
+
       // --- Engaged players (have production, or already bought an upgrade) ------
       // Normal 3-stage offline-income cycle. maybeSendPush persists the stage
       // advance (via onSent) together with the cap counter in one KV put; a
@@ -2576,6 +2650,80 @@ async function checkAndBroadcastEvents(env) {
         tail: cfg.refEventEnd ? pt(lang, 'evt.refEventTail') : '',
       }));
     }
+  }
+}
+
+// Weekly finale (Phase 2): once, shortly after the Monday-00:00-UTC boundary,
+// close out the week that just ended — award the top-3 a temporary ×2 boost
+// [weekly top-3 reward] and push the top-N their final place + a new-week invite
+// [week summary]. Runs from the same 15-min cron; a KV marker makes it fire
+// exactly once per week.
+async function checkWeekClose(env) {
+  const now = Date.now();
+  const endedWeek = weekId(now) - 1; // the week that just closed
+  const marker = `weekclose:${endedWeek}`;
+  if (await env.USERS.get(marker)) return; // already processed this close
+
+  // Only award within the grace window after a real boundary — a mid-week deploy
+  // would otherwise "close" a week that was never tracked. Outside it, just mark
+  // the week processed (no-op) so future real boundaries work cleanly.
+  if (now - weekStartMs(now) > WEEK_CLOSE_GRACE_MS) {
+    await env.USERS.put(marker, '1', { expirationTtl: 40 * 24 * 3600 });
+    return;
+  }
+  // Claim the marker up front so an overlapping cron tick can't double-award.
+  await env.USERS.put(marker, '1', { expirationTtl: 40 * 24 * 3600 });
+
+  // Final standings of the ended week, from KV metadata: a player's ended-week
+  // figures are either still in weekly* (they haven't checked in since the
+  // boundary) or preserved in prevWeek* (they rebased after it). The union covers
+  // everyone. We keep each row's KV key + metadata so the summary push can route
+  // through maybeSendPush (which needs them for the daily cap).
+  const standings = [];
+  let cursor;
+  for (;;) {
+    const list = await env.USERS.list({ prefix: 'user:', cursor });
+    for (const k of list.keys) {
+      const d = k.metadata;
+      if (!d || !d.chatId) continue;
+      let wp = 0, wb = 0, hit = false;
+      if (d.lbWeekId === endedWeek) { wp = d.weeklyPrestige || 0; wb = d.weeklyBaked || 0; hit = true; }
+      else if (d.prevWeekId === endedWeek) { wp = d.prevWeekPrestige || 0; wb = d.prevWeekBaked || 0; hit = true; }
+      if (hit && (wp > 0 || wb > 0)) standings.push({ key: k.name, meta: d, chatId: d.chatId, lang: d.lang || 'en', wp, wb });
+    }
+    if (list.list_complete || !list.cursor) break;
+    cursor = list.cursor;
+  }
+  if (!standings.length) return;
+  standings.sort((a, b) => (b.wp - a.wp) || (b.wb - a.wb));
+
+  const cap = (await getEconomyConfig(env)).dailyPushCap;
+
+  // Reward: the top-3 get a tiered ×2 production boost via the same server-owned
+  // boost2x window as the paid/ad boosts — delivered on their next checkin.
+  if (env.DB) {
+    for (let i = 0; i < Math.min(3, standings.length); i++) {
+      const hrs = WEEK_PRIZE_BOOST_HOURS[i];
+      if (hrs > 0) {
+        try {
+          const until = now + hrs * 3600 * 1000;
+          await env.DB.prepare('UPDATE users SET boost2x_expires_at = MAX(COALESCE(boost2x_expires_at, 0), ?) WHERE user_id = ?')
+            .bind(until, standings[i].chatId).run();
+        } catch (e) { console.log('week prize grant failed', standings[i].chatId, e); }
+      }
+    }
+  }
+
+  // Summary: tell the top-N their final place + invite them into the new week.
+  // The top-3 get the prize note. Capped + best-effort.
+  const summaryN = Math.min(WEEK_SUMMARY_TOP_N, standings.length);
+  for (let i = 0; i < summaryN; i++) {
+    const s = standings[i];
+    const place = i + 1;
+    const text = i < 3
+      ? pt(s.lang, 'push.weekSummaryWinner', { place, h: WEEK_PRIZE_BOOST_HOURS[i] })
+      : pt(s.lang, 'push.weekSummary', { place });
+    await maybeSendPush(env, s.key, s.meta, text, s.lang, cap);
   }
 }
 
@@ -2812,6 +2960,15 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(Promise.all([runPushCycle(env), checkAndBroadcastEvents(env)]));
+    // Run the sweeps SEQUENTIALLY, not concurrently: runPushCycle, the event
+    // broadcast, and the week-close all read-modify-write the same per-user KV
+    // metadata (pushCount cap counter, rank snapshot). Interleaving their awaits
+    // would race and lose updates. Week-close first so the week-summary push gets
+    // first claim on each user's daily cap budget.
+    ctx.waitUntil((async () => {
+      await checkWeekClose(env);
+      await runPushCycle(env);
+      await checkAndBroadcastEvents(env);
+    })());
   },
 };

@@ -36,7 +36,7 @@
       'top.boost2x': '⚡ ×2 производство · ещё {t}',
       'top.offlineBoost': '🚀 Офлайн без ограничений · ещё {t}', 'top.offline100': '💤 Офлайн 100%: {t}',
       'top.rank': '🏆 #{n}', 'top.rankOf': '🏆 #{n} из {total}',
-      'time.h': 'ч', 'time.m': 'мин', 'time.s': 'сек', 'evt.remain': 'осталось {t}',
+      'time.h': 'ч', 'time.m': 'мин', 'time.s': 'сек', 'time.d': 'д', 'evt.remain': 'осталось {t}',
       // Settings
       'set.head': '⚙️ Настройки', 'set.lang': 'Язык', 'set.syncTitle': 'Синхронизация между устройствами',
       'set.push': '⬆️ Отправить в облако', 'set.pull': '⬇️ Загрузить из облака',
@@ -117,6 +117,7 @@
       'lb.criterionWeek': 'Ранг за неделю: по вознесениям, затем по выпечке',
       'lb.weekAsc': '⭐ +{n} {w} за неделю', 'lb.weekBakedLabel': '🍪 испечено за неделю',
       'lb.perWeek': 'за нед.', 'lb.emptyWeek': 'На этой неделе пока никто не отметился — стань первым!',
+      'lb.weekTimer': '⏳ Неделя закончится через {t}',
       'lb.empty': 'Пока никого нет — станьте первым!', 'lb.loading': 'Загрузка…',
       'lb.comingSoon': 'Лидерборд скоро появится', 'lb.loadFail': 'Не удалось загрузить лидерборд. Попробуйте позже.',
       'lb.refActive': '🤝 активных друзей', 'lb.refWord': '{word}',
@@ -193,7 +194,7 @@
       'top.boost2x': '⚡ ×2 production · {t} left',
       'top.offlineBoost': '🚀 Offline uncapped · {t} left', 'top.offline100': '💤 Offline 100%: {t}',
       'top.rank': '🏆 #{n}', 'top.rankOf': '🏆 #{n} of {total}',
-      'time.h': 'h', 'time.m': 'm', 'time.s': 's', 'evt.remain': '{t} left',
+      'time.h': 'h', 'time.m': 'm', 'time.s': 's', 'time.d': 'd', 'evt.remain': '{t} left',
       'set.head': '⚙️ Settings', 'set.lang': 'Language', 'set.syncTitle': 'Sync across devices',
       'set.push': '⬆️ Save to cloud', 'set.pull': '⬇️ Load from cloud',
       'set.hint': 'If your devices show different numbers, tap “Save” on the one whose progress you want to keep, and “Load” on the others. Before loading or resetting, this device’s current progress is automatically backed up.',
@@ -261,6 +262,7 @@
       'lb.criterionWeek': 'This week: by ascensions, then by cookies baked',
       'lb.weekAsc': '⭐ +{n} {w} this week', 'lb.weekBakedLabel': '🍪 baked this week',
       'lb.perWeek': '/wk', 'lb.emptyWeek': 'No one has scored yet this week — be the first!',
+      'lb.weekTimer': '⏳ Week ends in {t}',
       'lb.empty': 'No one here yet — be the first!', 'lb.loading': 'Loading…',
       'lb.comingSoon': 'Leaderboard coming soon', 'lb.loadFail': 'Couldn’t load the leaderboard. Try again later.',
       'lb.refActive': '🤝 active friends', 'lb.refWord': '{word}',
@@ -1115,6 +1117,8 @@
           saveState();
           renderTopbar();
         }
+        // Keep the week-reset countdown fresh even before the Top tab is opened.
+        if (data && Number.isFinite(data.weekEndsAt)) weekEndsAtMs = data.weekEndsAt;
       })
       .catch(() => {});
   }
@@ -1390,6 +1394,29 @@
     renderLeaderboardView();
   }
 
+  // Countdown to the weekly reset (feature: week timer). weekEndsAtMs is refreshed
+  // from every /leaderboard and /checkin response; the ticker below updates the
+  // label each second while the Top tab is open.
+  let weekEndsAtMs = 0;
+  function fmtWeekLeft(ms) {
+    const secs = Math.max(0, Math.floor(ms / 1000));
+    const d = Math.floor(secs / 86400), h = Math.floor((secs % 86400) / 3600);
+    const m = Math.floor((secs % 3600) / 60), s = secs % 60;
+    if (d > 0) return `${d}${t('time.d')} ${h}${t('time.h')}`;
+    if (h > 0) return `${h}${t('time.h')} ${m}${t('time.m')}`;
+    if (m > 0) return `${m}${t('time.m')} ${s}${t('time.s')}`;
+    return `${s}${t('time.s')}`;
+  }
+  function updateWeekTimer() {
+    if (!el.weekTimer) return;
+    const onTop = document.body.dataset.activeTab === 'leaderboard';
+    if (!onTop || !weekEndsAtMs) { el.weekTimer.hidden = true; return; }
+    const left = weekEndsAtMs - Date.now();
+    if (left <= 0) { el.weekTimer.hidden = true; return; } // rolled over; next load refreshes it
+    el.weekTimer.textContent = t('lb.weekTimer', { t: fmtWeekLeft(left) });
+    el.weekTimer.hidden = false;
+  }
+
   function loadLeaderboard() {
     el.leaderboardList.innerHTML = `<div class="empty-hint">${t('lb.loading')}</div>`;
     renderLeaderboardSelf(null);
@@ -1416,8 +1443,10 @@
           return;
         }
         if (Number.isFinite(data.pioneerLimit)) leaderboardPioneerLimit = data.pioneerLimit;
+        if (Number.isFinite(data.weekEndsAt)) weekEndsAtMs = data.weekEndsAt;
         lbData = data;
         renderLeaderboardView();
+        updateWeekTimer();
         // Celebrate a climb since the last time this tab was open (feature: live
         // rank-change). Uses the server's authoritative global rank.
         maybeShowRankJump(Number.isFinite(data.myRank) ? data.myRank : (data.self && data.self.rank));
@@ -2383,6 +2412,7 @@
     leaderboardList: document.getElementById('leaderboardList'),
     leaderboardSelf: document.getElementById('leaderboardSelf'),
     rankJumpBurst: document.getElementById('rankJumpBurst'),
+    weekTimer: document.getElementById('weekTimer'),
     leaderboardToggle: document.getElementById('leaderboardToggle'),
     lbToggleGlobal: document.getElementById('lbToggleGlobal'),
     lbToggleCountry: document.getElementById('lbToggleCountry'),
@@ -3519,7 +3549,7 @@
       // Drives the layout shrink: on non-buildings tabs the decorative cookie
       // collapses (CSS body[data-active-tab]) so the tab content gets the room.
       document.body.dataset.activeTab = btn.dataset.tab;
-      if (btn.dataset.tab === 'leaderboard') { sendCheckin(); loadLeaderboard(); }
+      if (btn.dataset.tab === 'leaderboard') { sendCheckin(); loadLeaderboard(); updateWeekTimer(); }
       if (btn.dataset.tab === 'friends') { sendCheckin(); loadReferralLeaderboard(); renderFriendsTab(); }
       if (btn.dataset.tab === 'upgrades') markUpgradeHintSeen(); // they followed the step-1 nudge
     });
@@ -3637,6 +3667,7 @@
   updateEventBanner();
   setInterval(updateEventBanner, 1000);
   setInterval(updateRefEventBanner, 1000);
+  setInterval(updateWeekTimer, 1000);
   setInterval(() => {
     renderOfflineInfo();
     // Keep an open header popup's offer labels fresh (extend-vs-buy, ad limit).

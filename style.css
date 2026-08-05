@@ -1353,6 +1353,20 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
 /* Two stacked Top-tab toggles (period + geo) need a little breathing room. */
 #leaderboardPeriodToggle { margin-bottom: 8px; }
 
+/* Countdown to the weekly reset (feature: week timer) — a calm, always-present
+   line above the toggles; tightens the urgency as the number shrinks. */
+.week-timer {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--hint);
+  text-align: center;
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+}
+
 /* Momentum "hot movers" (feature): the board's biggest climbers this hour —
    warm/red so it reads as heat, distinct from the gold rival hint. */
 .lb-momentum {
