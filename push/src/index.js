@@ -322,7 +322,8 @@ const REFERRER_BONUS_MIN = 200; // floor, for referrers with ~0 cps so far
 // bonus (cps × minutes, floored) so it stays meaningful across progression, and
 // tunable via the D1 `config` table (channel_bonus_chat / _seconds / _min).
 // Defaults below are the fallback if those rows are missing.
-const CHANNEL_BONUS_CHAT_DEFAULT = '@bestcookieclicker'; // channel to verify membership of
+const CHANNEL_BONUS_CHAT_DEFAULT = '@bestcookieclicker';    // EN channel to verify membership of
+const CHANNEL_BONUS_CHAT_RU_DEFAULT = '@bestcookiclickerru'; // RU channel (⚠ handle has a typo, kept intentionally)
 const CHANNEL_BONUS_SECONDS_DEFAULT = 600; // cps × 10 min
 const CHANNEL_BONUS_MIN_DEFAULT = 500;     // flat floor for low-cps players
 // getChatMember statuses that count as "subscribed".
@@ -430,14 +431,15 @@ async function getEconomyConfig(env) {
     refEventStart: 0, // ms epoch; 0 = no lower bound
     refEventEnd: 0,   // ms epoch; 0 = no upper bound
     // One-time channel-subscription bonus (see CHANNEL_BONUS_* defaults).
-    channelBonusChat: CHANNEL_BONUS_CHAT_DEFAULT,
+    channelBonusChat: CHANNEL_BONUS_CHAT_DEFAULT,     // EN channel
+    channelBonusChatRu: CHANNEL_BONUS_CHAT_RU_DEFAULT, // RU channel
     channelBonusSeconds: CHANNEL_BONUS_SECONDS_DEFAULT,
     channelBonusMin: CHANNEL_BONUS_MIN_DEFAULT,
   };
   if (env.DB) {
     try {
       const rows = await env.DB.prepare(
-        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end', 'channel_bonus_chat', 'channel_bonus_seconds', 'channel_bonus_min')"
+        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end', 'channel_bonus_chat', 'channel_bonus_chat_ru', 'channel_bonus_seconds', 'channel_bonus_min')"
       ).all();
       const map = {};
       const rawMap = {};
@@ -452,6 +454,7 @@ async function getEconomyConfig(env) {
       if (Number.isFinite(map.ref_event_start)) cfg.refEventStart = map.ref_event_start;
       if (Number.isFinite(map.ref_event_end)) cfg.refEventEnd = map.ref_event_end;
       if (typeof rawMap.channel_bonus_chat === 'string' && rawMap.channel_bonus_chat.trim()) cfg.channelBonusChat = rawMap.channel_bonus_chat.trim();
+      if (typeof rawMap.channel_bonus_chat_ru === 'string' && rawMap.channel_bonus_chat_ru.trim()) cfg.channelBonusChatRu = rawMap.channel_bonus_chat_ru.trim();
       if (Number.isFinite(map.channel_bonus_seconds) && map.channel_bonus_seconds >= 0) cfg.channelBonusSeconds = map.channel_bonus_seconds;
       if (Number.isFinite(map.channel_bonus_min) && map.channel_bonus_min >= 0) cfg.channelBonusMin = map.channel_bonus_min;
     } catch (e) { /* table may not exist yet — fall back to defaults */ }
@@ -650,8 +653,10 @@ async function handleTelegramWebhook(request, env) {
       await captureAttribution(env, userId, startParam);
     }
     // Localized welcome reply with the "open game" button (lang from Telegram).
+    // Channel hook routes by language: RU users see the RU channel, EN the EN one.
     const lang = langFromCode(msg.from.language_code);
-    await sendPush(env, userId, pt(lang, 'start.welcome'), lang);
+    const chLink = lang === 'ru' ? 'https://t.me/bestcookiclickerru' : CHANNEL_LINK;
+    await sendPush(env, userId, pt(lang, 'start.welcome', { link: chLink }), lang);
   } else if (msg && msg.text && msg.from) {
     // Other slash commands (menu is set in BotFather; here are the replies). They
     // work right in the chat — no mini-app needed. `/help@botname` is normalized.
@@ -876,11 +881,18 @@ function bucketCounts(values, defs) {
 const DAY_MS = 86400000;
 
 // GET /retention?key=<ADMIN_KEY>[&source=][&country=]&cohort=YYYY-MM-DD|all —
-// classic day-N retention curve. Cohort = users (matching filters) who actually
-// entered the app (>=1 app_open); day 0 = their first_seen day. Dn = share of the
-// cohort with any activity on their calendar day (first_seen + N). A user only
-// counts toward Dn once their day N has fully passed; if NO cohort member is that
-// mature yet, Dn = null. app_open is logged on every checkin, so events == activity.
+// day-N retention. Cohort = users (matching filters) who actually entered the app
+// (>=1 app_open); day 0 = their first_seen day. Dn = share with any activity on
+// their calendar day (first_seen + N). A user counts toward Dn only once their
+// day N has fully passed. app_open is logged on every checkin, so events == activity.
+//
+// TWO RESPONSE SHAPES, by cohort:
+//   cohort=YYYY-MM-DD → honest single-cohort curve: retention.dN = rate (or null).
+//   cohort=all        → BLENDED SNAPSHOT, not a real curve. Each dN = {rate, base}
+//     where base = how many cohort members have reached day N. The base shrinks
+//     as N grows (only older users are mature), so a bare rate on a tiny base can
+//     look like retention "rising" — base makes that visible. base=0 → rate=null.
+//     For a true curve, query a specific cohort date.
 async function handleRetention(request, env) {
   const url = new URL(request.url);
   if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
@@ -921,17 +933,26 @@ async function handleRetention(request, env) {
       s.add(r.off);
     }
 
+    // For cohort=all the sample that reached day N shrinks with N (only older
+    // users are that mature), so a bare rate on a tiny surviving base looks like
+    // retention "rising" with N. Expose `base` (how many reached day N) alongside
+    // `rate` so a thin base is obvious. `rate` is the size-weighted blend across
+    // cohorts (pooling every day-N-mature user == weighting each cohort by its
+    // mature count). A single-date cohort has a uniform base, so it keeps the
+    // plain-rate shape (an honest single-cohort curve) — unchanged for callers.
+    const blended = cohortDay === null;
     const retention = {};
     for (const N of [1, 2, 3, 7, 14, 30]) {
-      let mature = 0, active = 0;
+      let base = 0, active = 0; // base = cohort members who have reached day N
       for (const c of cohort) {
         if (c.fday + N <= todayDay) { // day N has fully passed for this user
-          mature++;
+          base++;
           const s = offsetsByUid.get(c.uid);
           if (s && s.has(N)) active++;
         }
       }
-      retention['d' + N] = mature > 0 ? Math.round((active / mature) * 1000) / 1000 : null;
+      const rate = base > 0 ? Math.round((active / base) * 1000) / 1000 : null;
+      retention['d' + N] = blended ? { rate, base } : rate;
     }
     return jsonResponse({ ok: true, source: f.rawSource, country: f.country, cohort: cohortRaw, cohort_size: cohortSize, retention });
   } catch (e) { return jsonResponse({ ok: false, error: 'db', detail: String(e) }, 500); }
@@ -1192,17 +1213,26 @@ async function handleClaimChannelBonus(request, env) {
   } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
 
   const cfg = await getEconomyConfig(env);
-  const chat = cfg.channelBonusChat;
-  if (!chat) return jsonResponse({ ok: true, status: 'not_configured' });
+  // We run two language channels (EN + RU). The bonus is granted for subscribing
+  // to EITHER of our channels — more forgiving than routing by language_code
+  // (which can be missing/stale) and still requires a genuine subscription, so
+  // it can't be gamed. Acquisition routing (which link a user is shown) is done
+  // separately in the /start welcome; the grant just accepts any of ours.
+  const chats = [...new Set([cfg.channelBonusChat, cfg.channelBonusChatRu].filter(c => c && c.trim()))];
+  if (!chats.length) return jsonResponse({ ok: true, status: 'not_configured' });
 
   // Membership check. For a PUBLIC channel getChatMember works with @username;
   // NOTE: in practice the bot usually must be an admin of the channel for this
   // call to see arbitrary members (we make it admin anyway for auto-posting). If
-  // the call errors or returns left/kicked, we treat it as "not subscribed" and
-  // credit nothing.
-  const mem = await tgCall(env, 'getChatMember', { chat_id: chat, user_id: userId });
-  const status = mem && mem.ok && mem.result ? mem.result.status : null;
-  if (!CHANNEL_MEMBER_OK.includes(status)) {
+  // every call errors or returns left/kicked, we treat it as "not subscribed"
+  // and credit nothing.
+  let subscribed = false;
+  for (const chat of chats) {
+    const mem = await tgCall(env, 'getChatMember', { chat_id: chat, user_id: userId });
+    const status = mem && mem.ok && mem.result ? mem.result.status : null;
+    if (CHANNEL_MEMBER_OK.includes(status)) { subscribed = true; break; }
+  }
+  if (!subscribed) {
     return jsonResponse({ ok: true, status: 'not_subscribed' });
   }
 
@@ -1740,7 +1770,7 @@ const PUSH_STRINGS = {
     'evt.weekend': '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
     'evt.refEvent': '🎉 Событие рефералов! Награда за приглашённых друзей ×{mult}.{tail}',
     'evt.refEventTail': ' Успей позвать друзей!',
-    'start.welcome': '🍪 Привет! Это Cookie Clicker — пеки печеньки, прокачивай здания, возносись и зови друзей. Жми кнопку, чтобы начать!',
+    'start.welcome': '🍪 Привет! Это Cookie Clicker — пеки печеньки, прокачивай здания и возносись ради постоянного буста.\n👇 Жми кнопку — и погнали печь.\n📢 Гайды, топ игроков и ×2-ивенты (+ бонус подписчикам) — в канале: {link}',
     'cmd.help': '🍪 Как играть в Cookie Clicker:\n👆 Тапай печеньку — получай печеньки\n🏗 Покупай здания и апгрейды — производство растёт само\n⭐ Когда всё раскуплено — вознесись: сброс прогресса даёт постоянный бонус навсегда\n🤝 Зови друзей — получай бонус к производству за каждого активного\nОткрой игру и начинай печь!',
     'cmd.stats': '📊 Твоя статистика:\n🍪 Всего испечено: {total}\n⚡ Печенек/сек: {cps}\n⭐ Вознесений: {ascensions}\n🤝 Активных друзей: {friends}',
     'cmd.statsEmpty': '📊 Пока нет статистики — открой игру и начни печь печеньки!',
@@ -1761,7 +1791,7 @@ const PUSH_STRINGS = {
     'evt.weekend': '🎊 Cookie Weekend has started! ×1.5 production and golden cookies twice as often — all weekend.',
     'evt.refEvent': '🎉 Referral event! Reward for invited friends ×{mult}.{tail}',
     'evt.refEventTail': ' Invite friends now!',
-    'start.welcome': '🍪 Hi! This is Cookie Clicker — bake cookies, upgrade buildings, ascend, and invite friends. Tap the button to start!',
+    'start.welcome': '🍪 Hi! This is Cookie Clicker — bake cookies, upgrade buildings, and ascend for a permanent boost.\n👇 Tap the button and start baking.\n📢 Guides, top players & ×2 events (+ a subscriber bonus) — in our channel: {link}',
     'cmd.help': "🍪 How to play Cookie Clicker:\n👆 Tap the cookie to earn cookies\n🏗 Buy buildings and upgrades — production grows on its own\n⭐ Once everything's bought — ascend: resetting gives a permanent bonus forever\n🤝 Invite friends — get a production boost for each active friend\nOpen the game and start baking!",
     'cmd.stats': '📊 Your stats:\n🍪 Total baked: {total}\n⚡ Cookies/sec: {cps}\n⭐ Ascensions: {ascensions}\n🤝 Active friends: {friends}',
     'cmd.statsEmpty': '📊 No stats yet — open the game and start baking cookies!',
