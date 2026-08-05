@@ -90,6 +90,7 @@
       'fr.weekly': 'За неделю', 'fr.alltime': 'За всё время',
       // Onboarding
       'onb.clickHint': '👆 Нажми на печеньку!', 'onb.upgradeHint': 'Купи апгрейд — печеньки будут копиться быстрее',
+      'onb.welcomeBonus': '🎁 Стартовый бонус: +{n} печенек!',
       // Unlock (referral building) modal
       'unlock.title': 'Новое здание открыто!', 'unlock.place': 'Поставить',
       // Events
@@ -229,6 +230,7 @@
       'fr.rewardsHead': '🏅 Friend rewards', 'fr.lbHead': '🏆 Top by friends',
       'fr.weekly': 'This week', 'fr.alltime': 'All time',
       'onb.clickHint': '👆 Tap the cookie!', 'onb.upgradeHint': 'Buy an upgrade — cookies pile up faster',
+      'onb.welcomeBonus': '🎁 Welcome bonus: +{n} cookies!',
       'unlock.title': 'New building unlocked!', 'unlock.place': 'Place',
       'evt.happyHour': '🎉 Cookie Hour', 'evt.weekend': '🎊 Cookie Weekend',
       'ms.skin': 'Cookie skin', 'ms.bakery': 'Friendship Bakery',
@@ -399,7 +401,7 @@
     { id: 'cursor_u1', name: 'Наточенные курсоры', desc: 'Курсоры x2', icon: '✌️', cost: 100, category: 'building', buildingId: 'cursor', reqType: 'building', req: b => b.cursor >= 1, effect: s => s.cursorMult *= 2 },
     { id: 'grandma_u1', name: 'Бабушкины рецепты', desc: 'Бабушки x2', icon: '📖', cost: 1000, category: 'building', buildingId: 'grandma', reqType: 'building', req: b => b.grandma >= 1, effect: s => s.buildingMult.grandma *= 2 },
     { id: 'farm_u1', name: 'Удобрения', desc: 'Фермы x2', icon: '🌱', cost: 11000, category: 'building', buildingId: 'farm', reqType: 'building', req: b => b.farm >= 1, effect: s => s.buildingMult.farm *= 2 },
-    { id: 'click_u1', name: 'Крепкая хватка', desc: 'Сила клика x2', icon: '💪', cost: 500, category: 'click', reqType: 'clicks', reqValue: 20, req: (b, s) => s.totalClicks >= 20, effect: s => s.clickMult *= 2 },
+    { id: 'click_u1', name: 'Крепкая хватка', desc: 'Сила клика x2', icon: '💪', cost: 30, category: 'click', reqType: 'clicks', reqValue: 5, req: (b, s) => s.totalClicks >= 5, effect: s => s.clickMult *= 2 },
     { id: 'mine_u1', name: 'Новые кирки', desc: 'Шахты x2', icon: '⚒️', cost: 130000, category: 'building', buildingId: 'mine', reqType: 'building', req: b => b.mine >= 1, effect: s => s.buildingMult.mine *= 2 },
     { id: 'click_u2', name: 'Стальные пальцы', desc: 'Сила клика x2', icon: '🖐️', cost: 10000, category: 'click', reqType: 'clicks', reqValue: 200, req: (b, s) => s.totalClicks >= 200, effect: s => s.clickMult *= 2 },
     { id: 'factory_u1', name: 'Автоматизация', desc: 'Фабрики x2', icon: '⚙️', cost: 1400000, category: 'building', buildingId: 'factory', reqType: 'building', req: b => b.factory >= 1, effect: s => s.buildingMult.factory *= 2 },
@@ -694,6 +696,7 @@
   const OFFLINE_CLAIM_MIN = 100;               // absolute floor, so low-cps players aren't prompted for crumbs
   const OFFLINE_BOOST_STARS = 15;              // must match OFFLINE_BOOST_STARS in push/src/index.js
   const BOT_USERNAME = 'bestcookieclickerbot';
+  const WELCOME_BONUS = 25; // first-launch starting cookies: enough to buy the first building (Cursor, 15) at once, so activation isn't gated on a long click grind (funnel: first_click → first_upgrade drop-off)
 
   const defaultState = () => ({
     cookies: 0,
@@ -732,6 +735,7 @@
     adClickBypassViews: 0,   // ad views accumulated toward the free click-bypass (server-authoritative)
     adClickBypassTarget: 30, // views needed to unlock the click-bypass (server-authoritative)
     channelBonusClaimed: false, // one-time channel-subscription bonus taken (server-authoritative)
+    welcomeBonusGiven: false, // first-launch starting cookies granted once (activation: makes the first purchase reachable without a click grind)
   });
 
   let state = defaultState();
@@ -1296,11 +1300,36 @@
     return tc >= tl ? cloudRaw : localRaw;
   }
 
+  // First-launch activation bonus. Granted exactly once, to a genuinely NEW
+  // player (no progress of any kind), so they can make their first purchase
+  // immediately instead of grinding ~15 clicks for the first building. The
+  // `welcomeBonusGiven` flag persists in the save, so it never repeats on
+  // reopen; existing players (any prior progress) just get the flag set and no
+  // cookies. Runs after load so it sees the real state, not defaults.
+  function maybeGrantWelcomeBonus() {
+    if (state.welcomeBonusGiven) return;
+    const brandNew =
+      (state.totalBaked || 0) === 0 && (state.totalClicks || 0) === 0 &&
+      (state.lifetimeBaked || 0) === 0 && (state.ascensionCount || 0) === 0 &&
+      Object.keys(state.upgrades || {}).length === 0 &&
+      Object.values(state.buildings || {}).every(n => !n);
+    if (brandNew) {
+      state.cookies += WELCOME_BONUS;
+      state.totalBaked += WELCOME_BONUS;
+      haptic('light');
+      showToast(t('onb.welcomeBonus', { n: WELCOME_BONUS }), 4000);
+    }
+    state.welcomeBonusGiven = true; // close the door either way (grant or existing player)
+    saveState();
+    refreshAll();
+  }
+
   function loadState() {
     // Render immediately with defaults so the UI never sits blank while an async load resolves.
     refreshAll();
 
     const afterLoad = () => {
+      maybeGrantWelcomeBonus(); // brand-new players start with enough to buy immediately
       sendCheckin();
       // Offline claim card first (if there's a meaningful amount waiting), then
       // the daily reward — resolveOfflineThenDaily chains the daily after it.
@@ -2871,7 +2900,7 @@
     const showUpgrade = t.clicked && !t.upgradeHintDone &&
       (state.ascensionCount || 0) === 0 &&
       Object.keys(state.upgrades).length === 0 &&
-      state.totalClicks >= 5 && !onUpgrades && hasAffordableUpgrade();
+      state.totalClicks >= 3 && !onUpgrades && hasAffordableUpgrade();
     el.upgradeHint.hidden = !showUpgrade;
     if (upgradesTabBtn) upgradesTabBtn.classList.toggle('tutorial-pulse-tab', showUpgrade);
     if (showUpgrade) { positionUpgradeHint(); armUpgradeDismiss(); }
