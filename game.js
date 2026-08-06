@@ -778,24 +778,43 @@
   let state = defaultState();
 
   // ---------- Save / Load ----------
-  function saveState() {
+
+  // A state with no persistent run data loaded: no buildings, no upgrades, and no
+  // lifetime baked. This is exactly what a FAILED load looks like — the
+  // CloudStorage read raced past its timeout and fell back to an empty local
+  // save. Such a state must NEVER be pushed to the shared cloud (that's how a
+  // slow-cloud device wiped a real save). We key on lifetimeBaked, NOT
+  // ascensionCount: a legit just-ascended player has lifetimeBaked > 0, whereas a
+  // raced-empty load has 0 even after a checkin syncs the server's ascension
+  // count onto it (the exact trap that zeroed a device here).
+  function looksEmptyState(s) {
+    if (!s) return true;
+    if ((s.lifetimeBaked || 0) > 0) return false;
+    if (Object.values(s.buildings || {}).some(n => n > 0)) return false;
+    if (Object.keys(s.upgrades || {}).length > 0) return false;
+    return true;
+  }
+
+  function saveState(opts) {
     // Stamp every save so loadState can pick the FRESHEST store. CloudStorage
     // writes are async and can lag, land out of order, or never arrive if the
     // webview closes right after (e.g. right after an ascension reset), while
     // localStorage is synchronous and always holds this device's latest save.
-    // Without this tag loadState preferred CloudStorage unconditionally, so a
-    // stale cloud value silently rolled progress back — most visibly a prestige
-    // reset reverting on reopen.
     state.saveTs = Date.now();
     const data = JSON.stringify(state);
+    // Anti-clobber: an empty/default state (a failed/raced load) must not
+    // overwrite the SHARED CloudStorage save. localStorage (device-local) is
+    // always written. Intentional wipes (a full reset) pass { force: true } so
+    // the empty state does persist to the cloud.
+    const force = !!(opts && opts.force);
     if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-      tg.CloudStorage.setItem(SAVE_KEY, data, (err, success) => {
-        // Swallowed everywhere before — a device whose CloudStorage save
-        // silently failed just diverged from every other device forever,
-        // with no way to tell why. Not toasting here (autosave runs every
-        // 10s, would spam) but at least it's visible in devtools.
-        if (err || success === false) console.warn('CloudStorage save failed:', err);
-      });
+      if (!force && looksEmptyState(state)) {
+        console.warn('CloudStorage save skipped: empty state (anti-clobber guard)');
+      } else {
+        tg.CloudStorage.setItem(SAVE_KEY, data, (err, success) => {
+          if (err || success === false) console.warn('CloudStorage save failed:', err);
+        });
+      }
     }
     try { localStorage.setItem(SAVE_KEY, data); } catch (e) {}
   }
@@ -1612,9 +1631,28 @@
 
     if (cloudStorageUsable()) {
       let settled = false;
-      const fallbackTimer = setTimeout(() => { if (!settled) { settled = true; finish(null); } }, 1500);
+      // 5s (was 1.5s): a slow CloudStorage response is the whole failure mode
+      // here — timing out too early loaded an empty save and (before the
+      // anti-clobber guard) let it wipe the real cloud save. Longer wait = far
+      // fewer empty loads; the UI already shows defaults immediately (refreshAll
+      // above), so the extra wait isn't a blank screen.
+      const fallbackTimer = setTimeout(() => { if (!settled) { settled = true; finish(null); } }, 5000);
       tg.CloudStorage.getItem(SAVE_KEY, (err, value) => {
-        if (settled) return;
+        if (settled) {
+          // The fallback already resolved (cloud was slow). If the cloud reply
+          // finally arrived with a REAL save and we're still sitting on an
+          // empty/default state (no progress made since), recover it now — turns
+          // a raced-empty load back into the real save instead of leaving a
+          // scary blank game. The anti-clobber guard already protected the cloud
+          // copy in the meantime.
+          if (!err && value && looksEmptyState(state)) {
+            try {
+              const cloudData = JSON.parse(value);
+              if (!looksEmptyState(cloudData)) { applyLoaded(value, { grantOfflineProgress: false }); refreshAll(); }
+            } catch (e) { /* corrupt cloud value — keep current */ }
+          }
+          return;
+        }
         settled = true;
         clearTimeout(fallbackTimer);
         finish(!err ? value : null);
@@ -3499,7 +3537,7 @@
     if (!(await confirmDialog(t('confirm.reset')))) return;
     backupCurrentState();
     state = defaultState();
-    saveState();
+    saveState({ force: true }); // intentional wipe — persist the empty state to the cloud (bypass the anti-clobber guard)
     refreshAll();
   }
 
