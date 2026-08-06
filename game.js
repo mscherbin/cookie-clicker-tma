@@ -48,6 +48,9 @@
       'shop.nocap': '🚀 Снять кап офлайна на 24ч · {n} ⭐', 'shop.nocapExtend': 'Продлить ещё на 24ч · {n} ⭐',
       'shop.boost2x': '⚡ ×2 производство на 1ч · {n} ⭐', 'shop.boost2xExtend': 'Продлить ×2 ещё на 1ч · {n} ⭐',
       'shop.starter': '🎁 Стартовый пак · разовый · {n} ⭐', 'shop.starterOwned': '🎁 Стартовый пак · Куплено ✓',
+      'shop.status': '👑 Статус в топе · {n} ⭐', 'shop.statusOwned': '👑 Статус в топе · Куплено ✓',
+      'shop.statusHead': '👑 Статус в топе', 'shop.statusDesc': 'Золотой ник, корона и флейр в таблице лидеров — видят все. На геймплей не влияет.',
+      'status.flairPick': 'Твой флейр (меняется в любой момент):', 'status.flairPrepick': 'Выбери флейр (применится после покупки):', 'status.flairSaved': '👑 Флейр обновлён',
       'shop.perm': '🌟 +10% к производству навсегда · {n} ⭐', 'shop.permOwned': '🌟 +10% навсегда · Куплено ✓',
       'shop.clickBypass': '⚡ Открыть клик-апгрейды без кликов · {n} ⭐', 'shop.clickBypassOwned': '⚡ Клик-апгрейды без кликов · Куплено ✓',
       'shop.adNocap': '📺 +2ч без капа за рекламу', 'shop.adBoost2x': '📺 +15 мин ×2 за рекламу',
@@ -111,6 +114,7 @@
       // Leaderboard
       'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Ранг: по числу перерождений, затем по скорости производства',
       'lb.lifetime': '🍪 {n} за всё время', 'lb.perSec': 'печ/сек', 'lb.pioneer': '🚩 Пионер',
+      'lb.flexCta': '✨ Выделиться в топе · 150 ⭐',
       'lb.you': 'Ты', 'lb.yourPlace': 'Твоё место', 'lb.selfOf': 'из {total}',
       'lb.global': '🌍 Все', 'lb.myCountry': 'Моя страна', 'lb.friendsView': '🤝 Друзья',
       'lb.emptyFriends': 'Позови друзей — и соревнуйтесь, кто продвинется дальше!',
@@ -165,6 +169,7 @@
       'toast.offlineX2Credited': '🍪 ×2 офлайн-доход начислен: +{n}', 'toast.nocapOn': '🚀 Кап офлайна снят на 24 часа!',
       'toast.boost2xOn': '⚡ ×2 производство активно на 1 час!', 'toast.permOn': '🌟 +10% к производству навсегда!',
       'toast.starterOn': '🎁 Стартовый пак активирован — печеньки заброшены, ×2 на 4 часа!',
+      'toast.statusOn': '👑 Статус в топе активирован — твой ник теперь выделяется для всех!',
       'toast.clickBypassOn': '⚡ Клик-апгрейды открыты без кликов!', 'toast.upgradeUnlockedGeneric': '🔓 Апгрейд разблокирован!',
       'toast.lbPrestige': '{n} {word} — постоянный бонус +{x}% к производству',
       'toast.lbPioneer': 'Один из первых {n} игроков, кто вознёсся — эксклюзивный титул, больше не выдаётся',
@@ -176,6 +181,7 @@
       'toast.payBoost2x': 'Оплата принята — включаем ×2…', 'toast.alreadyOwned': 'Уже куплено ✓',
       'toast.payPerm': 'Оплата принята — активируем +10%…', 'toast.payClickBypass': 'Оплата принята — открываем клик-апгрейды…',
       'toast.payStarter': 'Оплата принята — выдаём стартовый пак…',
+      'toast.payStatus': 'Оплата принята — включаем статус в топе…',
       'toast.alreadyUnlocked': 'Уже разблокировано ✓', 'toast.payUpgradeSkip': 'Оплата принята — открываем «{name}»…',
       'toast.buildingPlaced': '{icon} {name} установлена!', 'toast.prestigeSoonNudge': 'Осталось: {rest} — купи, и откроется вознесение',
       'toast.boughtNamed': 'Куплено: {name}', 'toast.offlineHint': '🍪 Печеньки копятся, даже когда ты вышел — загляни попозже за добычей',
@@ -209,6 +215,9 @@
       'shop.nocap': '🚀 Remove offline cap for 24h · {n} ⭐', 'shop.nocapExtend': 'Extend by 24h · {n} ⭐',
       'shop.boost2x': '⚡ ×2 production for 1h · {n} ⭐', 'shop.boost2xExtend': 'Extend ×2 by 1h · {n} ⭐',
       'shop.starter': '🎁 Starter pack · one-time · {n} ⭐', 'shop.starterOwned': '🎁 Starter pack · Owned ✓',
+      'shop.status': '👑 Top status · {n} ⭐', 'shop.statusOwned': '👑 Top status · Owned ✓',
+      'shop.statusHead': '👑 Status in the top', 'shop.statusDesc': 'Gold name, crown and flair in the leaderboard — everyone sees it. No gameplay effect.',
+      'status.flairPick': 'Your flair (change anytime):', 'status.flairPrepick': 'Pick a flair (applied after purchase):', 'status.flairSaved': '👑 Flair updated',
       'shop.perm': '🌟 +10% production forever · {n} ⭐', 'shop.permOwned': '🌟 +10% forever · Owned ✓',
       'shop.clickBypass': '⚡ Unlock click upgrades without clicks · {n} ⭐', 'shop.clickBypassOwned': '⚡ Click upgrades without clicks · Owned ✓',
       'shop.adNocap': '📺 +2h no cap for an ad', 'shop.adBoost2x': '📺 +15 min ×2 for an ad',
@@ -261,6 +270,7 @@
       'fr.offlineExtra': '{cap} · +{extra} from friends',
       'lb.explainer': '🏅 {crit}', 'lb.criterion': 'Rank: by ascensions, then by production speed',
       'lb.lifetime': '🍪 {n} all-time', 'lb.perSec': '/sec', 'lb.pioneer': '🚩 Pioneer',
+      'lb.flexCta': '✨ Stand out in the top · 150 ⭐',
       'lb.you': 'You', 'lb.yourPlace': 'Your place', 'lb.selfOf': 'of {total}',
       'lb.global': '🌍 Global', 'lb.myCountry': 'My country', 'lb.friendsView': '🤝 Friends',
       'lb.emptyFriends': 'Invite friends — then race to see who climbs higher!',
@@ -313,6 +323,7 @@
       'toast.offlineX2Credited': '🍪 ×2 offline income credited: +{n}', 'toast.nocapOn': '🚀 Offline cap removed for 24 hours!',
       'toast.boost2xOn': '⚡ ×2 production active for 1 hour!', 'toast.permOn': '🌟 +10% production forever!',
       'toast.starterOn': '🎁 Starter pack activated — cookies delivered, ×2 for 4 hours!',
+      'toast.statusOn': '👑 Top status activated — your name now stands out to everyone!',
       'toast.clickBypassOn': '⚡ Click upgrades unlocked without clicks!', 'toast.upgradeUnlockedGeneric': '🔓 Upgrade unlocked!',
       'toast.lbPrestige': '{n} {word} — permanent +{x}% production bonus',
       'toast.lbPioneer': 'One of the first {n} players to ascend — an exclusive title, no longer awarded',
@@ -324,6 +335,7 @@
       'toast.payBoost2x': 'Payment accepted — enabling ×2…', 'toast.alreadyOwned': 'Already purchased ✓',
       'toast.payPerm': 'Payment accepted — activating +10%…', 'toast.payClickBypass': 'Payment accepted — unlocking click upgrades…',
       'toast.payStarter': 'Payment accepted — delivering your starter pack…',
+      'toast.payStatus': 'Payment accepted — enabling your top status…',
       'toast.alreadyUnlocked': 'Already unlocked ✓', 'toast.payUpgradeSkip': 'Payment accepted — unlocking "{name}"…',
       'toast.buildingPlaced': '{icon} {name} placed!', 'toast.prestigeSoonNudge': 'Remaining: {rest} — buy it to unlock ascension',
       'toast.boughtNamed': 'Purchased: {name}', 'toast.offlineHint': '🍪 Cookies pile up even while you are away — come back later for your loot',
@@ -717,6 +729,10 @@
   const CLICK_BYPASS_STARS = 100; // must match CLICK_BYPASS_STARS in push/src/index.js
   const CREATE_STARTER_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-starter-invoice';
   const STARTER_PACK_STARS = 3; // must match STARTER_PACK_STARS in push/src/index.js (one-time starter pack, #60)
+  const CREATE_STATUS_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-status-invoice';
+  const SET_STATUS_FLAIR_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/set-status-flair';
+  const STATUS_FLEX_STARS = 150; // must match STATUS_FLEX_STARS in push/src/index.js (one-time cosmetic status, #52)
+  const STATUS_FLAIRS = ['🔥', '💎', '⚡', '🚀', '❤️', '🪐']; // must match STATUS_FLAIRS in push/src/index.js
   const CREATE_UPGRADE_SKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-upgrade-skip-invoice';
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
   const CLAIM_CHANNEL_BONUS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/claim-channel-bonus';
@@ -772,6 +788,8 @@
     hasClickBypass: false, // one-time paid "skip the click-count requirement on click upgrades"; server-authoritative
     hasStarterPack: false, // one-time paid "starter pack" (#60); server-authoritative
     starterPopupShown: false, // the one-time contextual starter-pack popup has been surfaced (never before the first click)
+    hasStatusFlex: false, // one-time paid cosmetic leaderboard status (#52); server-authoritative
+    statusFlair: null, // chosen flair emoji (null = crown only); server-authoritative
     lifetimeBaked: 0, // cookies baked across ALL past runs (never reset on ascend); + current totalBaked = lifetime total
     paidUnlockedUpgrades: [], // upgrade ids whose progress gate was skipped via a paid Stars purchase; server-authoritative
     lang: detectLang(), // 'ru'|'en'; auto from Telegram language_code on first load, then persisted (overridable in Settings)
@@ -1132,6 +1150,18 @@
           refreshAll();
           if (!wasOwned && data.hasStarterPack) showToast(t('toast.starterOn'), 4000);
         }
+        // Status-flex flag + flair (server-authoritative, #52): cosmetic only. Flip
+        // the shop card / flair picker to owned and refresh the flex CTA. The flair
+        // may change on the server (owner picked a new one on another device).
+        if (data && typeof data.hasStatusFlex === 'boolean' &&
+            (data.hasStatusFlex !== !!state.hasStatusFlex || (data.statusFlair || null) !== (state.statusFlair || null))) {
+          const wasOwned = !!state.hasStatusFlex;
+          state.hasStatusFlex = data.hasStatusFlex;
+          state.statusFlair = data.statusFlair || null;
+          saveState();
+          refreshAll();
+          if (!wasOwned && data.hasStatusFlex) showToast(t('toast.statusOn'), 4000);
+        }
         // Per-upgrade paid skips (server-authoritative list of upgrade ids).
         if (data && Array.isArray(data.paidUnlockedUpgrades)) {
           const cur = Array.isArray(state.paidUnlockedUpgrades) ? state.paidUnlockedUpgrades : [];
@@ -1269,6 +1299,17 @@
   // a medal / number / "#N"; opts.me adds the highlight, opts.nameOverride swaps
   // the display name (e.g. "Ты" for the self row), opts.subExtra appends to the
   // lifetime sub-line (e.g. "of 231").
+  // #52 paid COSMETIC flex: wrap a board name in gold + 👑 crown (before) + flair
+  // emoji (after) when the entry owns the status. Only the NAME goes gold — the
+  // earned ⭐×N and title chips stay neutral (separate, un-devalued axis). Flair is
+  // whitelisted client-side too (defence in depth; the server already validates).
+  // Shared by every board renderer so the flex looks identical in all three tops.
+  function flexName(entry, nameHtml) {
+    if (!entry || !entry.hasStatusFlex) return nameHtml;
+    const flair = STATUS_FLAIRS.includes(entry.statusFlair) ? entry.statusFlair : '';
+    return `<span class="lb-flex-name">👑 ${nameHtml}${flair ? ` <span class="lb-flex-flair">${flair}</span>` : ''}</span>`;
+  }
+
   function leaderboardRowHtml(entry, rankLabel, opts = {}) {
     const rt = titleFor(entry.maxActiveFriendsEver);
     const refTitleHtml = rt ? `<span class="lb-title">${rt.icon} ${escapeHtml(t(rt.nameKey))}</span>` : '';
@@ -1280,6 +1321,7 @@
     const pTitle = prestigeTitleForTier(p + 1);
     const prestigeTitleHtml = pTitle ? `<span class="lb-title lb-epoch">${pTitle.icon} ${escapeHtml(t(pTitle.nameKey))}</span>` : '';
     const name = opts.nameOverride != null ? opts.nameOverride : escapeHtml(entry.name);
+    const nameHtml = flexName(entry, name); // #52: gold name + crown + flair when the entry owns the paid status
     // Weekly view (Task #40): the score is cookies baked THIS week and the sub
     // line leads with ascensions THIS week (the primary weekly rank key). All-
     // time view: current CPS as the score, lifetime cookies as the sub.
@@ -1303,7 +1345,7 @@
           <div class="leaderboard-row${opts.me ? ' me' : ''}">
             <div class="leaderboard-rank">${rankLabel}</div>
             <div class="leaderboard-info">
-              <div class="leaderboard-name">${prestigeHtml}${name}${pioneerHtml}${prestigeTitleHtml}${refTitleHtml}</div>
+              <div class="leaderboard-name">${prestigeHtml}${nameHtml}${pioneerHtml}${prestigeTitleHtml}${refTitleHtml}</div>
               <div class="leaderboard-total">${sub}</div>
             </div>
             <div class="leaderboard-score">${scoreHtml}</div>
@@ -1336,6 +1378,8 @@
   // Two independent toggles pick the slice: period (all / week) × geo (global /
   // country) → 4 combinations, all delivered in the one response.
   function renderLeaderboardView() {
+    // #52: subtle "stand out in the top" entry point — only for non-owners.
+    if (el.lbFlexCta) el.lbFlexCta.hidden = !!state.hasStatusFlex;
     if (!lbData) return;
     const hasCountry = !!(lbData.country && Array.isArray(lbData.countryEntries));
     // The country BUTTON only shows when the server knows our geo; the toggle row
@@ -1562,7 +1606,7 @@
         <div class="leaderboard-row${myId && entry.userId === myId ? ' me' : ''}">
           <div class="leaderboard-rank">${medals[i] || (i + 1)}</div>
           <div class="leaderboard-info">
-            <div class="leaderboard-name">${escapeHtml(entry.name)}</div>
+            <div class="leaderboard-name">${flexName(entry, escapeHtml(entry.name))}</div>
             <div class="leaderboard-total">${t('lb.refActive')}</div>
           </div>
           <div class="leaderboard-score">${formatNum(n)}<span class="leaderboard-score-unit">${friendWord(n)}</span></div>
@@ -2330,6 +2374,84 @@
     }
   }
 
+  // #52 paid COSMETIC status: gold name + crown + flair in the leaderboard. Server
+  // refuses if already owned; the flag + flair arrive via checkin (mirrors buyPerm).
+  // pendingFlair is a local pre-purchase pick (sent with the invoice); null = crown.
+  let pendingFlair = null;
+  async function buyStatusFlex() {
+    if (state.hasStatusFlex) { showToast(t('toast.alreadyOwned')); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
+    if (el.statusFlexBtn) el.statusFlexBtn.disabled = true;
+    try {
+      const resp = await fetch(CREATE_STATUS_INVOICE_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData, flair: pendingFlair || undefined }),
+      });
+      const data = await resp.json();
+      if (data && data.error === 'already_owned') {
+        state.hasStatusFlex = true; saveState(); refreshAll();
+        showToast(t('toast.alreadyOwned'));
+        return;
+      }
+      if (!data || !data.ok || !data.link) throw new Error('no_link');
+      tg.openInvoice(data.link, (status) => {
+        if (status === 'paid') {
+          // Flag + flair land via checkin and flip the card to "Owned".
+          showToast(t('toast.payStatus'), 4000);
+          pollPaidCredit();
+        } else {
+          if (el.statusFlexBtn) el.statusFlexBtn.disabled = false;
+          if (status === 'failed') showToast(t('toast.payFailed'));
+        }
+      });
+    } catch (e) {
+      if (el.statusFlexBtn) el.statusFlexBtn.disabled = false;
+      showToast(t('toast.invoiceFail'));
+    }
+  }
+
+  // Pick a flair. Before owning: a local pre-purchase pick (sent with the invoice).
+  // After owning: server-side change via /set-status-flair (owner-gated), optimistic
+  // with rollback on failure. `flair` null/invalid = crown only.
+  async function pickFlair(flair) {
+    const f = STATUS_FLAIRS.includes(flair) ? flair : null;
+    if (!state.hasStatusFlex) { pendingFlair = f; renderStatusFlairPicker(); return; }
+    if (!tg || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
+    const prev = state.statusFlair || null;
+    if (f === prev) return;
+    state.statusFlair = f; saveState(); renderStatusFlairPicker(); refreshAll();
+    try {
+      const resp = await fetch(SET_STATUS_FLAIR_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData, flair: f || '' }),
+      });
+      const data = await resp.json();
+      if (!data || !data.ok) throw new Error('failed');
+      showToast(t('status.flairSaved'), 2500);
+    } catch (e) {
+      state.statusFlair = prev; saveState(); renderStatusFlairPicker(); refreshAll();
+      showToast(t('toast.invoiceFail'));
+    }
+  }
+
+  // Render the flair picker (a row of emoji buttons + a "crown only" option) inside
+  // the Shop status card. Highlights the active choice (owned → state.statusFlair;
+  // not owned → the local pendingFlair). Labelled differently in the two states.
+  function renderStatusFlairPicker() {
+    const box = el.statusFlairPicker;
+    if (!box) return;
+    const owned = !!state.hasStatusFlex;
+    const active = owned ? (state.statusFlair || null) : pendingFlair;
+    const label = owned ? t('status.flairPick') : t('status.flairPrepick');
+    const opt = (val, inner) => `<button type="button" class="flair-btn${active === val ? ' active' : ''}" data-flair="${val == null ? '' : val}">${inner}</button>`;
+    box.innerHTML =
+      `<div class="flair-label">${label}</div>` +
+      `<div class="flair-row">` +
+        opt(null, '👑') +
+        STATUS_FLAIRS.map(f => opt(f, f)).join('') +
+      `</div>`;
+  }
+
   function addPaidUnlock(id) {
     if (!Array.isArray(state.paidUnlockedUpgrades)) state.paidUnlockedUpgrades = [];
     if (!state.paidUnlockedUpgrades.includes(id)) state.paidUnlockedUpgrades.push(id);
@@ -2408,6 +2530,16 @@
         const owned = !!state.hasStarterPack;
         btn.textContent = owned ? t('shop.starterOwned') : t('shop.starter', { n: STARTER_PACK_STARS });
         btn.disabled = owned; btn.classList.toggle('owned', owned);
+      },
+    },
+    statusFlex: {
+      action: buyStatusFlex,
+      render(btn) {
+        const owned = !!state.hasStatusFlex;
+        btn.textContent = owned ? t('shop.statusOwned') : t('shop.status', { n: STATUS_FLEX_STARS });
+        btn.disabled = owned; btn.classList.toggle('owned', owned);
+        // The flair picker rides alongside this button; re-render it in lockstep.
+        renderStatusFlairPicker();
       },
     },
     clickBypass: {
@@ -2561,6 +2693,9 @@
     permProdBtn: document.getElementById('permProdBtn'),
     clickBypassBtn: document.getElementById('clickBypassBtn'),
     starterPackBtn: document.getElementById('starterPackBtn'),
+    statusFlexBtn: document.getElementById('statusFlexBtn'),
+    statusFlairPicker: document.getElementById('statusFlairPicker'),
+    lbFlexCta: document.getElementById('lbFlexCta'),
     adNocapBtn: document.getElementById('adNocapBtn'),
     adBoost2xBtn: document.getElementById('adBoost2xBtn'),
     adBypassProgress: document.getElementById('adBypassProgress'),
@@ -3744,6 +3879,18 @@
     if (!o) return;
     if (btn.closest('.offer-popup')) closeOfferPopup(); // header popup: dismiss on choice
     o.action();
+  });
+  // #52: flair picker (Shop status card) — pick a flair (pre-purchase local pick or
+  // owner-side server change). Delegated so it survives re-renders.
+  if (el.statusFlairPicker) el.statusFlairPicker.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-flair]');
+    if (!b) return;
+    pickFlair(b.dataset.flair || null);
+  });
+  // #52: leaderboard "stand out in the top" CTA for non-owners → jump to the Shop.
+  if (el.lbFlexCta) el.lbFlexCta.addEventListener('click', () => {
+    document.querySelector('.tab-btn[data-tab="shop"]').click();
+    if (el.statusFlexBtn) el.statusFlexBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
   // Header contextual entry points: tap the offline timer / CPS number to open a
   // 2-offer popup right where the friction is felt.

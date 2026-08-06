@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=103';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=104';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -495,6 +495,19 @@ const STARTER_PACK_STARS = 3;                  // price in Stars (one-time)
 const STARTER_PACK_BOOST_MS = 4 * 3600 * 1000; // 4h of ×2 production
 const STARTER_PACK_THROW_SECONDS = 3 * 3600;   // instant cookies = 3h of the player's current production (midpoint of the 2–4h target)
 const STARTER_PACK_MIN_COOKIES = 3000;         // floor for near-zero-cps newcomers (~buys the first several buildings: cursor 15 / grandma 100 / farm 1100)
+
+// Paid one-time "status flex" (#52) — a purely COSMETIC leaderboard status: a gold
+// name + 👑 crown + optional flair emoji, shown to EVERYONE on the board. This is
+// the one deliberately-allowed exception to "paid never buys progress": it does NOT
+// touch cps / production / prestige — only how the row LOOKS. A separate axis from
+// the earned ⭐×N (which stays free and neutral — never mixed in, so real progress
+// isn't devalued). The server owns has_status_flex + the chosen status_flair.
+const STATUS_FLEX_STARS = 150; // price in Stars (one-time)
+// Allowed flair emoji (no assets — same "emoji as icon" approach as the buildings).
+// Default is no flair (just the crown). Validated server-side so a crafted request
+// body can never inject an arbitrary string into every player's board row.
+const STATUS_FLAIRS = ['🔥', '💎', '⚡', '🚀', '❤️', '🪐'];
+function sanitizeFlair(f) { return (typeof f === 'string' && STATUS_FLAIRS.includes(f)) ? f : null; }
 
 // Anti-farm for /prestige/confirm: a new confirmed prestige needs at least this
 // much wall-clock time since the last one. Any legit prestige takes far longer
@@ -1726,6 +1739,66 @@ async function handleCreateStarterInvoice(request, env) {
   return jsonResponse({ ok: true, link: res.result });
 }
 
+// POST /create-status-invoice { initData, flair? } — one-time "status flex" (150⭐,
+// #52). Refuse-if-owned BEFORE createInvoiceLink (a one-time cosmetic must never be
+// sold twice). The optionally-chosen flair rides on the invoice row
+// (star_invoices.upgrade_id, already a generic TEXT column) so it's applied
+// atomically by the webhook when the payment actually lands.
+async function handleCreateStatusInvoice(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+  const flair = sanitizeFlair(body.flair); // null = no flair (crown only)
+
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    const owned = await env.DB.prepare('SELECT has_status_flex AS h FROM users WHERE user_id = ?').bind(userId).first();
+    if (owned && owned.h) return jsonResponse({ ok: false, error: 'already_owned' }, 409);
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const invoiceId = crypto.randomUUID();
+  try {
+    await env.DB.prepare('INSERT INTO star_invoices (invoice_id, user_id, amount, status, created_ts, kind, upgrade_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(invoiceId, userId, 0, 'pending', now, 'status_flex', flair).run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const res = await tgCall(env, 'createInvoiceLink', {
+    title: 'Статус в топе',
+    description: 'Разовый косметический статус: золотой ник, корона и флейр в таблице лидеров. На геймплей не влияет.',
+    payload: invoiceId,
+    currency: 'XTR',
+    prices: [{ label: 'Статус в топе', amount: STATUS_FLEX_STARS }],
+  });
+  if (!res || !res.ok || !res.result) {
+    return jsonResponse({ ok: false, error: 'invoice_failed' }, 502);
+  }
+  return jsonResponse({ ok: true, link: res.result });
+}
+
+// POST /set-status-flair { initData, flair } — the status-flex OWNER changes their
+// flair (empty/invalid value clears it back to crown-only). Owner-gated (403 for
+// non-owners), so it can never be used to fake a status without paying. Takes
+// effect on the next checkin (KV metadata refresh), like the other board fields.
+async function handleSetStatusFlair(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+  const flair = sanitizeFlair(body.flair); // null clears to crown-only
+  try {
+    const owned = await env.DB.prepare('SELECT has_status_flex AS h FROM users WHERE user_id = ?').bind(userId).first();
+    if (!owned || !owned.h) return jsonResponse({ ok: false, error: 'not_owned' }, 403);
+    await env.DB.prepare('UPDATE users SET status_flair = ? WHERE user_id = ?').bind(flair, userId).run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+  return jsonResponse({ ok: true, flair });
+}
+
 // POST /create-clickskip-invoice { initData } — one-time "skip the clicker".
 // Same ownership-first guard as perm_prod: refuse before creating the invoice
 // if already owned, so a second real payment can never be taken.
@@ -1866,6 +1939,14 @@ async function handleSuccessfulPayment(env, msg) {
         "ELSE paid_unlocked_upgrades || ',' || ? END " +
         "WHERE user_id = ?"
       ).bind(inv.upgrade_id, inv.upgrade_id, inv.upgrade_id, userId).run();
+    } else if (inv.kind === 'status_flex') {
+      // One-time COSMETIC leaderboard status (#52). Purely visual — set the flag
+      // and the chosen flair (validated, carried on the invoice's upgrade_id). No
+      // cookies, no boost, no progress touched. Runs once (past the invoice flip);
+      // COALESCE keeps any existing flair if this payment carried none.
+      const flair = sanitizeFlair(inv.upgrade_id);
+      await env.DB.prepare('UPDATE users SET has_status_flex = 1, status_flair = COALESCE(?, status_flair) WHERE user_id = ?')
+        .bind(flair, userId).run();
     } else if (inv.kind === 'starter_pack') {
       // One-time starter pack (#60). Runs exactly once (past the conditional
       // invoice flip above). Set the flag, throw instant cookies sized to the
@@ -2015,6 +2096,8 @@ async function handleCheckin(request, env) {
   let hasPermProdBoost = false;
   let hasClickBypass = false;
   let hasStarterPack = false;
+  let hasStatusFlex = false;
+  let statusFlair = null;
   let serverPrestigeCount = 0;
   let isPrestigePioneer = false;
   let paidUnlockedUpgrades = [];
@@ -2079,12 +2162,14 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, has_starter_pack AS starter, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv, channel_bonus_claimed AS chan, country AS country FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, has_starter_pack AS starter, has_status_flex AS statusflex, status_flair AS statusflair, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv, channel_bonus_claimed AS chan, country AS country FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
       if (boostRow && boostRow.clickbypass) hasClickBypass = true;
       if (boostRow && boostRow.starter) hasStarterPack = true;
+      if (boostRow && boostRow.statusflex) hasStatusFlex = true;
+      if (boostRow && boostRow.statusflair) statusFlair = boostRow.statusflair;
       if (boostRow && Number.isFinite(boostRow.pc)) serverPrestigeCount = boostRow.pc;
       if (boostRow && boostRow.pion) isPrestigePioneer = true;
       if (boostRow) paidUnlockedUpgrades = parseIdList(boostRow.pu);
@@ -2207,6 +2292,8 @@ async function handleCheckin(request, env) {
     weeklyWeekId: curWeek, // which week weeklyReferrals belongs to (stale => 0 on the board)
     prestigeCount: serverPrestigeCount, // server-authoritative; leaderboard's primary rank key
     isPioneer: isPrestigePioneer,       // "prestige pioneer" title flag
+    hasStatusFlex,                      // #52 paid cosmetic status (gold name + crown + flair) — board-visible to all
+    statusFlair,                        // chosen flair emoji (or null = crown only)
     lifetimeCookies: lifetimeNow, // never-resetting total across runs (anti-cheat clamped board copy)
     crumbs: Number(body.crumbs) || 0,   // permanent bonus % (client-sent, like cps); for the rank-badge tooltip
     country: userCountry,               // ISO-2 geo (first-touch) for the "my country" leaderboard filter
@@ -2259,7 +2346,7 @@ async function handleCheckin(request, env) {
     if (widx >= 0) weeklyRank = widx + 1;
   } catch (e) { /* rank views best-effort — never break checkin */ }
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, hasStarterPack, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed, rank, rankTotal, weeklyBaked, weeklyRank, weeklyTotal, weekEndsAt: weekEndsAt(now) });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, hasStarterPack, hasStatusFlex, statusFlair, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed, rank, rankTotal, weeklyBaked, weeklyRank, weeklyTotal, weekEndsAt: weekEndsAt(now) });
 }
 
 // Builds the ranked leaderboard from KV metadata (one list() sweep, no per-user
@@ -2281,6 +2368,8 @@ async function computeLeaderboard(env) {
         maxActiveFriendsEver: data.maxActiveFriendsEver || 0, // client derives the referral title from this
         prestigeCount: data.prestigeCount || 0, // primary rank key (server-authoritative)
         isPioneer: !!data.isPioneer,
+        hasStatusFlex: !!data.hasStatusFlex, // #52 paid cosmetic status — rendered on EVERY viewer's board
+        statusFlair: data.statusFlair || null, // chosen flair emoji (null = crown only)
         lifetimeCookies: data.lifetimeCookies || 0, // never-resetting total, shown as a secondary figure
         crumbs: data.crumbs || 0, // this player's permanent bonus % (rank-badge tooltip)
         country: data.country || null, // ISO-2 geo, for the "my country" leaderboard filter
@@ -2338,6 +2427,7 @@ function weeklyStandings(entries, curWeek) {
     .map(e => ({
       userId: e.userId, name: e.name, isPioneer: e.isPioneer, country: e.country || null,
       prestigeCount: e.prestigeCount, // total prestige, for context in the row
+      hasStatusFlex: e.hasStatusFlex, statusFlair: e.statusFlair, // #52 cosmetic flex (weekly board too)
       weeklyPrestige: e.weeklyPrestige || 0, weeklyBaked: e.weeklyBaked || 0,
     }))
     .sort((a, b) => (b.weeklyPrestige - a.weeklyPrestige) || (b.weeklyBaked - a.weeklyBaked));
@@ -2380,6 +2470,7 @@ async function handleLeaderboard(request, env) {
     name: e.name, cps: e.cps, totalBaked: e.totalBaked, lifetimeCookies: e.lifetimeCookies,
     prestigeCount: e.prestigeCount, maxActiveFriendsEver: e.maxActiveFriendsEver,
     isPioneer: e.isPioneer, crumbs: e.crumbs, country: e.country || null,
+    hasStatusFlex: e.hasStatusFlex, statusFlair: e.statusFlair, // #52 — own pinned "your place" row shows the flex too
   });
   // A weekly entry already carries exactly the fields a weekly row/self needs.
   const weeklySelfFrom = (e, rank, total) => ({ rank, total, ...e });
@@ -2495,10 +2586,11 @@ async function handleReferralLeaderboard(env) {
       const data = k.metadata;
       if (!data) continue;
       const name = data.displayName || 'Игрок';
+      const flex = !!data.hasStatusFlex, flair = data.statusFlair || null; // #52 cosmetic flex, shown on the referral board too
       const peak = data.maxActiveFriendsEver || 0;
-      if (peak > 0) allTime.push({ userId: data.chatId, name, score: peak });
+      if (peak > 0) allTime.push({ userId: data.chatId, name, score: peak, hasStatusFlex: flex, statusFlair: flair });
       const wk = (data.weeklyWeekId === curWeek) ? (data.weeklyReferrals || 0) : 0;
-      if (wk > 0) weekly.push({ userId: data.chatId, name, score: wk });
+      if (wk > 0) weekly.push({ userId: data.chatId, name, score: wk, hasStatusFlex: flex, statusFlair: flair });
     }
     if (list.list_complete || !list.cursor) break;
     cursor = list.cursor;
@@ -3194,6 +3286,14 @@ export default {
 
     if (url.pathname === '/create-starter-invoice' && request.method === 'POST') {
       return handleCreateStarterInvoice(request, env);
+    }
+
+    if (url.pathname === '/create-status-invoice' && request.method === 'POST') {
+      return handleCreateStatusInvoice(request, env);
+    }
+
+    if (url.pathname === '/set-status-flair' && request.method === 'POST') {
+      return handleSetStatusFlair(request, env);
     }
 
     if (url.pathname === '/create-clickskip-invoice' && request.method === 'POST') {
