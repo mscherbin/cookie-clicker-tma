@@ -858,7 +858,25 @@ async function handleTelegramWebhook(request, env) {
     // Channel hook routes by language: RU users see the RU channel, EN the EN one.
     const lang = langFromCode(msg.from.language_code);
     const chLink = lang === 'ru' ? 'https://t.me/bestcookiclickerru' : CHANNEL_LINK;
-    await sendPush(env, userId, pt(lang, 'start.welcome', { link: chLink }), lang);
+    // Referral deep-links leak hard (only ~9% of ref_clicks open the game vs.
+    // normal organic) — a generic welcome doesn't tell the invitee why they're
+    // here. When /start carries a valid ref code (refNNN, NNN = inviter's id),
+    // greet them by the inviter's name so the reason to open is front-and-center.
+    // The name comes from the inviter's KV display name (set on their checkins).
+    // Falls back to the generic welcome if the inviter has no known name (never
+    // checked in), it's a self-referral, or the KV lookup fails — never blocks.
+    // Messages are plain text (no parse_mode), so the name needs no escaping.
+    let welcome = null;
+    const refM = startParam && /^ref(\d+)$/.exec(startParam);
+    if (refM && Number(refM[1]) !== userId) {
+      let refName = null;
+      try {
+        const rm = (await env.USERS.getWithMetadata(`user:${refM[1]}`)).metadata;
+        if (rm && rm.displayName) refName = String(rm.displayName).slice(0, 40);
+      } catch (e) { /* KV hiccup — fall back to the generic welcome below */ }
+      if (refName) welcome = pt(lang, 'start.welcomeRef', { name: refName, link: chLink });
+    }
+    await sendPush(env, userId, welcome || pt(lang, 'start.welcome', { link: chLink }), lang);
   } else if (msg && msg.text && msg.from) {
     // Other slash commands (menu is set in BotFather; here are the replies). They
     // work right in the chat — no mini-app needed. `/help@botname` is normalized.
@@ -1800,6 +1818,20 @@ async function handleSuccessfulPayment(env, msg) {
       await env.DB.prepare('UPDATE users SET pending_paid_cookies = pending_paid_cookies + ? WHERE user_id = ?')
         .bind(credit, userId).run();
     }
+    // Analytics: record the purchase in the events funnel so Stars revenue is
+    // visible in /funnel and breaks down by traffic source (via the users join,
+    // same as every other stage). Reached only once per real payment — we're
+    // past the conditional invoice flip above, so a retried/duplicate webhook
+    // already returned and can't double-log. ref_code carries the boost kind
+    // (all six: offline_2x/nocap_24h/prod2x_1h/perm_prod/click_bypass/
+    // upgrade_skip); amount is the Stars actually paid (sp.total_amount — XTR
+    // has no minor units). Own try/catch so an analytics hiccup can never undo
+    // the credit granted above.
+    try {
+      const stars = Number(sp.total_amount);
+      await env.DB.prepare('INSERT INTO events (user_id, event, ref_code, ts, amount) VALUES (?, ?, ?, ?, ?)')
+        .bind(userId, 'stars_purchase', inv.kind || 'offline_2x', Date.now(), Number.isFinite(stars) ? stars : null).run();
+    } catch (e) { console.log('stars_purchase log error', e); }
   } catch (e) { console.log('successful_payment error', e); }
 }
 
@@ -2433,6 +2465,7 @@ const PUSH_STRINGS = {
     'evt.refEvent': '🎉 Событие рефералов! Награда за приглашённых друзей ×{mult}.{tail}',
     'evt.refEventTail': ' Успей позвать друзей!',
     'start.welcome': '🍪 Привет! Это Cookie Clicker — пеки печеньки, покупай здания и апгрейды, возносись ради постоянного буста.\n🎯 Цель — построить самую большую печеньковую империю и ворваться в топ игроков.\n👇 Жми кнопку — и погнали печь!\n📢 Гайды, топ игроков и ×2-ивенты (+ бонус подписчикам) — в канале: {link}',
+    'start.welcomeRef': '🍪 {name} зовёт тебя в Cookie Clicker! Вы оба получите бонус печенек — жми кнопку и начинай печь.\n🎯 Пеки печеньки, покупай здания и апгрейды, возносись ради постоянного буста и врывайся в топ игроков.\n📢 Гайды, топ и ×2-ивенты (+ бонус подписчикам) — в канале: {link}',
     'cmd.help': '🍪 Как играть в Cookie Clicker:\n👆 Тапай печеньку — получай печеньки\n🏗 Покупай здания и апгрейды — производство растёт само\n⭐ Когда всё раскуплено — вознесись: сброс прогресса даёт постоянный бонус навсегда\n🤝 Зови друзей — получай бонус к производству за каждого активного\nОткрой игру и начинай печь!',
     'cmd.stats': '📊 Твоя статистика:\n🍪 Всего испечено: {total}\n⚡ Печенек/сек: {cps}\n⭐ Вознесений: {ascensions}\n🤝 Активных друзей: {friends}',
     'cmd.statsEmpty': '📊 Пока нет статистики — открой игру и начни печь печеньки!',
@@ -2463,6 +2496,7 @@ const PUSH_STRINGS = {
     'evt.refEvent': '🎉 Referral event! Reward for invited friends ×{mult}.{tail}',
     'evt.refEventTail': ' Invite friends now!',
     'start.welcome': '🍪 Hi! This is Cookie Clicker — bake cookies, buy buildings and upgrades, and ascend for a permanent boost.\n🎯 Goal: build the biggest cookie empire and climb into the top players.\n👇 Tap the button and start baking!\n📢 Guides, top players & ×2 events (+ a subscriber bonus) — in our channel: {link}',
+    'start.welcomeRef': '🍪 {name} invited you to Cookie Clicker! You\'ll both get a cookie bonus — tap the button and start baking.\n🎯 Bake cookies, buy buildings and upgrades, ascend for a permanent boost, and climb the leaderboard.\n📢 Guides, top players & ×2 events (+ a subscriber bonus) — in our channel: {link}',
     'cmd.help': "🍪 How to play Cookie Clicker:\n👆 Tap the cookie to earn cookies\n🏗 Buy buildings and upgrades — production grows on its own\n⭐ Once everything's bought — ascend: resetting gives a permanent bonus forever\n🤝 Invite friends — get a production boost for each active friend\nOpen the game and start baking!",
     'cmd.stats': '📊 Your stats:\n🍪 Total baked: {total}\n⚡ Cookies/sec: {cps}\n⭐ Ascensions: {ascensions}\n🤝 Active friends: {friends}',
     'cmd.statsEmpty': '📊 No stats yet — open the game and start baking cookies!',
