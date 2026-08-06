@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS scheduled_posts (
   button_text TEXT,                       -- optional inline URL-button label
   button_url TEXT,                        -- optional inline URL-button target (t.me deep link)
   disable_preview INTEGER NOT NULL DEFAULT 1,
+  channel TEXT,                           -- per-post target channel (@handle or -100… id); NULL => config.channel_id (EN default)
+  image TEXT,                             -- optional public photo URL; if set, post goes out as sendPhoto (text becomes the caption)
   status TEXT NOT NULL DEFAULT 'pending', -- pending | sending | sent | failed | canceled
   tg_message_id INTEGER,                  -- message_id returned by Telegram after a send
   error TEXT,                             -- last error payload if a send failed
@@ -31,6 +33,16 @@ CREATE TABLE IF NOT EXISTS scheduled_posts (
 );
 -- The cron's hot query is "pending posts whose time has come", oldest first.
 CREATE INDEX IF NOT EXISTS idx_sched_posts_due ON scheduled_posts(status, publish_at);
+
+-- MIGRATION for an already-provisioned DB (the `channel` column was added later,
+-- to support posting to more than one channel — e.g. the RU channel alongside
+-- the EN default). SQLite has no "ADD COLUMN IF NOT EXISTS", so run this once;
+-- if the column already exists it errors harmlessly ("duplicate column name"):
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE scheduled_posts ADD COLUMN channel TEXT"
+-- Later addition — image (photo URL) support (sendPhoto). Run once:
+--   wrangler d1 execute cookie-clicker-analytics --remote \
+--     --command "ALTER TABLE scheduled_posts ADD COLUMN image TEXT"
 
 -- If using a SEPARATE database (not the shared one), uncomment:
 -- CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL);

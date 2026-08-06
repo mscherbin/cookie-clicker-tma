@@ -1,0 +1,28 @@
+{
+  "_comment": "Prompts for fal.ai (gen-images.mjs). One image per post THEME (RU+EN share it). Style recalibrated 06.08 to match the brand assets (cookie_t3..t10 tier sprites + the ad creative): a REALISTIC detailed chocolate-chip cookie with a dramatic per-theme magical aura, rich golden juicy mobile-game splash-art render, NO cartoon face, NO text on the image (headlines live in the caption).",
+  "style": "a realistic highly detailed freshly baked chocolate chip cookie, crumbly golden-brown texture with glossy melting chocolate chips, premium juicy mobile-game splash art, high-end 3D render, cinematic volumetric lighting, glowing sparkles and magical particles, dramatic dark background with warm golden bokeh, epic polished game-icon look, NO face, no eyes, no smile, no cartoon character, absolutely no text no words no letters no numbers no UI, centered subject, square 1:1",
+  "size": "square_hd",
+  "model": "fal-ai/flux/dev",
+  "prompts": [
+    { "id": "p01", "subject": "a mighty chocolate chip cookie crowned with a radiant golden aura, floating above stacks of gold coins, empire vibe" },
+    { "id": "p02", "subject": "a cozy cartoon person sunk into a couch at home, completely absorbed in their glowing phone, a wall clock showing lots of time has passed, funny relatable 'lost track of time' mobile-gaming moment", "style": "warm cozy modern cartoon illustration, humorous relatable scene, golden warm palette, soft cinematic lighting, playful, absolutely no text no words no letters no numbers, square 1:1" },
+    { "id": "p03", "subject": "a chocolate chip cookie surging with an electric blue-and-gold power-up aura and glowing upward arrows, leveling up" },
+    { "id": "p04", "subject": "a chocolate chip cookie blasting forward with fiery golden speed trails and motion blur, extreme velocity" },
+    { "id": "p05", "subject": "a chocolate chip cookie wreathed in a blazing ring of golden fire and sparks, intense fiery aura" },
+    { "id": "p06", "subject": "a chocolate chip cookie haloed by a glowing blue heavenly ring of light with drifting star particles, ascension aura" },
+    { "id": "p07", "subject": "two chocolate chip cookies side by side sharing one warm golden glow with a bright spark between them, allies" },
+    { "id": "p08", "subject": "a chocolate chip cookie beside a glowing golden gift box, warm golden reward aura and floating sparkles" },
+    { "id": "p09", "subject": "a chocolate chip cookie resting under a calm blue moonlit glow with soft floating sparkles, peaceful night" },
+    { "id": "p10", "subject": "a chocolate chip cookie atop a golden winner podium bathed in a triumphant radiant spotlight, champion aura" },
+    { "id": "p11", "subject": "a fully golden radiant chocolate chip cookie exploding with brilliant golden sun-rays, majestic golden-age aura" },
+    { "id": "p12", "subject": "a sleepy cartoon person lying in bed late at night still playing on their phone, the phone light glowing on their tired but happy face, a crescent moon through the window, funny 'just one more' relatable scene", "style": "warm cozy modern cartoon illustration, humorous relatable scene, moody warm night palette, soft cinematic lighting, playful, absolutely no text no words no letters no numbers, square 1:1" },
+    { "id": "p13", "subject": "a chocolate chip cookie being tapped, glowing golden click-ripples and impact sparks radiating from finger taps" },
+    { "id": "p14", "subject": "a heroic golden chocolate chip cookie building glowing with power, smaller cookies rallying around it, unlocked reward" },
+    { "id": "p15", "subject": "a cosmic chocolate chip cookie encircled by a glowing purple planetary ring, deep-space nebula and stars, prestige tier" },
+    { "id": "p16", "subject": "a chocolate chip cookie surrounded by glowing golden gears and floating tools, energetic workshop aura, work in progress" },
+    { "id": "p17", "subject": "a regal chocolate chip cookie wearing a shining golden crown with a majestic royal golden aura, emperor" },
+    { "id": "p18", "subject": "a chocolate chip cookie safe inside a glowing translucent protective energy shield with a soft cloud-sync glow" },
+    { "id": "p19", "subject": "a chocolate chip cookie at the center of an explosive brilliant golden burst of light and sparks, combo detonation" },
+    { "id": "p20", "subject": "a cozy cartoon person relaxing in an armchair by a window at night with a big glowing moon outside, warm lamp light, calm relaxing evening, casually checking their phone", "style": "warm cozy modern cartoon illustration, calm relatable scene, warm golden night palette, soft cinematic lighting, playful, absolutely no text no words no letters no numbers, square 1:1" }
+  ]
+}

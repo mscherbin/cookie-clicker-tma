@@ -60,10 +60,26 @@ function isAdminReq(url, env) {
   return !!env.ADMIN_KEY && url.searchParams.get('key') === env.ADMIN_KEY;
 }
 
-// sendMessage payload for one queued post. NOTE: channels allow URL buttons
+// Telegram method for a post: a post with an `image` (a public photo URL) goes
+// out as sendPhoto (text becomes the caption); otherwise plain sendMessage.
+function postMethod(p) {
+  return p && p.image ? 'sendPhoto' : 'sendMessage';
+}
+
+// Build the API payload for one queued post. NOTE: channels allow URL buttons
 // only — NOT web_app buttons — so the CTA is a t.me deep link, not a Mini App
 // button (the link still opens the bot / launches the Mini App on tap).
 function buildPostPayload(channelId, p) {
+  // Photo post: image (URL) + caption. Telegram caption limit is 1024 chars;
+  // our posts are short. disable_web_page_preview doesn't apply to photos.
+  if (p.image) {
+    const payload = { chat_id: channelId, photo: p.image, caption: p.text || '' };
+    if (p.parse_mode) payload.parse_mode = p.parse_mode;
+    if (p.button_text && p.button_url) {
+      payload.reply_markup = { inline_keyboard: [[{ text: p.button_text, url: p.button_url }]] };
+    }
+    return payload;
+  }
   const payload = {
     chat_id: channelId,
     text: p.text,
@@ -79,9 +95,9 @@ function buildPostPayload(channelId, p) {
 // Cron step: publish every due, pending post (oldest first, capped per tick).
 async function publishDuePosts(env) {
   if (!env.DB) return;
-  const channelId = await getConfigStr(env, 'channel_id');
+  const defaultChannel = await getConfigStr(env, 'channel_id');
   const enabled = await getConfigStr(env, 'autopost_enabled');
-  if (!channelId || enabled !== '1') return; // off until explicitly configured
+  if (enabled !== '1') return; // master switch off until explicitly armed
   const now = Date.now();
   let due;
   try {
@@ -95,7 +111,15 @@ async function publishDuePosts(env) {
       "UPDATE scheduled_posts SET status = 'sending' WHERE id = ? AND status = 'pending'"
     ).bind(p.id).run();
     if (!claim.meta || !claim.meta.changes) continue; // another tick took it
-    const res = await tgCall(env, 'sendMessage', buildPostPayload(channelId, p));
+    // Per-post target channel; fall back to the shared config default (EN).
+    const target = p.channel || defaultChannel;
+    if (!target) {
+      await env.DB.prepare(
+        "UPDATE scheduled_posts SET status = 'failed', error = 'no_channel: post has no channel and config.channel_id is empty' WHERE id = ?"
+      ).bind(p.id).run();
+      continue;
+    }
+    const res = await tgCall(env, postMethod(p), buildPostPayload(target, p));
     if (res && res.ok) {
       await env.DB.prepare(
         "UPDATE scheduled_posts SET status = 'sent', tg_message_id = ?, sent_at = ?, error = NULL WHERE id = ?"
@@ -123,17 +147,20 @@ async function handleSchedulePost(request, env) {
   const now = Date.now();
   const ids = [];
   for (const p of list) {
-    if (!p || typeof p.text !== 'string' || !p.text.trim()) {
-      return jsonResponse({ ok: false, error: 'missing_text' }, 400);
+    const image = (typeof p.image === 'string' && p.image.trim()) ? p.image.trim() : null;
+    // Need text OR an image (an image post may caption-lessly carry just art).
+    if (!p || ((typeof p.text !== 'string' || !p.text.trim()) && !image)) {
+      return jsonResponse({ ok: false, error: 'missing_text_or_image' }, 400);
     }
     const publishAt = Number.isFinite(p.publish_at)
       ? p.publish_at
       : now + (Number(p.publish_in_minutes) || 0) * 60000;
     const parseMode = p.parse_mode === undefined ? 'HTML' : (p.parse_mode || '');
     const disablePreview = p.disable_preview === false ? 0 : 1;
+    const channel = (typeof p.channel === 'string' && p.channel.trim()) ? p.channel.trim() : null;
     const r = await env.DB.prepare(
-      'INSERT INTO scheduled_posts (publish_at, text, parse_mode, button_text, button_url, disable_preview, status, created_at) VALUES (?, ?, ?, ?, ?, ?, \'pending\', ?)'
-    ).bind(publishAt, p.text, parseMode, p.button_text || null, p.button_url || null, disablePreview, now).run();
+      'INSERT INTO scheduled_posts (publish_at, text, parse_mode, button_text, button_url, disable_preview, channel, image, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, \'pending\', ?)'
+    ).bind(publishAt, p.text || '', parseMode, p.button_text || null, p.button_url || null, disablePreview, channel, image, now).run();
     ids.push(r.meta ? r.meta.last_row_id : null);
   }
   return jsonResponse({ ok: true, scheduled: ids.length, ids });
@@ -147,7 +174,7 @@ async function handleListPosts(request, env) {
   if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
   const status = url.searchParams.get('status') || 'pending';
   const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
-  const cols = 'id, publish_at, status, tg_message_id, sent_at, error, substr(text, 1, 90) AS preview';
+  const cols = 'id, publish_at, status, channel, image, tg_message_id, sent_at, error, substr(text, 1, 90) AS preview';
   let res;
   try {
     if (status === 'all') {
@@ -171,21 +198,55 @@ async function handleListPosts(request, env) {
 async function handlePostNow(request, env) {
   const url = new URL(request.url);
   if (!isAdminReq(url, env)) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
-  const channelId = await getConfigStr(env, 'channel_id');
-  if (!channelId) return jsonResponse({ ok: false, error: 'no_channel' }, 400);
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
-  if (typeof body.text !== 'string' || !body.text.trim()) return jsonResponse({ ok: false, error: 'missing_text' }, 400);
+  const image = (typeof body.image === 'string' && body.image.trim()) ? body.image.trim() : null;
+  if ((typeof body.text !== 'string' || !body.text.trim()) && !image) return jsonResponse({ ok: false, error: 'missing_text_or_image' }, 400);
+  // Optional per-request target; defaults to the shared config channel (EN).
+  const channelId = (typeof body.channel === 'string' && body.channel.trim())
+    ? body.channel.trim()
+    : await getConfigStr(env, 'channel_id');
+  if (!channelId) return jsonResponse({ ok: false, error: 'no_channel' }, 400);
   const p = {
-    text: body.text,
+    text: body.text || '',
+    image,
     parse_mode: body.parse_mode === undefined ? 'HTML' : (body.parse_mode || ''),
     button_text: body.button_text,
     button_url: body.button_url,
     disable_preview: body.disable_preview === false ? 0 : 1,
   };
-  const res = await tgCall(env, 'sendMessage', buildPostPayload(channelId, p));
+  const res = await tgCall(env, postMethod(p), buildPostPayload(channelId, p));
   if (res && res.ok) return jsonResponse({ ok: true, message_id: res.result.message_id });
   return jsonResponse({ ok: false, error: 'send_failed', detail: res }, 502);
+}
+
+// GET /admin/check-channel?key=...[&channel=@handle] — read-only preflight:
+// is the bot an ADMIN of the channel with "post messages" rights? Does NOT
+// publish anything (unlike /admin/post-now). Defaults to config.channel_id.
+async function handleCheckChannel(request, env) {
+  const url = new URL(request.url);
+  if (!isAdminReq(url, env)) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  const channel = url.searchParams.get('channel') || await getConfigStr(env, 'channel_id');
+  if (!channel) return jsonResponse({ ok: false, error: 'no_channel' }, 400);
+  const me = await tgCall(env, 'getMe', {});
+  if (!me || !me.ok) return jsonResponse({ ok: false, error: 'getme_failed', detail: me }, 502);
+  const member = await tgCall(env, 'getChatMember', { chat_id: channel, user_id: me.result.id });
+  if (!member || !member.ok) {
+    // Most common cause: the bot was never added to the channel at all.
+    return jsonResponse({ ok: false, channel, bot: me.result.username, error: 'getchatmember_failed', detail: member }, 200);
+  }
+  const status = member.result.status; // 'administrator' | 'creator' | 'member' | 'left' | ...
+  const isAdmin = status === 'administrator' || status === 'creator';
+  const canPost = status === 'creator' ? true : !!member.result.can_post_messages;
+  return jsonResponse({
+    ok: true,
+    channel,
+    bot: me.result.username,
+    status,
+    is_admin: isAdmin,
+    can_post_messages: canPost,
+    ready_to_post: isAdmin && canPost,
+  });
 }
 
 // POST /admin/cancel-post?key=... Body: { id } — cancel a still-pending post.
@@ -220,6 +281,9 @@ export default {
     }
     if (url.pathname === '/admin/posts' && request.method === 'GET') {
       return handleListPosts(request, env);
+    }
+    if (url.pathname === '/admin/check-channel' && request.method === 'GET') {
+      return handleCheckChannel(request, env);
     }
     if (url.pathname === '/admin/post-now' && request.method === 'POST') {
       return handlePostNow(request, env);

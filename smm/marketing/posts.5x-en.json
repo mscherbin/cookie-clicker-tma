@@ -1,0 +1,25 @@
+{
+  "_comment": "EN 5x/day batch for @bestcookieclicker. FLAT list (no day/hour) — seed with SLOTS mode. Seed: POSTS=posts.5x-en.json SLOTS='16:00,18:00,19:30,21:00,22:30' node marketing/seed-posts.mjs (channel defaults to config EN).",
+  "posts": [
+    { "text": "💡 <b>Rule #1 in Cookie Clicker</b>\n\nAlways buy the most expensive building you can afford right now. It almost always bakes more cookies per second than a handful of cheap ones.\n\nCheck it — open the buildings tab 👇" },
+    { "text": "😄 “I'll just hop in for a minute”\n\n…leaves 40 minutes later after buying three new buildings and an upgrade.\n\nSound familiar? Then you're one of us. 🍪" },
+    { "text": "👑 <b>Upgrades multiply — they don't just add</b>\n\nOne upgrade can give ×2 to a building's whole output. That's not “+5 cookies” — that's multiplied growth.\n\nDon't save up for them — grab them the moment they unlock 👇" },
+    { "text": "🏆 <b>Show your cps!</b>\n\nHow many cookies per second are you at right now? Screenshot and flex — let's see who's the real cookie empire.\n\nCheck your rank here 👇" },
+    { "text": "⚡ <b>Cookie Hour is near</b>\n\nTwice a day, ×2 production kicks in. Catch the window and cookies pile up twice as fast.\n\nWe ping you when it starts. Don't miss it 👇" },
+    { "text": "⭐ <b>When should you ascend?</b>\n\nWhen growth slows and new buildings take forever to afford. Ascending resets your progress but grants a permanent +% to production — and the next run is much faster.\n\nCheck your bonus 👇" },
+    { "text": "🤝 <b>One friend = a permanent boost</b>\n\nEvery active friend gives you a permanent production boost. Not one-time — forever, as long as they play.\n\nInvite your first 👇" },
+    { "text": "🎁 <b>Don't skip your daily reward</b>\n\nLog in every day and your streak grows — and so does the bonus. Miss a day and the streak resets. Simple math in your favor.\n\nClaim today's 👇" },
+    { "text": "😴 <b>Cookies pile up even offline</b>\n\nClose the game and your army keeps baking. Come back to offline income for the whole time you were away.\n\nThe more buildings, the fatter the return 👇" },
+    { "text": "🏆 <b>Top players of the week</b>\n\nThe best bakers are already climbing by ascension count. Want to see your name up here?\n\nOpen the Top tab and aim for the lead 👇" },
+    { "text": "🌟 <b>Reaching the Golden Age faster</b>\n\n1️⃣ Invest in buildings, don't camp on clicks\n2️⃣ Buy upgrades right away\n3️⃣ Ascend a couple times for the permanent bonus\n4️⃣ Collect your daily reward\n\nLet's go 👇" },
+    { "text": "😅 “Just one more building, then bed”\n\n*buys five more buildings, two upgrades, and decides to ascend*\n\nCookie Clicker: 1, sleep: 0. 🍪" },
+    { "text": "💡 <b>Clicking is the start, not the strategy</b>\n\nYour finger only gets you so far. Real growth is buildings baking for you 24/7.\n\nGrab your first couple of buildings and feel the difference 👇" },
+    { "text": "🫶 <b>An exclusive building for friends</b>\n\nGather 10 active friends and unlock a special “gift of friends” building. Placed for free, it bakes alongside your whole army.\n\nStart building your crew 👇" },
+    { "text": "👑 <b>Prestige tiers: how far can you go</b>\n\nAscensions unlock new content tiers — all the way to tier 10. Each tier means new buildings, upgrades, and status.\n\nThe ceiling is high. See where you are 👇" },
+    { "text": "🔧 <b>What's cooking</b>\n\nWe keep shipping content: new tiers, events and mechanics. Got ideas or bugs? Send them to the bot with /feedback — we read everything.\n\nMeanwhile, keep baking 👇" },
+    { "text": "🥇 <b>Friend titles — collect all three</b>\n\n25 friends — “Social Cookie”\n50 — “Cookie Legend”\n100 — “Cookie Emperor”\n\nEveryone sees your title in your profile and the leaderboard. There's only one Emperor among us 😏\n\nInvite friends 👇" },
+    { "text": "❓ <b>Common question: will I lose my progress?</b>\n\nNope — progress is saved, there's cross-device sync, and you can switch language (EN/RU) in Settings.\n\nPlay with peace of mind 👇" },
+    { "text": "💥 <b>Combo of the day</b>\n\nBuy out a tier's upgrades → ascend for the permanent boost → dive into the next tier stronger than before. That's how a real empire grows.\n\nYour move 👇" },
+    { "text": "🌙 <b>Evening check-in</b>\n\nClaim your offline income, buy a couple buildings, leave it running overnight — wake up to another fat return.\n\n30 seconds now = a boost by morning 👇" }
+  ]
+}
