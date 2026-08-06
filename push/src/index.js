@@ -77,11 +77,11 @@ const WEEK_CATCH_MAX_RANK = 8;                  // last-hours push targets weekl
 // figure, never breaks gameplay. Deliberately generous: catches injected garbage
 // (Infinity / 1e300 / negatives), lifetime rollbacks, and lifetime spikes far
 // beyond what the reported cps could produce; sophisticated self-consistent
-// tampering under the ceiling is left to the full server-economy sprint.
+// tampering under the ceiling is left to the full server-economy sprint. All
+// remaining checks are false-positive-proof (absolute ceiling + non-negative +
+// lifetime monotonicity), so legit endgame whales are never under-reported.
 const ANTICHEAT_MAX_CPS = 1e40;                 // no legit run approaches this — pure garbage ceiling
 const ANTICHEAT_MAX_LIFETIME = 1e45;            // lifetime accumulates, so a higher ceiling than cps
-const ANTICHEAT_PROD_FACTOR = 10;               // allow up to 10× (reported cps × elapsed) of new lifetime per checkin
-const ANTICHEAT_FLAT_ALLOWANCE = 1e4;           // plus a flat floor, so early-game manual clicking never trips it
 
 function computeOfflineGain(elapsedSeconds, cps) {
   if (elapsedSeconds <= OFFLINE_FULL_RATE_SECONDS) return elapsedSeconds * cps;
@@ -2007,9 +2007,8 @@ async function handleCheckin(request, env) {
   //     Tiebreak uses lifetimeCookies (never resets on ascend) — NOT totalBaked
   //     (which resets to 0 each ascension and would invert the metric).
   // Anti-cheat guardrail (0C): clamp the board-facing figures. Ceiling + non-
-  // negative first (works even with no prior record); the monotonic + plausible-
-  // delta checks run inside the pm block below, where we have the previous
-  // lifetime and checkin time. rawCps feeds nothing but the plausibility math.
+  // negative first (works even with no prior record); the lifetime-monotonicity
+  // check runs inside the pm block below, where we have the previous lifetime.
   const rawCps = Number(body.cps) || 0;
   const rawLifetime = Number(body.lifetimeCookies) || 0;
   const rawTotalBaked = Number(body.totalBaked) || 0;
@@ -2041,18 +2040,17 @@ async function handleCheckin(request, env) {
       carryLbF2Day = pm.lbF2Day;
       carryWeekLastPushId = pm.lbWeekLastPushId;
       if (Number.isFinite(pm.cheatHits)) carryCheatHits = pm.cheatHits;
-      // Anti-cheat: lifetime never decreases, and can't jump more per checkin than
-      // the reported cps could have produced (× a generous factor) plus known
-      // grants and a flat floor. Clamp the board copy; the player's own save is
-      // untouched. Runs before weeklyBaked is derived below, so a spike can't
-      // inflate this week's score / rewards.
+      // Anti-cheat: lifetime never decreases (it's a monotonic all-time total, so
+      // a lower value is a rollback / a raced-empty load / a cheat — clamp it back
+      // up to protect the board copy). This is false-positive-proof for legit
+      // play (lifetime only ever grows). Runs before weeklyBaked is derived below.
+      // NB: an earlier "plausibility vs reported cps" clamp was removed — it was
+      // the only check that could under-report a legit endgame whale, and the
+      // absolute ceiling above already caps injected garbage; keeping only the
+      // FP-proof checks matches the "light guardrail" intent.
       if (Number.isFinite(pm.lifetimeCookies)) {
         const prevLife = Math.max(0, pm.lifetimeCookies);
         if (lifetimeNow < prevLife) { lifetimeNow = prevLife; cheatHit = true; }
-        const elapsedS = Math.max(0, (now - (Number.isFinite(pm.lastActiveTs) ? pm.lastActiveTs : now)) / 1000);
-        const plausible = boardCps * elapsedS * ANTICHEAT_PROD_FACTOR + (pendingReward || 0) + (paidOfflineCredit || 0) + ANTICHEAT_FLAT_ALLOWANCE;
-        const maxLife = prevLife + Math.max(0, plausible);
-        if (lifetimeNow > maxLife) { lifetimeNow = maxLife; cheatHit = true; }
       }
       if (pm.lbWeekId === curWeek) {
         // Same week: keep accumulating, and carry the stored prev-week snapshot.
