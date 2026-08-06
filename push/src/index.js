@@ -1223,8 +1223,9 @@ async function handleRetention(request, env) {
 // optionally windowed by acquisition time via period). return_days = distinct
 // active days after day 0 (retention depth). sessions = app_open runs split by a
 // >30min gap — NOT raw checkins (a single long visit = 1 session, not N pings).
-// ad_views = rewarded-ad views per user (users.ads_reward_count; see note at the
-// block — it's a per-day counter, so it reflects the latest ad-day, not a total).
+// ad_views = LIFETIME rewarded-ad views per user (users.ads_reward_total, a
+// cumulative counter the grant path increments on every confirmed view and
+// never resets — distinct from the per-day users.ads_reward_count).
 async function handleStickiness(request, env) {
   const url = new URL(request.url);
   if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
@@ -1239,10 +1240,11 @@ async function handleStickiness(request, env) {
   const whereU = 'WHERE ' + conds.join(' AND ');
 
   try {
-    // Cohort: filtered app-entrants (>=1 app_open) in the window. Also pull
-    // ads_reward_count per user for the ad_views block below (rewarded-ad views).
+    // Cohort: filtered app-entrants (>=1 app_open) in the window. Also pull the
+    // cumulative ads_reward_total per user for the ad_views block below (lifetime
+    // rewarded-ad views — NOT the per-day ads_reward_count, which resets daily).
     const cohortRes = await env.DB.prepare(
-      `SELECT u.user_id AS uid, u.ads_reward_count AS ac FROM users u ${whereU} AND EXISTS (SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.event = 'app_open')`
+      `SELECT u.user_id AS uid, u.ads_reward_total AS ac FROM users u ${whereU} AND EXISTS (SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.event = 'app_open')`
     ).bind(...binds).all();
     const cohortRows = cohortRes.results || [];
     const cohortUids = new Set(cohortRows.map(r => r.uid));
@@ -1290,10 +1292,11 @@ async function handleStickiness(request, env) {
           { v: '4-9', test: v => v >= 4 && v <= 9 }, { v: '10+', test: v => v >= 10 },
         ]),
       },
-      // Rewarded-ad views per user, from users.ads_reward_count. NB: the live
-      // grant path maintains this as a per-UTC-day counter (reset on the day
-      // boundary), so it reflects the user's most recent ad-day count, not a
-      // lifetime total.
+      // LIFETIME rewarded-ad views per user, from users.ads_reward_total — a
+      // cumulative counter the grant path increments on every confirmed view and
+      // never resets (the per-day users.ads_reward_count is only for the daily
+      // limit). Backfill wasn't possible (no per-day history was retained), so
+      // these counts are accurate from the 06.08.2026 deploy forward.
       ad_views: {
         avg: avg(adViews),
         buckets: bucketCounts(adViews, [
@@ -2999,14 +3002,18 @@ async function handleAdsgramReward(request, env) {
   if (type === 'click_bypass_progress') {
     if (row && row.hcb) {
       // Already unlocked (via ads earlier or via Stars). Nothing to grant — consume
-      // the intent, and don't spend a daily slot on a no-op.
+      // the intent, and don't spend a daily slot on a no-op. Still a real confirmed
+      // view, so it counts toward the lifetime total (ads_reward_total).
+      await env.DB.prepare('UPDATE users SET ads_reward_total = COALESCE(ads_reward_total, 0) + 1 WHERE user_id = ?').bind(userId).run();
       await env.USERS.delete(`adsintent:${userId}`);
       return jsonResponse({ ok: true, granted: type, views: AD_CLICK_BYPASS_TARGET, target: AD_CLICK_BYPASS_TARGET, unlocked: true });
     }
     const views = Math.min(((row && row.abv) || 0) + 1, AD_CLICK_BYPASS_TARGET);
     const unlocked = views >= AD_CLICK_BYPASS_TARGET;
     // MAX() guards against ever downgrading a flag a concurrent Stars purchase set.
-    await env.DB.prepare('UPDATE users SET ad_click_bypass_views = ?, has_click_bypass = MAX(has_click_bypass, ?), ads_reward_day = ?, ads_reward_count = ? WHERE user_id = ?')
+    // ads_reward_total is the never-reset lifetime view counter (analytics); the
+    // per-day ads_reward_count still drives the daily limit.
+    await env.DB.prepare('UPDATE users SET ad_click_bypass_views = ?, has_click_bypass = MAX(has_click_bypass, ?), ads_reward_day = ?, ads_reward_count = ?, ads_reward_total = COALESCE(ads_reward_total, 0) + 1 WHERE user_id = ?')
       .bind(views, unlocked ? 1 : 0, today, count + 1, userId).run();
     await env.USERS.delete(`adsintent:${userId}`); // consume (idempotency)
     return jsonResponse({ ok: true, granted: type, views, target: AD_CLICK_BYPASS_TARGET, unlocked, count: count + 1, limit: AD_DAILY_LIMIT });
@@ -3017,7 +3024,9 @@ async function handleAdsgramReward(request, env) {
   const dur = type === 'nocap' ? AD_NOCAP_DURATION_MS : AD_PROD2X_DURATION_MS;
   const curExp = type === 'nocap' ? (row && row.e) : (row && row.e2);
   const base = Math.max(Number.isFinite(curExp) ? curExp : 0, now);
-  await env.DB.prepare(`UPDATE users SET ${col} = ?, ads_reward_day = ?, ads_reward_count = ? WHERE user_id = ?`)
+  // ads_reward_total: never-reset lifetime view counter (analytics); ads_reward_count
+  // stays the per-day counter that drives the daily limit.
+  await env.DB.prepare(`UPDATE users SET ${col} = ?, ads_reward_day = ?, ads_reward_count = ?, ads_reward_total = COALESCE(ads_reward_total, 0) + 1 WHERE user_id = ?`)
     .bind(base + dur, today, count + 1, userId).run();
   await env.USERS.delete(`adsintent:${userId}`); // consume (idempotency)
   return jsonResponse({ ok: true, granted: type, count: count + 1, limit: AD_DAILY_LIMIT });
