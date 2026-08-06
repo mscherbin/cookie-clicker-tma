@@ -277,6 +277,21 @@ async function getConfigStr(env, key) {
 // `source` stays coarse ('keitaro') so /funnel segments don't explode per click.
 async function captureAttribution(env, userId, startParam) {
   if (!env.DB) return;
+  // Referral links (refNNN) are their OWN acquisition source — not organic and
+  // not keitaro. Stamp source='referral' (first-touch, never overwritten) so
+  // /funnel separates real referral traffic from true organic (catalog / word-
+  // of-mouth / direct). The referrer_id link + ref_install/active are handled by
+  // the /start referral flow (logEvent), untouched here. Ref codes carry no
+  // kt_subid and never fire a Keitaro CAPI postback (that path is gated on
+  // source='keitaro'), so CAPI/keitaro are unaffected.
+  const raw = typeof startParam === 'string' ? startParam.trim() : '';
+  if (/^ref\d+$/.test(raw)) {
+    try {
+      await env.DB.prepare("UPDATE users SET source = 'referral' WHERE user_id = ? AND source IS NULL")
+        .bind(userId).run();
+    } catch (e) { /* column may not be migrated yet — degrade */ }
+    return;
+  }
   const clean = sanitizeSource(startParam);
   if (!clean) return;
   // Coarse channel: a known static channel token (adsgram, catalogs…) becomes the
@@ -1268,6 +1283,57 @@ async function handleStickiness(request, env) {
           { v: '3-9', test: v => v >= 3 && v <= 9 }, { v: '10+', test: v => v >= 10 },
         ]),
       },
+    });
+  } catch (e) { return jsonResponse({ ok: false, error: 'db', detail: String(e) }, 500); }
+}
+
+// GET /referrers?key=<ADMIN_KEY>[&source=][&country=][&period=…|&from=&to=] — the
+// INVITER side of referrals: how many distinct users have successfully referred
+// someone, how many were referred in total, and the distribution (1 vs a few vs
+// many) — to tell "a couple of power-sharers" from "lots of people inviting
+// friends". A successful referral = a referred user with referrer_id set (the
+// ref_install moment; only ever set to a real, non-self referrer). The
+// source/period/country filter narrows by the REFERRER's own acquisition (same
+// semantics as /stickiness: source on the referrer, window on their
+// first_seen_ts), so e.g. ?source=keitaro = "how do keitaro-acquired users
+// refer". Read-only aggregation over existing referrer_id data.
+async function handleReferrers(request, env) {
+  const url = new URL(request.url);
+  if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+  const f = cohortFilter(url);
+  if (f.error) return jsonResponse({ ok: false, error: f.error }, 400);
+  const win = parsePeriod(url);
+  if (win.error) return jsonResponse({ ok: false, error: win.error }, 400);
+
+  // Filters apply to the REFERRER (alias u); `ref` = the referred users. The
+  // cohortFilter conds already reference `u`, so they narrow the referrer.
+  const conds = ['ref.referrer_id IS NOT NULL', ...f.conds];
+  const binds = f.binds.slice();
+  conds.push('u.first_seen_ts >= ? AND u.first_seen_ts < ?'); binds.push(win.since, win.until);
+  const where = 'WHERE ' + conds.join(' AND ');
+
+  try {
+    // Referred-user count per referrer (only referrers matching the filter).
+    const rows = await env.DB.prepare(
+      `SELECT ref.referrer_id AS rid, COUNT(*) AS cnt
+       FROM users ref JOIN users u ON u.user_id = ref.referrer_id
+       ${where} GROUP BY ref.referrer_id`
+    ).bind(...binds).all();
+    const counts = (rows.results || []).map(r => r.cnt);
+    const uniqueReferrers = counts.length;
+    const totalReferred = counts.reduce((a, b) => a + b, 0);
+    const avg = uniqueReferrers ? Math.round((totalReferred / uniqueReferrers) * 100) / 100 : 0;
+
+    return jsonResponse({
+      ok: true, source: f.rawSource, country: f.country, period: win.label,
+      unique_referrers: uniqueReferrers,
+      total_referred: totalReferred,
+      avg_per_referrer: avg,
+      buckets: bucketCounts(counts, [
+        { v: '1', test: v => v === 1 }, { v: '2-3', test: v => v >= 2 && v <= 3 },
+        { v: '4-9', test: v => v >= 4 && v <= 9 }, { v: '10+', test: v => v >= 10 },
+      ]),
     });
   } catch (e) { return jsonResponse({ ok: false, error: 'db', detail: String(e) }, 500); }
 }
@@ -2983,6 +3049,10 @@ export default {
 
     if (url.pathname === '/stickiness' && request.method === 'GET') {
       return handleStickiness(request, env);
+    }
+
+    if (url.pathname === '/referrers' && request.method === 'GET') {
+      return handleReferrers(request, env);
     }
 
     if (url.pathname === '/online' && request.method === 'GET') {
