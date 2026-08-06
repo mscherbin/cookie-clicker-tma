@@ -1198,6 +1198,16 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   border-color: var(--gold);
 }
 
+/* Starter pack (#60): the hero impulse offer at the top of the Shop. Filled/
+   glowing gold so it stands out above the outline boost buttons; the owned state
+   falls back to the shared .nocap-btn.owned look (glow removed). */
+.starter-btn {
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.28), rgba(255, 209, 102, 0.14));
+  box-shadow: 0 0 0 1px var(--gold) inset, 0 4px 14px rgba(255, 209, 102, 0.25);
+  font-size: 14px;
+}
+.starter-btn.owned { box-shadow: none; }
+
 /* --- Player profile line (name + current referral title) --- */
 .player-profile {
   display: flex;

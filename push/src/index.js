@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=102';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=103';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -482,6 +482,19 @@ const PERM_PROD_STARS = 200; // price in Stars (one-time)
 // Paid one-time "skip the clicker": removes the click-count requirement on
 // click upgrades (applied client-side); the server owns the has_click_bypass flag.
 const CLICK_BYPASS_STARS = 100; // price in Stars (one-time)
+
+// Paid one-time "starter pack" (#60) — an impulse offer priced tiny (3⭐) to break
+// the first-purchase barrier. Grants an instant cookie throw sized to the player's
+// OWN production (so it scales with their economy — smooth, no discontinuity —
+// floored so a fresh near-zero-cps player still gets a real jump-start) plus a 4h
+// ×2 production window. The server owns the has_starter_pack flag; the throw is
+// delivered via pending_paid_cookies and the window via boost2x_expires_at (the
+// same channels the other paid boosts already use). Throw size / duration are the
+// product-tunable knobs (mirrors the other *_STARS/_MS constants).
+const STARTER_PACK_STARS = 3;                  // price in Stars (one-time)
+const STARTER_PACK_BOOST_MS = 4 * 3600 * 1000; // 4h of ×2 production
+const STARTER_PACK_THROW_SECONDS = 3 * 3600;   // instant cookies = 3h of the player's current production (midpoint of the 2–4h target)
+const STARTER_PACK_MIN_COOKIES = 3000;         // floor for near-zero-cps newcomers (~buys the first several buildings: cursor 15 / grandma 100 / farm 1100)
 
 // Anti-farm for /prestige/confirm: a new confirmed prestige needs at least this
 // much wall-clock time since the last one. Any legit prestige takes far longer
@@ -1675,6 +1688,44 @@ async function handleCreatePermInvoice(request, env) {
   return jsonResponse({ ok: true, link: res.result });
 }
 
+// POST /create-starter-invoice { initData } — one-time "starter pack" (3⭐, #60).
+// Same ownership-first guard as perm_prod: refuse BEFORE creating the invoice if
+// already owned, so a second real payment can never happen for a one-time item.
+// The pack contents (cookie throw + 4h ×2 window) are granted by the webhook.
+async function handleCreateStarterInvoice(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    const owned = await env.DB.prepare('SELECT has_starter_pack AS h FROM users WHERE user_id = ?').bind(userId).first();
+    if (owned && owned.h) return jsonResponse({ ok: false, error: 'already_owned' }, 409);
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const invoiceId = crypto.randomUUID();
+  try {
+    await env.DB.prepare('INSERT INTO star_invoices (invoice_id, user_id, amount, status, created_ts, kind) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(invoiceId, userId, 0, 'pending', now, 'starter_pack').run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const res = await tgCall(env, 'createInvoiceLink', {
+    title: 'Стартовый пак',
+    description: 'Разовый набор новичка: мгновенный заброс печенек + ×2 производство на 4 часа.',
+    payload: invoiceId,
+    currency: 'XTR',
+    prices: [{ label: 'Стартовый пак', amount: STARTER_PACK_STARS }],
+  });
+  if (!res || !res.ok || !res.result) {
+    return jsonResponse({ ok: false, error: 'invoice_failed' }, 502);
+  }
+  return jsonResponse({ ok: true, link: res.result });
+}
+
 // POST /create-clickskip-invoice { initData } — one-time "skip the clicker".
 // Same ownership-first guard as perm_prod: refuse before creating the invoice
 // if already owned, so a second real payment can never be taken.
@@ -1815,6 +1866,19 @@ async function handleSuccessfulPayment(env, msg) {
         "ELSE paid_unlocked_upgrades || ',' || ? END " +
         "WHERE user_id = ?"
       ).bind(inv.upgrade_id, inv.upgrade_id, inv.upgrade_id, userId).run();
+    } else if (inv.kind === 'starter_pack') {
+      // One-time starter pack (#60). Runs exactly once (past the conditional
+      // invoice flip above). Set the flag, throw instant cookies sized to the
+      // player's own production (floored for near-zero-cps newcomers — keeps the
+      // economy smooth by scaling with THEIR cps), and open a 4h ×2 window,
+      // extended from max(now, current) like the other time-window boosts. cps
+      // comes from the worker's own KV (last /checkin); 0 if unknown → floor.
+      const cps = await getKnownCps(env, userId);
+      const thrown = Math.max(STARTER_PACK_MIN_COOKIES, Math.floor((Number.isFinite(cps) ? cps : 0) * STARTER_PACK_THROW_SECONDS));
+      const row = await env.DB.prepare('SELECT boost2x_expires_at AS e FROM users WHERE user_id = ?').bind(userId).first();
+      const base = Math.max((row && Number.isFinite(row.e) ? row.e : 0), Date.now());
+      await env.DB.prepare('UPDATE users SET has_starter_pack = 1, pending_paid_cookies = pending_paid_cookies + ?, boost2x_expires_at = ? WHERE user_id = ?')
+        .bind(thrown, base + STARTER_PACK_BOOST_MS, userId).run();
     } else {
       // offline_2x (default): credit the frozen amount x2.
       const credit = (inv.amount || 0) * OFFLINE_BOOST_MULT;
@@ -1950,6 +2014,7 @@ async function handleCheckin(request, env) {
   let boost2xExpiresAt = 0;
   let hasPermProdBoost = false;
   let hasClickBypass = false;
+  let hasStarterPack = false;
   let serverPrestigeCount = 0;
   let isPrestigePioneer = false;
   let paidUnlockedUpgrades = [];
@@ -2014,11 +2079,12 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv, channel_bonus_claimed AS chan, country AS country FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, has_starter_pack AS starter, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv, channel_bonus_claimed AS chan, country AS country FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
       if (boostRow && boostRow.clickbypass) hasClickBypass = true;
+      if (boostRow && boostRow.starter) hasStarterPack = true;
       if (boostRow && Number.isFinite(boostRow.pc)) serverPrestigeCount = boostRow.pc;
       if (boostRow && boostRow.pion) isPrestigePioneer = true;
       if (boostRow) paidUnlockedUpgrades = parseIdList(boostRow.pu);
@@ -2193,7 +2259,7 @@ async function handleCheckin(request, env) {
     if (widx >= 0) weeklyRank = widx + 1;
   } catch (e) { /* rank views best-effort — never break checkin */ }
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed, rank, rankTotal, weeklyBaked, weeklyRank, weeklyTotal, weekEndsAt: weekEndsAt(now) });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, hasStarterPack, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed, rank, rankTotal, weeklyBaked, weeklyRank, weeklyTotal, weekEndsAt: weekEndsAt(now) });
 }
 
 // Builds the ranked leaderboard from KV metadata (one list() sweep, no per-user
@@ -3124,6 +3190,10 @@ export default {
 
     if (url.pathname === '/create-perm-invoice' && request.method === 'POST') {
       return handleCreatePermInvoice(request, env);
+    }
+
+    if (url.pathname === '/create-starter-invoice' && request.method === 'POST') {
+      return handleCreateStarterInvoice(request, env);
     }
 
     if (url.pathname === '/create-clickskip-invoice' && request.method === 'POST') {

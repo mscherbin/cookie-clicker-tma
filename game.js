@@ -47,6 +47,7 @@
       'shop.title': '🛒 Магазин', 'shop.desc': 'Ускорь производство за Telegram Stars ⭐',
       'shop.nocap': '🚀 Снять кап офлайна на 24ч · {n} ⭐', 'shop.nocapExtend': 'Продлить ещё на 24ч · {n} ⭐',
       'shop.boost2x': '⚡ ×2 производство на 1ч · {n} ⭐', 'shop.boost2xExtend': 'Продлить ×2 ещё на 1ч · {n} ⭐',
+      'shop.starter': '🎁 Стартовый пак · разовый · {n} ⭐', 'shop.starterOwned': '🎁 Стартовый пак · Куплено ✓',
       'shop.perm': '🌟 +10% к производству навсегда · {n} ⭐', 'shop.permOwned': '🌟 +10% навсегда · Куплено ✓',
       'shop.clickBypass': '⚡ Открыть клик-апгрейды без кликов · {n} ⭐', 'shop.clickBypassOwned': '⚡ Клик-апгрейды без кликов · Куплено ✓',
       'shop.adNocap': '📺 +2ч без капа за рекламу', 'shop.adBoost2x': '📺 +15 мин ×2 за рекламу',
@@ -54,6 +55,7 @@
       'shop.adBypassOr': 'Или бесплатно за рекламу', 'shop.adBypass': '📺 +1 просмотр к разблокировке',
       'toast.adBypassProgress': '📺 Прогресс: {views}/{target} просмотров', 'toast.adBypassUnlocked': '⚡ Клик-апгрейды открыты за рекламу!',
       'popup.offlineTitle': '💤 Офлайн-доход', 'popup.cpsTitle': '⚡ Производство',
+      'popup.starterTitle': '🎁 Стартовый пак', 'popup.starterExplain': 'Разовый набор новичка за 3 ⭐: сразу заброс печенек + ×2 производство на 4 часа. Быстрый старт, чтобы вырваться вперёд.',
       'popup.offlineExplain': 'Печеньки копятся, даже когда игра закрыта: первые {cap} — на полной скорости, дальше медленнее.',
       'popup.offlineExplainBoost': 'Сейчас офлайн без ограничений — печеньки копятся на полной скорости всё время, пока активен буст.',
       'toast.adLoading': 'Загружаем рекламу…', 'toast.adReward': '📺 Награда за рекламу начислена!',
@@ -162,6 +164,7 @@
       'toast.cloudParseFail': 'Не удалось разобрать сохранение из облака',
       'toast.offlineX2Credited': '🍪 ×2 офлайн-доход начислен: +{n}', 'toast.nocapOn': '🚀 Кап офлайна снят на 24 часа!',
       'toast.boost2xOn': '⚡ ×2 производство активно на 1 час!', 'toast.permOn': '🌟 +10% к производству навсегда!',
+      'toast.starterOn': '🎁 Стартовый пак активирован — печеньки заброшены, ×2 на 4 часа!',
       'toast.clickBypassOn': '⚡ Клик-апгрейды открыты без кликов!', 'toast.upgradeUnlockedGeneric': '🔓 Апгрейд разблокирован!',
       'toast.lbPrestige': '{n} {word} — постоянный бонус +{x}% к производству',
       'toast.lbPioneer': 'Один из первых {n} игроков, кто вознёсся — эксклюзивный титул, больше не выдаётся',
@@ -172,6 +175,7 @@
       'toast.invoiceFail': 'Не удалось создать счёт — попробуй позже', 'toast.payNocap': 'Оплата принята — снимаем кап…',
       'toast.payBoost2x': 'Оплата принята — включаем ×2…', 'toast.alreadyOwned': 'Уже куплено ✓',
       'toast.payPerm': 'Оплата принята — активируем +10%…', 'toast.payClickBypass': 'Оплата принята — открываем клик-апгрейды…',
+      'toast.payStarter': 'Оплата принята — выдаём стартовый пак…',
       'toast.alreadyUnlocked': 'Уже разблокировано ✓', 'toast.payUpgradeSkip': 'Оплата принята — открываем «{name}»…',
       'toast.buildingPlaced': '{icon} {name} установлена!', 'toast.prestigeSoonNudge': 'Осталось: {rest} — купи, и откроется вознесение',
       'toast.boughtNamed': 'Куплено: {name}', 'toast.offlineHint': '🍪 Печеньки копятся, даже когда ты вышел — загляни попозже за добычей',
@@ -204,6 +208,7 @@
       'shop.title': '🛒 Shop', 'shop.desc': 'Speed up production with Telegram Stars ⭐',
       'shop.nocap': '🚀 Remove offline cap for 24h · {n} ⭐', 'shop.nocapExtend': 'Extend by 24h · {n} ⭐',
       'shop.boost2x': '⚡ ×2 production for 1h · {n} ⭐', 'shop.boost2xExtend': 'Extend ×2 by 1h · {n} ⭐',
+      'shop.starter': '🎁 Starter pack · one-time · {n} ⭐', 'shop.starterOwned': '🎁 Starter pack · Owned ✓',
       'shop.perm': '🌟 +10% production forever · {n} ⭐', 'shop.permOwned': '🌟 +10% forever · Owned ✓',
       'shop.clickBypass': '⚡ Unlock click upgrades without clicks · {n} ⭐', 'shop.clickBypassOwned': '⚡ Click upgrades without clicks · Owned ✓',
       'shop.adNocap': '📺 +2h no cap for an ad', 'shop.adBoost2x': '📺 +15 min ×2 for an ad',
@@ -211,6 +216,7 @@
       'shop.adBypassOr': 'Or unlock free by watching ads', 'shop.adBypass': '📺 +1 view toward unlock',
       'toast.adBypassProgress': '📺 Progress: {views}/{target} views', 'toast.adBypassUnlocked': '⚡ Click upgrades unlocked via ads!',
       'popup.offlineTitle': '💤 Offline income', 'popup.cpsTitle': '⚡ Production',
+      'popup.starterTitle': '🎁 Starter pack', 'popup.starterExplain': 'One-time newcomer bundle for 3 ⭐: an instant cookie boost + ×2 production for 4 hours. A quick head-start to pull ahead.',
       'popup.offlineExplain': 'Cookies pile up even while the game is closed: full speed for the first {cap}, then slower.',
       'popup.offlineExplainBoost': 'Offline is uncapped right now — cookies pile up at full speed the whole time while the boost is active.',
       'toast.adLoading': 'Loading ad…', 'toast.adReward': '📺 Ad reward granted!',
@@ -306,6 +312,7 @@
       'toast.cloudParseFail': 'Failed to parse cloud save',
       'toast.offlineX2Credited': '🍪 ×2 offline income credited: +{n}', 'toast.nocapOn': '🚀 Offline cap removed for 24 hours!',
       'toast.boost2xOn': '⚡ ×2 production active for 1 hour!', 'toast.permOn': '🌟 +10% production forever!',
+      'toast.starterOn': '🎁 Starter pack activated — cookies delivered, ×2 for 4 hours!',
       'toast.clickBypassOn': '⚡ Click upgrades unlocked without clicks!', 'toast.upgradeUnlockedGeneric': '🔓 Upgrade unlocked!',
       'toast.lbPrestige': '{n} {word} — permanent +{x}% production bonus',
       'toast.lbPioneer': 'One of the first {n} players to ascend — an exclusive title, no longer awarded',
@@ -316,6 +323,7 @@
       'toast.invoiceFail': 'Could not create invoice — try later', 'toast.payNocap': 'Payment accepted — removing cap…',
       'toast.payBoost2x': 'Payment accepted — enabling ×2…', 'toast.alreadyOwned': 'Already purchased ✓',
       'toast.payPerm': 'Payment accepted — activating +10%…', 'toast.payClickBypass': 'Payment accepted — unlocking click upgrades…',
+      'toast.payStarter': 'Payment accepted — delivering your starter pack…',
       'toast.alreadyUnlocked': 'Already unlocked ✓', 'toast.payUpgradeSkip': 'Payment accepted — unlocking "{name}"…',
       'toast.buildingPlaced': '{icon} {name} placed!', 'toast.prestigeSoonNudge': 'Remaining: {rest} — buy it to unlock ascension',
       'toast.boughtNamed': 'Purchased: {name}', 'toast.offlineHint': '🍪 Cookies pile up even while you are away — come back later for your loot',
@@ -707,6 +715,8 @@
   const PERM_PROD_MULT = 1.1;  // +10% permanent production
   const CREATE_CLICKSKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-clickskip-invoice';
   const CLICK_BYPASS_STARS = 100; // must match CLICK_BYPASS_STARS in push/src/index.js
+  const CREATE_STARTER_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-starter-invoice';
+  const STARTER_PACK_STARS = 3; // must match STARTER_PACK_STARS in push/src/index.js (one-time starter pack, #60)
   const CREATE_UPGRADE_SKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-upgrade-skip-invoice';
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
   const CLAIM_CHANNEL_BONUS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/claim-channel-bonus';
@@ -760,6 +770,8 @@
     boost2xExpiresAt: 0, // ms epoch of the paid "x2 production 1h" boost; server-authoritative
     hasPermProdBoost: false, // one-time paid "+10% forever"; server-authoritative
     hasClickBypass: false, // one-time paid "skip the click-count requirement on click upgrades"; server-authoritative
+    hasStarterPack: false, // one-time paid "starter pack" (#60); server-authoritative
+    starterPopupShown: false, // the one-time contextual starter-pack popup has been surfaced (never before the first click)
     lifetimeBaked: 0, // cookies baked across ALL past runs (never reset on ascend); + current totalBaked = lifetime total
     paidUnlockedUpgrades: [], // upgrade ids whose progress gate was skipped via a paid Stars purchase; server-authoritative
     lang: detectLang(), // 'ru'|'en'; auto from Telegram language_code on first load, then persisted (overridable in Settings)
@@ -1109,6 +1121,16 @@
           saveState();
           refreshAll();
           if (!wasOwned && data.hasClickBypass) showToast(t('toast.clickBypassOn'), 4000);
+        }
+        // Starter-pack flag (server-authoritative, one-time): flips the shop card to
+        // "Owned" once the payment lands (the cookie throw + ×2 window arrive via the
+        // usual pending_paid_cookies / boost2xExpiresAt sync above).
+        if (data && typeof data.hasStarterPack === 'boolean' && data.hasStarterPack !== !!state.hasStarterPack) {
+          const wasOwned = !!state.hasStarterPack;
+          state.hasStarterPack = data.hasStarterPack;
+          saveState();
+          refreshAll();
+          if (!wasOwned && data.hasStarterPack) showToast(t('toast.starterOn'), 4000);
         }
         // Per-upgrade paid skips (server-authoritative list of upgrade ids).
         if (data && Array.isArray(data.paidUnlockedUpgrades)) {
@@ -2271,6 +2293,43 @@
     }
   }
 
+  // Paid one-time "starter pack" (#60): impulse offer to break the first purchase.
+  // Server refuses if already owned; on success the flag + the thrown cookies + the
+  // 4h ×2 window all arrive via checkin (mirrors buyPermProd).
+  async function buyStarterPack() {
+    if (state.hasStarterPack) { showToast(t('toast.alreadyOwned')); return; }
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
+    if (el.starterPackBtn) el.starterPackBtn.disabled = true;
+    try {
+      const resp = await fetch(CREATE_STARTER_INVOICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
+      const data = await resp.json();
+      if (data && data.error === 'already_owned') {
+        state.hasStarterPack = true; saveState(); refreshAll();
+        showToast(t('toast.alreadyOwned'));
+        return;
+      }
+      if (!data || !data.ok || !data.link) throw new Error('no_link');
+      tg.openInvoice(data.link, (status) => {
+        if (status === 'paid') {
+          // Keep the button disabled — the flag lands via checkin and flips it to
+          // "Куплено", preventing a rapid second (real) purchase of a one-time item.
+          showToast(t('toast.payStarter'), 4000);
+          pollPaidCredit();
+        } else {
+          if (el.starterPackBtn) el.starterPackBtn.disabled = false;
+          if (status === 'failed') showToast(t('toast.payFailed'));
+        }
+      });
+    } catch (e) {
+      if (el.starterPackBtn) el.starterPackBtn.disabled = false;
+      showToast(t('toast.invoiceFail'));
+    }
+  }
+
   function addPaidUnlock(id) {
     if (!Array.isArray(state.paidUnlockedUpgrades)) state.paidUnlockedUpgrades = [];
     if (!state.paidUnlockedUpgrades.includes(id)) state.paidUnlockedUpgrades.push(id);
@@ -2340,6 +2399,14 @@
       render(btn) {
         const owned = !!state.hasPermProdBoost;
         btn.textContent = owned ? t('shop.permOwned') : t('shop.perm', { n: PERM_PROD_STARS });
+        btn.disabled = owned; btn.classList.toggle('owned', owned);
+      },
+    },
+    starterPack: {
+      action: buyStarterPack,
+      render(btn) {
+        const owned = !!state.hasStarterPack;
+        btn.textContent = owned ? t('shop.starterOwned') : t('shop.starter', { n: STARTER_PACK_STARS });
         btn.disabled = owned; btn.classList.toggle('owned', owned);
       },
     },
@@ -2493,6 +2560,7 @@
     boost2xBtn: document.getElementById('boost2xBtn'),
     permProdBtn: document.getElementById('permProdBtn'),
     clickBypassBtn: document.getElementById('clickBypassBtn'),
+    starterPackBtn: document.getElementById('starterPackBtn'),
     adNocapBtn: document.getElementById('adNocapBtn'),
     adBoost2xBtn: document.getElementById('adBoost2xBtn'),
     adBypassProgress: document.getElementById('adBypassProgress'),
@@ -3479,6 +3547,16 @@
       tu.offlineHintDone = true;
       saveState();
       setTimeout(() => showToast(t('toast.offlineHint'), 5000), 1500);
+    }
+    // Starter-pack impulse (#60): surface the one-time 3⭐ pack ONCE, right after
+    // the first upgrade — an early, low-friction moment that is by construction
+    // after the first click (you can't buy an upgrade without clicking first), so
+    // it never becomes a barrier before the first tap. Skip if already owned or
+    // already shown. Delayed past the offline-hint toast so they don't collide.
+    if (isFirstUpgrade && !state.starterPopupShown && !state.hasStarterPack && tg && tg.openInvoice) {
+      state.starterPopupShown = true;
+      saveState();
+      setTimeout(() => { if (!state.hasStarterPack) openOfferPopup('popup.starterTitle', ['starterPack'], t('popup.starterExplain')); }, 3200);
     }
   }
 
