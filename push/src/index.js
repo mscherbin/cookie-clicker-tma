@@ -1190,6 +1190,8 @@ async function handleRetention(request, env) {
 // optionally windowed by acquisition time via period). return_days = distinct
 // active days after day 0 (retention depth). sessions = app_open runs split by a
 // >30min gap — NOT raw checkins (a single long visit = 1 session, not N pings).
+// ad_views = rewarded-ad views per user (users.ads_reward_count; see note at the
+// block — it's a per-day counter, so it reflects the latest ad-day, not a total).
 async function handleStickiness(request, env) {
   const url = new URL(request.url);
   if (!env.ADMIN_KEY || url.searchParams.get('key') !== env.ADMIN_KEY) return jsonResponse({ ok: false, error: 'forbidden' }, 403);
@@ -1204,12 +1206,15 @@ async function handleStickiness(request, env) {
   const whereU = 'WHERE ' + conds.join(' AND ');
 
   try {
-    // Cohort: filtered app-entrants (>=1 app_open) in the window.
+    // Cohort: filtered app-entrants (>=1 app_open) in the window. Also pull
+    // ads_reward_count per user for the ad_views block below (rewarded-ad views).
     const cohortRes = await env.DB.prepare(
-      `SELECT u.user_id AS uid FROM users u ${whereU} AND EXISTS (SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.event = 'app_open')`
+      `SELECT u.user_id AS uid, u.ads_reward_count AS ac FROM users u ${whereU} AND EXISTS (SELECT 1 FROM events e WHERE e.user_id = u.user_id AND e.event = 'app_open')`
     ).bind(...binds).all();
-    const cohortUids = new Set((cohortRes.results || []).map(r => r.uid));
+    const cohortRows = cohortRes.results || [];
+    const cohortUids = new Set(cohortRows.map(r => r.uid));
     const cohortSize = cohortUids.size;
+    const adByUid = new Map(cohortRows.map(r => [r.uid, Math.max(0, r.ac || 0)]));
 
     // return_days per user = distinct active days minus day 0 (always present).
     const rdRes = await env.DB.prepare(
@@ -1227,10 +1232,11 @@ async function handleStickiness(request, env) {
     ).bind(...binds).all();
     const sessByUid = new Map((sessRes.results || []).map(r => [r.uid, r.sessions]));
 
-    const returnDays = [], sessions = [];
+    const returnDays = [], sessions = [], adViews = [];
     for (const uid of cohortUids) {
       returnDays.push(rdByUid.has(uid) ? rdByUid.get(uid) : 0);
       sessions.push(sessByUid.has(uid) ? sessByUid.get(uid) : 0);
+      adViews.push(adByUid.has(uid) ? adByUid.get(uid) : 0);
     }
     const avg = arr => arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 100) / 100 : 0;
     const repeatRate = cohortSize ? Math.round((returnDays.filter(v => v >= 1).length / cohortSize) * 1000) / 1000 : 0;
@@ -1249,6 +1255,17 @@ async function handleStickiness(request, env) {
         buckets: bucketCounts(sessions, [
           { v: '1', test: v => v === 1 }, { v: '2-3', test: v => v >= 2 && v <= 3 },
           { v: '4-9', test: v => v >= 4 && v <= 9 }, { v: '10+', test: v => v >= 10 },
+        ]),
+      },
+      // Rewarded-ad views per user, from users.ads_reward_count. NB: the live
+      // grant path maintains this as a per-UTC-day counter (reset on the day
+      // boundary), so it reflects the user's most recent ad-day count, not a
+      // lifetime total.
+      ad_views: {
+        avg: avg(adViews),
+        buckets: bucketCounts(adViews, [
+          { v: '0', test: v => v === 0 }, { v: '1-2', test: v => v >= 1 && v <= 2 },
+          { v: '3-9', test: v => v >= 3 && v <= 9 }, { v: '10+', test: v => v >= 10 },
         ]),
       },
     });
