@@ -1,0 +1,30 @@
+{
+  "ru": {
+    "share.brand": "COOKIE CLICKER",
+    "share.handle": "@bestcookieclickerbot",
+    "share.ascensions": "ВОЗНЕСЕНИЙ",
+    "share.bakedTotal": "ПЕЧЕНЕК ИСПЕЧЕНО ЗА ВСЁ ВРЕМЯ",
+    "share.rank": "РАНГ",
+    "share.top": "ТОП {percent}%",
+    "share.cps": "CPS / СЕК",
+    "share.playerRole": "МАСТЕР ПЕЧЕНЕК",
+    "share.ctaTitle": "ОБГОНИШЬ?",
+    "share.ctaBonus": "+300 НОВИЧКУ НА СТАРТ",
+    "share.ctaButton": "ИГРАТЬ СЕЙЧАС",
+    "share.footer": "ПО ТВОЕЙ ССЫЛКЕ ВЫ ОБА ПОЛУЧАЕТЕ БОНУС"
+  },
+  "en": {
+    "share.brand": "COOKIE CLICKER",
+    "share.handle": "@bestcookieclickerbot",
+    "share.ascensions": "ASCENSIONS",
+    "share.bakedTotal": "COOKIES BAKED IN TOTAL",
+    "share.rank": "RANK",
+    "share.top": "TOP {percent}%",
+    "share.cps": "CPS / SEC",
+    "share.playerRole": "MASTER BAKER",
+    "share.ctaTitle": "BEAT ME?",
+    "share.ctaBonus": "+300 FOR A NEW PLAYER",
+    "share.ctaButton": "PLAY NOW",
+    "share.footer": "YOU BOTH GET A BONUS VIA YOUR LINK"
+  }
+}

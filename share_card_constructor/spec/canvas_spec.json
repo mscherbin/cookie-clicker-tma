@@ -1,0 +1,293 @@
+{
+  "version": "1.0",
+  "fonts": {
+    "family": "Inter",
+    "weights": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700,
+      "extraBold": 800
+    }
+  },
+  "portrait": {
+    "canvas": {
+      "width": 1080,
+      "height": 1350,
+      "safeArea": {
+        "left": 56,
+        "right": 56,
+        "top": 44,
+        "bottom": 44
+      }
+    },
+    "zones": {
+      "safe": {
+        "x": 56,
+        "y": 44,
+        "w": 968,
+        "h": 1262
+      },
+      "brand": {
+        "x": 72,
+        "y": 52,
+        "w": 936,
+        "h": 66
+      },
+      "tierBadge": {
+        "x": 302,
+        "y": 122,
+        "w": 476,
+        "h": 92
+      },
+      "heroCookie": {
+        "x": 310,
+        "y": 222,
+        "w": 460,
+        "h": 460
+      },
+      "lifetimeBaked": {
+        "x": 94,
+        "y": 616,
+        "w": 892,
+        "h": 154
+      },
+      "heroLabel": {
+        "x": 90,
+        "y": 758,
+        "w": 900,
+        "h": 42
+      },
+      "rankCard": {
+        "x": 78,
+        "y": 820,
+        "w": 440,
+        "h": 128
+      },
+      "cpsCard": {
+        "x": 562,
+        "y": 820,
+        "w": 440,
+        "h": 128
+      },
+      "player": {
+        "x": 78,
+        "y": 968,
+        "w": 924,
+        "h": 92
+      },
+      "cta": {
+        "x": 78,
+        "y": 1076,
+        "w": 924,
+        "h": 176
+      },
+      "footer": {
+        "x": 78,
+        "y": 1268,
+        "w": 924,
+        "h": 42
+      }
+    }
+  },
+  "square": {
+    "canvas": {
+      "width": 1080,
+      "height": 1080,
+      "safeArea": {
+        "left": 56,
+        "right": 56,
+        "top": 36,
+        "bottom": 36
+      }
+    },
+    "zones": {
+      "safe": {
+        "x": 56,
+        "y": 36,
+        "w": 968,
+        "h": 1000
+      },
+      "brand": {
+        "x": 72,
+        "y": 42,
+        "w": 936,
+        "h": 56
+      },
+      "tierBadge": {
+        "x": 324,
+        "y": 104,
+        "w": 432,
+        "h": 72
+      },
+      "heroCookie": {
+        "x": 365,
+        "y": 178,
+        "w": 350,
+        "h": 350
+      },
+      "lifetimeBaked": {
+        "x": 100,
+        "y": 486,
+        "w": 880,
+        "h": 122
+      },
+      "heroLabel": {
+        "x": 90,
+        "y": 602,
+        "w": 900,
+        "h": 34
+      },
+      "rankCard": {
+        "x": 78,
+        "y": 654,
+        "w": 440,
+        "h": 106
+      },
+      "cpsCard": {
+        "x": 562,
+        "y": 654,
+        "w": 440,
+        "h": 106
+      },
+      "player": {
+        "x": 78,
+        "y": 778,
+        "w": 924,
+        "h": 76
+      },
+      "cta": {
+        "x": 78,
+        "y": 870,
+        "w": 924,
+        "h": 148
+      },
+      "footer": {
+        "x": 78,
+        "y": 1028,
+        "w": 924,
+        "h": 30
+      }
+    }
+  },
+  "dynamicFields": {
+    "ascensionCount": {
+      "box": "tierBadge",
+      "format": "★ × {integer}",
+      "portraitFontPx": 47,
+      "squareFontPx": 38
+    },
+    "lifetimeBaked": {
+      "box": "lifetimeBaked",
+      "format": "compact",
+      "examples": [
+        "4.2M",
+        "18.4K",
+        "1.2B",
+        "987T"
+      ],
+      "maxDecimals": 1,
+      "dropTrailingZero": true,
+      "fit": "shrink-to-fit, never wrap",
+      "portraitFontPx": {
+        "max": 148,
+        "min": 78
+      },
+      "squareFontPx": {
+        "max": 116,
+        "min": 66
+      }
+    },
+    "rank": {
+      "box": "rankCard",
+      "format": "#{integer}",
+      "missing": "hide rankCard; expand CPS to x=78 width=924"
+    },
+    "rankPercent": {
+      "box": "rankCard",
+      "format": "TOP {percent}%",
+      "optional": true
+    },
+    "cps": {
+      "box": "cpsCard",
+      "format": "compact",
+      "fit": "shrink-to-fit, never wrap"
+    },
+    "first_name": {
+      "box": "player",
+      "overflow": "ellipsis by measured pixel width",
+      "maxWidthPx": 770
+    },
+    "avatar": {
+      "box": "player",
+      "shape": "circle",
+      "source": "Telegram photo or initial fallback"
+    },
+    "refUrl": {
+      "rendering": "Do not rasterize URL into image; attach to Telegram caption/text or inline button."
+    }
+  },
+  "tiers": {
+    "bronze": {
+      "base": "#160E09",
+      "panel": "#2A190D",
+      "accent": "#D8892A",
+      "accent2": "#FFBD65",
+      "glow": "#D8892A",
+      "overlayPortrait": "assets/tiers/bronze_portrait_overlay.svg",
+      "overlaySquare": "assets/tiers/bronze_square_overlay.svg",
+      "exampleAscensionCount": 1,
+      "range": "TBD — agree separately, do not hardcode from this handoff"
+    },
+    "silver": {
+      "base": "#0D1218",
+      "panel": "#18202A",
+      "accent": "#C7D0DA",
+      "accent2": "#F4FAFF",
+      "glow": "#9EC9EE",
+      "overlayPortrait": "assets/tiers/silver_portrait_overlay.svg",
+      "overlaySquare": "assets/tiers/silver_square_overlay.svg",
+      "exampleAscensionCount": 3,
+      "range": "TBD — agree separately, do not hardcode from this handoff"
+    },
+    "gold": {
+      "base": "#100B07",
+      "panel": "#24180F",
+      "accent": "#F4B846",
+      "accent2": "#FFE894",
+      "glow": "#F4B846",
+      "overlayPortrait": "assets/tiers/gold_portrait_overlay.svg",
+      "overlaySquare": "assets/tiers/gold_square_overlay.svg",
+      "exampleAscensionCount": 5,
+      "range": "TBD — agree separately, do not hardcode from this handoff"
+    },
+    "cosmos": {
+      "base": "#0E0817",
+      "panel": "#20102E",
+      "accent": "#B568FF",
+      "accent2": "#E1B8FF",
+      "glow": "#9B4DFF",
+      "overlayPortrait": "assets/tiers/cosmos_portrait_overlay.svg",
+      "overlaySquare": "assets/tiers/cosmos_square_overlay.svg",
+      "exampleAscensionCount": 7,
+      "range": "TBD — agree separately, do not hardcode from this handoff"
+    },
+    "singularity": {
+      "base": "#050A12",
+      "panel": "#0C1523",
+      "accent": "#58D7FF",
+      "accent2": "#D5F8FF",
+      "glow": "#5A6CFF",
+      "overlayPortrait": "assets/tiers/singularity_portrait_overlay.svg",
+      "overlaySquare": "assets/tiers/singularity_square_overlay.svg",
+      "exampleAscensionCount": 10,
+      "range": "TBD — agree separately, do not hardcode from this handoff"
+    }
+  },
+  "renderingRules": {
+    "honestData": "Never invent rank / percentile / CPS. Hide missing fields.",
+    "rankAbsent": "Hide rank card and expand CPS across the full stats row.",
+    "textMeasurement": "Use measureText; do not size by character count.",
+    "clickableCTA": "Visual CTA inside raster image is not clickable. Put the real referral URL in Telegram caption/text or inline button."
+  }
+}
