@@ -43,6 +43,9 @@
       'set.hint': 'Если на разных устройствах разные цифры — на том, чей прогресс хотите оставить, нажмите «Отправить», а на остальных — «Загрузить». Перед загрузкой и сбросом текущий прогресс этого устройства автоматически сохраняется в резервную копию.',
       'set.restore': '↩️ Восстановить резервную копию (это устройство)',
       'set.reset': 'Сбросить прогресс полностью', 'set.close': 'Закрыть',
+      'set.privacyTitle': 'Приватность', 'set.shoutoutOptOut': 'Не показывать меня в канале при попадании в топ',
+      'set.shoutoutHint': 'Когда игрок впервые за неделю входит в топ-3, бот может поздравить его постом в нашем канале (только имя). Выключи, если не хочешь попадать в канал.',
+      'set.shoutoutSaved': '✅ Настройка сохранена',
       // Shop
       'shop.title': '🛒 Магазин', 'shop.desc': 'Ускорь производство за Telegram Stars ⭐',
       'shop.nocap': '🚀 Снять кап офлайна на 24ч · {n} ⭐', 'shop.nocapExtend': 'Продлить ещё на 24ч · {n} ⭐',
@@ -211,6 +214,9 @@
       'set.hint': 'If your devices show different numbers, tap “Save” on the one whose progress you want to keep, and “Load” on the others. Before loading or resetting, this device’s current progress is automatically backed up.',
       'set.restore': '↩️ Restore backup (this device)',
       'set.reset': 'Reset all progress', 'set.close': 'Close',
+      'set.privacyTitle': 'Privacy', 'set.shoutoutOptOut': "Don't feature me in the channel when I hit the top",
+      'set.shoutoutHint': "When a player first reaches the top-3 in a week, the bot may celebrate them with a post in our channel (first name only). Turn this off if you'd rather not appear in the channel.",
+      'set.shoutoutSaved': '✅ Preference saved',
       'shop.title': '🛒 Shop', 'shop.desc': 'Speed up production with Telegram Stars ⭐',
       'shop.nocap': '🚀 Remove offline cap for 24h · {n} ⭐', 'shop.nocapExtend': 'Extend by 24h · {n} ⭐',
       'shop.boost2x': '⚡ ×2 production for 1h · {n} ⭐', 'shop.boost2xExtend': 'Extend ×2 by 1h · {n} ⭐',
@@ -731,6 +737,7 @@
   const STARTER_PACK_STARS = 3; // must match STARTER_PACK_STARS in push/src/index.js (one-time starter pack, #60)
   const CREATE_STATUS_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-status-invoice';
   const SET_STATUS_FLAIR_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/set-status-flair';
+  const SET_SHOUTOUT_OPTOUT_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/set-shoutout-optout';
   const STATUS_FLEX_STARS = 150; // must match STATUS_FLEX_STARS in push/src/index.js (one-time cosmetic status, #52)
   const STATUS_FLAIRS = ['🔥', '💎', '⚡', '🚀', '❤️', '🪐']; // must match STATUS_FLAIRS in push/src/index.js
   const CREATE_UPGRADE_SKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-upgrade-skip-invoice';
@@ -790,6 +797,7 @@
     starterPopupShown: false, // the one-time contextual starter-pack popup has been surfaced (never before the first click)
     hasStatusFlex: false, // one-time paid cosmetic leaderboard status (#52); server-authoritative
     statusFlair: null, // chosen flair emoji (null = crown only); server-authoritative
+    shoutoutOptOut: false, // #48: opted out of leaderboard shoutouts to the channel; server-authoritative
     lifetimeBaked: 0, // cookies baked across ALL past runs (never reset on ascend); + current totalBaked = lifetime total
     paidUnlockedUpgrades: [], // upgrade ids whose progress gate was skipped via a paid Stars purchase; server-authoritative
     lang: detectLang(), // 'ru'|'en'; auto from Telegram language_code on first load, then persisted (overridable in Settings)
@@ -1161,6 +1169,13 @@
           saveState();
           refreshAll();
           if (!wasOwned && data.hasStatusFlex) showToast(t('toast.statusOn'), 4000);
+        }
+        // Shoutout opt-out preference (server-authoritative, #48) — keep the local
+        // state + the settings checkbox in sync (e.g. after toggling on another device).
+        if (data && typeof data.shoutoutOptOut === 'boolean' && data.shoutoutOptOut !== !!state.shoutoutOptOut) {
+          state.shoutoutOptOut = data.shoutoutOptOut;
+          saveState();
+          if (el.shoutoutOptOutChk) el.shoutoutOptOutChk.checked = state.shoutoutOptOut;
         }
         // Per-upgrade paid skips (server-authoritative list of upgrade ids).
         if (data && Array.isArray(data.paidUnlockedUpgrades)) {
@@ -2452,6 +2467,30 @@
       `</div>`;
   }
 
+  // #48: toggle whether this player may be featured in the channel's leaderboard
+  // shoutouts. Optimistic; reverts on failure. Server default = opted-in (featured).
+  async function setShoutoutOptOut(optOut) {
+    const prev = !!state.shoutoutOptOut;
+    const next = !!optOut;
+    if (next === prev) return;
+    state.shoutoutOptOut = next; saveState();
+    if (el.shoutoutOptOutChk) el.shoutoutOptOutChk.checked = next;
+    if (!tg || !tg.initData) return; // outside Telegram: local only, no server call
+    try {
+      const resp = await fetch(SET_SHOUTOUT_OPTOUT_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData, optOut: next }),
+      });
+      const data = await resp.json();
+      if (!data || !data.ok) throw new Error('failed');
+      showToast(t('set.shoutoutSaved'), 2500);
+    } catch (e) {
+      state.shoutoutOptOut = prev; saveState();
+      if (el.shoutoutOptOutChk) el.shoutoutOptOutChk.checked = prev;
+      showToast(t('toast.invoiceFail'));
+    }
+  }
+
   function addPaidUnlock(id) {
     if (!Array.isArray(state.paidUnlockedUpgrades)) state.paidUnlockedUpgrades = [];
     if (!state.paidUnlockedUpgrades.includes(id)) state.paidUnlockedUpgrades.push(id);
@@ -2696,6 +2735,7 @@
     statusFlexBtn: document.getElementById('statusFlexBtn'),
     statusFlairPicker: document.getElementById('statusFlairPicker'),
     lbFlexCta: document.getElementById('lbFlexCta'),
+    shoutoutOptOutChk: document.getElementById('shoutoutOptOutChk'),
     adNocapBtn: document.getElementById('adNocapBtn'),
     adBoost2xBtn: document.getElementById('adBoost2xBtn'),
     adBypassProgress: document.getElementById('adBypassProgress'),
@@ -3912,7 +3952,11 @@
   });
   el.unlockModal.addEventListener('click', (e) => { if (e.target === el.unlockModal) hideUnlockModal(); });
   // Settings (⚙️): open the modal; close via the button or backdrop tap.
-  if (el.settingsBtn) el.settingsBtn.addEventListener('click', () => el.settingsModal.classList.add('show'));
+  if (el.settingsBtn) el.settingsBtn.addEventListener('click', () => {
+    if (el.shoutoutOptOutChk) el.shoutoutOptOutChk.checked = !!state.shoutoutOptOut; // reflect current pref on open
+    el.settingsModal.classList.add('show');
+  });
+  if (el.shoutoutOptOutChk) el.shoutoutOptOutChk.addEventListener('change', (e) => setShoutoutOptOut(e.target.checked));
   if (el.langRuBtn) el.langRuBtn.addEventListener('click', () => setLang('ru'));
   if (el.langEnBtn) el.langEnBtn.addEventListener('click', () => setLang('en'));
   if (el.settingsCloseBtn) el.settingsCloseBtn.addEventListener('click', () => el.settingsModal.classList.remove('show'));

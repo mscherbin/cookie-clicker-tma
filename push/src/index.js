@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=104';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=105';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -428,6 +428,19 @@ const REFERRER_BONUS_MIN = 200; // floor, for referrers with ~0 cps so far
 // Defaults below are the fallback if those rows are missing.
 const CHANNEL_BONUS_CHAT_DEFAULT = '@bestcookieclicker';    // EN channel to verify membership of
 const CHANNEL_BONUS_CHAT_RU_DEFAULT = '@bestcookiclickerru'; // RU channel (⚠ handle has a typo, kept intentionally)
+
+// #48 leaderboard shoutout → SMM channel. The push cron only TRIGGERS; the smm
+// worker (cookie-clicker-tma-smm) owns publishing via its existing /admin/post-now
+// (gated by the shared ADMIN_KEY). Milestone: a player's FIRST weekly entry into
+// the top-3 (not every climb). Anti-spam: per-user once-per-week dedup + a global
+// daily cap, on top of respecting config.autopost_enabled + shoutout_enabled. Note
+// /admin/post-now itself does NOT check autopost_enabled (it's a direct admin
+// send), so PUSH is the gatekeeper for those config flags here.
+const SMM_POST_NOW_URL = 'https://cookie-clicker-tma-smm.mscherbin.workers.dev/admin/post-now';
+const SHOUTOUT_TOP_N = 3;        // milestone rank: entering the top-3
+const SHOUTOUT_DAILY_CAP = 3;    // global shoutout posts per UTC day (channel anti-spam)
+const SHOUTOUT_CHANNEL_EN = '@bestcookieclicker';
+const SHOUTOUT_CHANNEL_RU = '@bestcookiclickerru'; // ⚠ handle typo 'cooki' — intentional, the real channel
 const CHANNEL_BONUS_SECONDS_DEFAULT = 600; // cps × 10 min
 const CHANNEL_BONUS_MIN_DEFAULT = 500;     // flat floor for low-cps players
 // getChatMember statuses that count as "subscribed".
@@ -1799,6 +1812,26 @@ async function handleSetStatusFlair(request, env) {
   return jsonResponse({ ok: true, flair });
 }
 
+// POST /set-shoutout-optout { initData, optOut } — the player toggles whether they
+// may be featured in the channel's leaderboard shoutouts (#48). Default is opted-IN
+// (featured); this lets anyone opt OUT. Persisted to users.shoutout_opt_out; the
+// cron reads the KV mirror (refreshed on the next checkin), so a fresh opt-out takes
+// effect from the following checkin. Any authenticated user may set their own.
+async function handleSetShoutoutOptout(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+  const optOut = body.optOut ? 1 : 0;
+  try {
+    await ensureUser(env, userId, Date.now());
+    await env.DB.prepare('UPDATE users SET shoutout_opt_out = ? WHERE user_id = ?').bind(optOut, userId).run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+  return jsonResponse({ ok: true, optOut: !!optOut });
+}
+
 // POST /create-clickskip-invoice { initData } — one-time "skip the clicker".
 // Same ownership-first guard as perm_prod: refuse before creating the invoice
 // if already owned, so a second real payment can never be taken.
@@ -2098,6 +2131,7 @@ async function handleCheckin(request, env) {
   let hasStarterPack = false;
   let hasStatusFlex = false;
   let statusFlair = null;
+  let shoutoutOptOut = false; // #48: player opted out of leaderboard shoutouts to the channel
   let serverPrestigeCount = 0;
   let isPrestigePioneer = false;
   let paidUnlockedUpgrades = [];
@@ -2162,7 +2196,7 @@ async function handleCheckin(request, env) {
       }
       // Boost windows + permanent flag (server-authoritative); client uses them
       // for the offline split calc, online x2, the permanent +10%, and timers.
-      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, has_starter_pack AS starter, has_status_flex AS statusflex, status_flair AS statusflair, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv, channel_bonus_claimed AS chan, country AS country FROM users WHERE user_id = ?').bind(user.id).first();
+      const boostRow = await env.DB.prepare('SELECT boost_expires_at AS e, boost2x_expires_at AS e2, has_permanent_production_boost AS perm, has_click_bypass AS clickbypass, has_starter_pack AS starter, has_status_flex AS statusflex, status_flair AS statusflair, shoutout_opt_out AS shoutoutout, prestige_count AS pc, is_prestige_pioneer AS pion, paid_unlocked_upgrades AS pu, ads_reward_day AS ad, ads_reward_count AS ac, ad_click_bypass_views AS abv, channel_bonus_claimed AS chan, country AS country FROM users WHERE user_id = ?').bind(user.id).first();
       if (boostRow && Number.isFinite(boostRow.e)) boostExpiresAt = boostRow.e;
       if (boostRow && Number.isFinite(boostRow.e2)) boost2xExpiresAt = boostRow.e2;
       if (boostRow && boostRow.perm) hasPermProdBoost = true;
@@ -2170,6 +2204,7 @@ async function handleCheckin(request, env) {
       if (boostRow && boostRow.starter) hasStarterPack = true;
       if (boostRow && boostRow.statusflex) hasStatusFlex = true;
       if (boostRow && boostRow.statusflair) statusFlair = boostRow.statusflair;
+      if (boostRow && boostRow.shoutoutout) shoutoutOptOut = true;
       if (boostRow && Number.isFinite(boostRow.pc)) serverPrestigeCount = boostRow.pc;
       if (boostRow && boostRow.pion) isPrestigePioneer = true;
       if (boostRow) paidUnlockedUpgrades = parseIdList(boostRow.pu);
@@ -2294,6 +2329,8 @@ async function handleCheckin(request, env) {
     isPioneer: isPrestigePioneer,       // "prestige pioneer" title flag
     hasStatusFlex,                      // #52 paid cosmetic status (gold name + crown + flair) — board-visible to all
     statusFlair,                        // chosen flair emoji (or null = crown only)
+    firstName: (user.first_name || '').slice(0, 32), // #48 shoutout: first_name ONLY (no surname/id/username)
+    shoutoutOptOut,                     // #48: player opted out of channel shoutouts (cron skips them)
     lifetimeCookies: lifetimeNow, // never-resetting total across runs (anti-cheat clamped board copy)
     crumbs: Number(body.crumbs) || 0,   // permanent bonus % (client-sent, like cps); for the rank-badge tooltip
     country: userCountry,               // ISO-2 geo (first-touch) for the "my country" leaderboard filter
@@ -2346,7 +2383,7 @@ async function handleCheckin(request, env) {
     if (widx >= 0) weeklyRank = widx + 1;
   } catch (e) { /* rank views best-effort — never break checkin */ }
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, hasStarterPack, hasStatusFlex, statusFlair, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed, rank, rankTotal, weeklyBaked, weeklyRank, weeklyTotal, weekEndsAt: weekEndsAt(now) });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, hasStarterPack, hasStatusFlex, statusFlair, shoutoutOptOut, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed, rank, rankTotal, weeklyBaked, weeklyRank, weeklyTotal, weekEndsAt: weekEndsAt(now) });
 }
 
 // Builds the ranked leaderboard from KV metadata (one list() sweep, no per-user
@@ -2448,6 +2485,65 @@ function hotMovers(entries) {
   });
   movers.sort((a, b) => b.up - a.up);
   return movers.slice(0, MOVERS_SHOWN);
+}
+
+// #48 shoutout gating: read the shared config the SMM worker owns (autopost_enabled
+// + channel_id) plus our own feature toggle (shoutout_enabled). Shoutouts fire only
+// when autopost is on AND the feature toggle is on AND a channel is configured — so
+// SMM can kill the channel or just this feature without a code change.
+async function getShoutoutConfig(env) {
+  const out = { autopostEnabled: false, shoutoutEnabled: false, channelId: '' };
+  if (!env.DB) return out;
+  try {
+    const rows = await env.DB.prepare("SELECT key, value FROM config WHERE key IN ('autopost_enabled', 'shoutout_enabled', 'channel_id')").all();
+    for (const r of (rows.results || [])) {
+      if (r.key === 'autopost_enabled') out.autopostEnabled = r.value === '1';
+      else if (r.key === 'shoutout_enabled') out.shoutoutEnabled = r.value === '1';
+      else if (r.key === 'channel_id') out.channelId = r.value || '';
+    }
+  } catch (e) { /* config table absent → all-off (safe) */ }
+  return out;
+}
+
+// Fire one leaderboard shoutout to the SMM channel for `data` (a user's KV
+// metadata) who just reached rank `rank`. Language-routed (RU handle has the
+// intentional 'cooki' typo). PRIVACY: only the player's first_name is used — never
+// surname/id/username; falls back to a neutral label if no first_name. Plain text
+// (parse_mode '') so the name can't inject markup into a public post. Best-effort:
+// returns true only on a confirmed publish; never throws (callers keep sweeping).
+async function postShoutout(env, data, rank) {
+  try {
+    if (!env.ADMIN_KEY) return false;
+    const lang = data.lang === 'ru' ? 'ru' : 'en';
+    const channel = lang === 'ru' ? SHOUTOUT_CHANNEL_RU : SHOUTOUT_CHANNEL_EN;
+    const fn = (typeof data.firstName === 'string') ? data.firstName.trim().slice(0, 32) : '';
+    const name = fn || (lang === 'ru' ? 'Игрок' : 'A player'); // no first_name → neutral, never a username
+    const body = {
+      text: pt(lang, 'shout.top3', { name, rank }),
+      channel,
+      parse_mode: '', // plain text — the name is untrusted, keep it out of HTML
+      button_text: pt(lang, 'shout.cta'),
+      button_url: `https://t.me/${BOT_USERNAME}`,
+    };
+    const res = await fetch(`${SMM_POST_NOW_URL}?key=${encodeURIComponent(env.ADMIN_KEY)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    if (!res.ok) { console.log('shoutout post FAILED http', res.status); return false; }
+    const j = await res.json().catch(() => null);
+    return !!(j && j.ok);
+  } catch (e) { console.log('shoutout post error', e); return false; }
+}
+
+// #48: is this player eligible for a top-3 shoutout THIS cron cycle? Pure predicate
+// so the whole gate — feature on, in the top-3, FIRST time this week (dedup), not
+// opted out, and under the global daily cap — is unit-testable. The side effects
+// (posting, bumping the counter, writing the weekly dedup marker) stay in the cron.
+function shoutoutEligible(data, curRank, ctx) {
+  return !!ctx.shoutoutOn
+    && Number.isFinite(curRank) && curRank <= SHOUTOUT_TOP_N
+    && data.lbShoutoutWeek !== ctx.curWeekId
+    && !data.shoutoutOptOut
+    && ctx.shoutoutCount < SHOUTOUT_DAILY_CAP;
 }
 
 async function handleLeaderboard(request, env) {
@@ -2621,6 +2717,8 @@ const PUSH_STRINGS = {
     'push.weekSummary': '🏁 Неделя завершена — ты финишировал #{place}! Новая неделя началась. Поднимешься выше?',
     'push.weekSummaryWinner': '🏆 Ты в топ-3 недели — финиш #{place}! Награда: ×2 производство на {h}ч. Новая неделя пошла — держи планку!',
     'push.openGame': '🍪 Открыть игру',
+    'shout.top3': '🏆 Новый герой в ТОП-3 Cookie Clicker — {name}, сейчас #{rank}! 🍪 Печёт быстрее почти всех. Сможешь обогнать?',
+    'shout.cta': '🍪 Играть',
     'evt.happyHour': '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
     'evt.weekend': '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
     'evt.refEvent': '🎉 Событие рефералов! Награда за приглашённых друзей ×{mult}.{tail}',
@@ -2652,6 +2750,8 @@ const PUSH_STRINGS = {
     'push.weekSummary': '🏁 The week is over — you finished #{place}! A new week has begun. Can you climb higher?',
     'push.weekSummaryWinner': '🏆 Top-3 this week — you finished #{place}! Reward: ×2 production for {h}h. The new week is on — keep it up!',
     'push.openGame': '🍪 Open game',
+    'shout.top3': '🏆 A new hero just hit the TOP-3 in Cookie Clicker — {name}, now #{rank}! 🍪 Baking faster than almost everyone. Think you can climb higher?',
+    'shout.cta': '🍪 Play',
     'evt.happyHour': '🎉 Cookie Hour has started! All cookies ×2 for the next hour — jump in!',
     'evt.weekend': '🎊 Cookie Weekend has started! ×1.5 production and golden cookies twice as often — all weekend.',
     'evt.refEvent': '🎉 Referral event! Reward for invited friends ×{mult}.{tail}',
@@ -2835,6 +2935,23 @@ async function runPushCycle(env) {
   const inWeekFinale = weekLeftMs > 0 && weekLeftMs <= weekLastHoursMs;
   const curWeekId = weekId(Date.now());
 
+  // #48 leaderboard shoutout: gate once per cycle (config), then track a GLOBAL
+  // per-UTC-day counter (KV `sys:shoutout_count`) so the channel can't be flooded
+  // even across cron invocations. Per-user once-per-week dedup lives in each user's
+  // KV metadata (lbShoutoutWeek). Whole feature is best-effort — a failure here
+  // must never break the retention cron.
+  const shoutCfg = await getShoutoutConfig(env);
+  const shoutoutOn = shoutCfg.autopostEnabled && shoutCfg.shoutoutEnabled && !!shoutCfg.channelId;
+  const shoutoutDay = Math.floor(Date.now() / 86400000);
+  let shoutoutCount = 0;
+  if (shoutoutOn) {
+    try {
+      const raw = await env.USERS.get('sys:shoutout_count');
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && parsed.day === shoutoutDay) shoutoutCount = parsed.n || 0;
+    } catch (e) { /* counter unreadable → start at 0 (cap still applies this cycle) */ }
+  }
+
   let cursor;
   for (;;) {
     const list = await env.USERS.list({ prefix: 'user:', cursor });
@@ -2906,6 +3023,19 @@ async function runPushCycle(env) {
               () => { data.lbF2Day = today; });
             // maybeSendPush persisted lbF2Day (+ cap counter) on send; lbRank is
             // written just below regardless, so no separate write needed here.
+          }
+        }
+        // #48 shoutout milestone: the player's FIRST weekly entry into the top-3.
+        // Gated by feature config, per-user weekly dedup (lbShoutoutWeek), the
+        // player's opt-out, and the global daily cap. Only marks the dedup + bumps
+        // the counter on a CONFIRMED publish, so a cap-blocked player is retried a
+        // later cycle instead of being silently skipped for the whole week.
+        if (shoutoutEligible(data, curRank, { shoutoutOn, curWeekId, shoutoutCount })) {
+          const posted = await postShoutout(env, data, curRank);
+          if (posted) {
+            shoutoutCount += 1;
+            data.lbShoutoutWeek = curWeekId; snapChanged = true;
+            try { await env.USERS.put('sys:shoutout_count', JSON.stringify({ day: shoutoutDay, n: shoutoutCount })); } catch (e) { /* counter write best-effort */ }
           }
         }
         if (data.lbRank !== curRank) { data.lbRank = curRank; snapChanged = true; }
@@ -3294,6 +3424,10 @@ export default {
 
     if (url.pathname === '/set-status-flair' && request.method === 'POST') {
       return handleSetStatusFlair(request, env);
+    }
+
+    if (url.pathname === '/set-shoutout-optout' && request.method === 'POST') {
+      return handleSetShoutoutOptout(request, env);
     }
 
     if (url.pathname === '/create-clickskip-invoice' && request.method === 'POST') {

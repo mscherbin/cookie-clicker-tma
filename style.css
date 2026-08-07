@@ -1259,6 +1259,25 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
 .lb-flex-name { color: var(--gold); font-weight: 800; text-shadow: 0 0 6px rgba(255, 209, 102, 0.55); }
 .lb-flex-flair { margin-left: 2px; text-shadow: none; }
 
+/* #48 shoutout opt-out — a plain checkbox row in Settings → Privacy. */
+.opt-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.opt-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
 /* --- Player profile line (name + current referral title) --- */
 .player-profile {
   display: flex;
