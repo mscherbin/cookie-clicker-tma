@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=106';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=107';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -747,7 +747,7 @@ async function handleEvent(request, env) {
     return jsonResponse({ ok: false, error: 'bad_json' }, 400);
   }
 
-  const ALLOWED_EVENTS = new Set(['app_open', 'first_click', 'first_upgrade']);
+  const ALLOWED_EVENTS = new Set(['app_open', 'first_click', 'first_building', 'first_upgrade']);
   if (!ALLOWED_EVENTS.has(body.event)) return jsonResponse({ ok: false, error: 'bad_event' }, 400);
 
   const result = await validateInitData(body.initData || '', env.BOT_TOKEN);

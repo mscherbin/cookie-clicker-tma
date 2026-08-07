@@ -99,6 +99,7 @@
       'fr.weekly': 'За неделю', 'fr.alltime': 'За всё время',
       // Onboarding
       'onb.clickHint': '👆 Нажми на печеньку!', 'onb.upgradeHint': 'Купи апгрейд — печеньки будут копиться быстрее',
+      'onb.buildingHint': '👇 Купи первое здание — оно печёт печеньки само',
       'onb.welcomeBonus': '🎁 Стартовый бонус: +{n} печенек!',
       // Unlock (referral building) modal
       'unlock.title': 'Новое здание открыто!', 'unlock.place': 'Поставить',
@@ -267,6 +268,7 @@
       'fr.rewardsHead': '🏅 Friend rewards', 'fr.lbHead': '🏆 Top by friends',
       'fr.weekly': 'This week', 'fr.alltime': 'All time',
       'onb.clickHint': '👆 Tap the cookie!', 'onb.upgradeHint': 'Buy an upgrade — cookies pile up faster',
+      'onb.buildingHint': '👇 Buy your first building — it bakes cookies on its own',
       'onb.welcomeBonus': '🎁 Welcome bonus: +{n} cookies!',
       'unlock.title': 'New building unlocked!', 'unlock.place': 'Place',
       'evt.happyHour': '🎉 Cookie Hour', 'evt.weekend': '🎊 Cookie Weekend',
@@ -3232,6 +3234,17 @@
 
   function renderBuildings() {
     el.buildingsList.innerHTML = '';
+    // Step 1 activation nudge: an inline (non-blocking, non-modal) hint at the top of
+    // the list + a pulse on the first affordable building card. Re-rendered every 3s
+    // and on purchase, so it clears itself the moment a building is bought.
+    const showBuildingHint = buildingHintActive();
+    let pulseNext = showBuildingHint;
+    if (showBuildingHint) {
+      const hint = document.createElement('div');
+      hint.className = 'onb-inline-hint';
+      hint.textContent = t('onb.buildingHint');
+      el.buildingsList.appendChild(hint);
+    }
     for (const b of BUILDINGS) {
       const count = state.buildings[b.id];
       // Prestige-tier gate comes first — a tier-locked building is shown locked
@@ -3249,6 +3262,8 @@
       const disp = buildingDisplay(b);
       const card = document.createElement('button');
       card.className = 'item-card' + (affordable ? '' : ' disabled');
+      // Pulse the first affordable building (the Cursor for a new player) during step 1.
+      if (pulseNext && affordable) { card.classList.add('tutorial-pulse-card'); pulseNext = false; }
       card.innerHTML = `
         <div class="item-icon">${disp.icon}</div>
         <div class="item-info">
@@ -3819,6 +3834,29 @@
     return UPGRADES.some(u => !state.upgrades[u.id] && tierUnlocked(u) && upgradeUnlocked(u) && state.cookies >= u.cost);
   }
 
+  // Activation step "click → building → upgrade" (funnel: first_click→first_upgrade
+  // was the weakest step). buildingsOwned counts BOUGHT buildings only (referral
+  // buildings are placed free and don't count as activation).
+  function buildingsOwned() {
+    let n = 0;
+    for (const b of BUILDINGS) { if (!b.referralLocked) n += (state.buildings[b.id] || 0); }
+    return n;
+  }
+  function hasAffordableBuilding() {
+    return BUILDINGS.some(b => !b.referralLocked && tierUnlocked(b) && state.cookies >= buildingCost(b, state.buildings[b.id] || 0));
+  }
+  // Step 1 nudge: guide a genuinely new player (never ascended, no building bought)
+  // to their FIRST building — the WELCOME_BONUS (25) covers the Cursor (15), so the
+  // first purchase is 100% reachable, unlike the old "go to Upgrades" nudge that had
+  // nothing affordable at 25 cookies.
+  function buildingHintActive() {
+    const tt = tut();
+    return tt.clicked && !tt.buildingHintDone &&
+      (state.ascensionCount || 0) === 0 &&
+      buildingsOwned() === 0 &&
+      hasAffordableBuilding();
+  }
+
   function tut() { state.tutorial = state.tutorial || {}; return state.tutorial; }
 
   function updateTutorial() {
@@ -3835,10 +3873,13 @@
     // Only nudge toward the FIRST upgrade of a genuinely new player: none bought
     // yet AND never ascended (ascension resets upgrades to {} but keeps tutorial
     // flags, which otherwise re-triggers this pulse for veterans).
+    // Step 2 fires only AFTER the first building is bought (buildingsOwned > 0) and
+    // an upgrade is actually affordable — so the nudge and the economy pull the same
+    // way, instead of sending a 25-cookie player to Upgrades with nothing to buy.
     const showUpgrade = t.clicked && !t.upgradeHintDone &&
       (state.ascensionCount || 0) === 0 &&
       Object.keys(state.upgrades).length === 0 &&
-      state.totalClicks >= 3 && !onUpgrades && hasAffordableUpgrade();
+      buildingsOwned() > 0 && !onUpgrades && hasAffordableUpgrade();
     el.upgradeHint.hidden = !showUpgrade;
     if (upgradesTabBtn) upgradesTabBtn.classList.toggle('tutorial-pulse-tab', showUpgrade);
     if (showUpgrade) { positionUpgradeHint(); armUpgradeDismiss(); }
@@ -3884,8 +3925,16 @@
     const count = state.buildings[b.id];
     const cost = buildingCost(b, count);
     if (state.cookies < cost) { haptic('light'); return; }
+    // Activation milestone: fire first_building once (funnel visibility) and close
+    // step 1 of the tutorial, so step 2 (first upgrade) can take over.
+    const isFirstBuilding = buildingsOwned() === 0;
     state.cookies -= cost;
     state.buildings[b.id] += 1;
+    if (isFirstBuilding) {
+      sendAnalyticsEvent('first_building');
+      const tu = tut();
+      if (!tu.buildingHintDone) { tu.buildingHintDone = true; }
+    }
     haptic('medium');
     refreshAll();
   }
@@ -4118,7 +4167,7 @@
     renderTopbar();
     // Step 0 done on the first-ever tap: dismiss the hint, stop the pulse.
     state.tutorial = state.tutorial || {};
-    if (!state.tutorial.clicked) { state.tutorial.clicked = true; saveState(); updateTutorial(); }
+    if (!state.tutorial.clicked) { state.tutorial.clicked = true; saveState(); renderBuildings(); updateTutorial(); }
     if (state.totalClicks % 5 === 0) { renderBuildings(); renderUpgrades(); }
   }
 
