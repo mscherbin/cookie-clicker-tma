@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=107" />
+<link rel="stylesheet" href="style.css?v=108" />
 <!-- Inter (share-card canvas per the designer spec) — loaded up front so document.fonts.load resolves before rendering; canvas falls back to system-ui if it fails. -->
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
@@ -110,6 +110,12 @@
           <div class="status-flex-desc" data-i18n="shop.statusDesc">Золотой ник, корона и флейр в таблице лидеров — видят все. На геймплей не влияет.</div>
           <button id="statusFlexBtn" class="nocap-btn starter-btn status-btn" data-offer="statusFlex">👑 Статус в топе · 150 ⭐</button>
           <div id="statusFlairPicker" class="flair-picker"></div>
+        </div>
+        <!-- #61 Подарить буст другу — вирал + монетизация. -->
+        <div class="status-flex-block">
+          <div class="status-flex-head" data-i18n="gift.head">🎁 Подарить буст другу</div>
+          <div class="status-flex-desc" data-i18n="gift.desc">Купи ×2 производство на 4 часа — получишь ссылку, отправь её другу. Если друг новый — вы оба получите реферальный бонус.</div>
+          <button id="giftBtn" class="nocap-btn" data-i18n="gift.buyBtn">🎁 Подарить ×2 на 4ч · 15 ⭐</button>
         </div>
       </div>
     </section>
@@ -310,8 +316,19 @@
       <button id="shareCardCloseBtn" class="settings-close-btn" data-i18n="set.close">Закрыть</button>
     </div>
   </div>
+
+  <!-- #61 Gift claim-link share modal (shown after buying a gift). -->
+  <div id="giftModal" class="daily-modal">
+    <div class="daily-modal-card">
+      <div class="settings-head" data-i18n="gift.modalTitle">🎁 Подарок готов!</div>
+      <div class="sync-hint" data-i18n="gift.modalDesc">Отправь эту ссылку другу — он получит ×2 производство на 4 часа. Заберёт первый, кто откроет.</div>
+      <div id="giftLinkText" class="gift-link"></div>
+      <button id="giftSendBtn" class="ascend-btn" data-i18n="gift.sendBtn">📤 Отправить другу</button>
+      <button id="giftCloseBtn" class="settings-close-btn" data-i18n="set.close">Закрыть</button>
+    </div>
+  </div>
 </div>
 
-<script src="game.js?v=107"></script>
+<script src="game.js?v=108"></script>
 </body>
 </html>

@@ -200,6 +200,10 @@
       'confirm.cloudPull': 'Здесь: всего испечено {here} 🍪.\nВ облаке: всего испечено {cloud} 🍪.\n\nЗаменить прогресс на этом устройстве данными из облака? (текущее состояние сохранится как резервная копия)',
       'share.text': 'Залипаю в Cookie Clicker — залетай печь печеньки со мной! 🍪',
       'btn.shareCard': '📤 Поделиться карточкой',
+      'gift.head': '🎁 Подарить буст другу', 'gift.desc': 'Купи ×2 производство на 4 часа — получишь ссылку, отправь её другу. Если друг новый — вы оба получите реферальный бонус.',
+      'gift.buyBtn': '🎁 Подарить ×2 на 4ч · 15 ⭐',
+      'gift.modalTitle': '🎁 Подарок готов!', 'gift.modalDesc': 'Отправь эту ссылку другу — он получит ×2 производство на 4 часа. Заберёт первый, кто откроет.',
+      'gift.sendBtn': '📤 Отправить другу', 'gift.shareText': '🎁 Держи подарок в Cookie Clicker — ×2 производство на 4 часа! Жми ссылку, чтобы забрать:',
       'share.modalTitle': '📤 Твоя карточка', 'share.rendering': 'Рисуем карточку…', 'share.doShare': '📤 Поделиться',
       'share.cardCaption': 'Смотри мою карточку в Cookie Clicker 🍪 Обгонишь? Заходи по ссылке — оба получим бонус:',
       'toast.shareFail': 'Не удалось собрать карточку — попробуй ещё раз', 'toast.shareSaved': 'Карточка сохранена — отправь её с реф-ссылкой!',
@@ -362,6 +366,10 @@
       'confirm.cloudPull': 'This device: {here} 🍪 baked.\nIn the cloud: {cloud} 🍪 baked.\n\nReplace this device progress with the cloud save? (current state is saved as a backup)',
       'share.text': 'Hooked on Cookie Clicker — come bake cookies with me! 🍪',
       'btn.shareCard': '📤 Share my card',
+      'gift.head': '🎁 Gift a boost to a friend', 'gift.desc': 'Buy ×2 production for 4 hours — get a link and send it to a friend. If they are new, you both get a referral bonus.',
+      'gift.buyBtn': '🎁 Gift ×2 for 4h · 15 ⭐',
+      'gift.modalTitle': '🎁 Your gift is ready!', 'gift.modalDesc': 'Send this link to a friend — they get ×2 production for 4 hours. The first to open it claims it.',
+      'gift.sendBtn': '📤 Send to a friend', 'gift.shareText': '🎁 Here is a Cookie Clicker gift — ×2 production for 4 hours! Tap the link to claim:',
       'share.modalTitle': '📤 Your card', 'share.rendering': 'Rendering your card…', 'share.doShare': '📤 Share',
       'share.cardCaption': 'Check out my Cookie Clicker card 🍪 Think you can beat me? Tap my link — we both get a bonus:',
       'toast.shareFail': "Couldn't build the card — try again", 'toast.shareSaved': 'Card saved — send it with your referral link!',
@@ -750,6 +758,8 @@
   const SET_SHOUTOUT_OPTOUT_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/set-shoutout-optout';
   const STATUS_FLEX_STARS = 150; // must match STATUS_FLEX_STARS in push/src/index.js (one-time cosmetic status, #52)
   const STATUS_FLAIRS = ['🔥', '💎', '⚡', '🚀', '❤️', '🪐']; // must match STATUS_FLAIRS in push/src/index.js
+  const CREATE_GIFT_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-gift-invoice';
+  const GIFT_PROD2X_STARS = 15; // must match GIFT_PROD2X_STARS in push/src/index.js (#61 gift a ×2 boost)
   const CREATE_UPGRADE_SKIP_INVOICE_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/create-upgrade-skip-invoice';
   const EVENTS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/event';
   const CLAIM_CHANNEL_BONUS_URL = 'https://cookie-clicker-tma-push.mscherbin.workers.dev/claim-channel-bonus';
@@ -2858,6 +2868,49 @@
     }
   }
 
+  // #61 gift a ×2 boost to a friend. Buy → get a one-time claim link to forward. The
+  // BUYER gets nothing applied; the friend who opens the link gets the ×2 (4h). No
+  // "already owned" — gifts are repeatable. On success we surface the claim link +
+  // native Telegram share; the server also DMs the buyer the link as a fallback.
+  let _giftLink = null;
+  async function buyGift() {
+    if (!tg || !tg.openInvoice || !tg.initData) { showToast(t('toast.payOnlyTelegram')); return; }
+    if (el.giftBtn) el.giftBtn.disabled = true;
+    try {
+      const resp = await fetch(CREATE_GIFT_INVOICE_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      });
+      const data = await resp.json();
+      if (!data || !data.ok || !data.link || !data.giftId) throw new Error('no_link');
+      const giftId = data.giftId;
+      tg.openInvoice(data.link, (status) => {
+        if (el.giftBtn) el.giftBtn.disabled = false;
+        if (status === 'paid') {
+          _giftLink = `https://t.me/${BOT_USERNAME}?start=gift${giftId}`;
+          openGiftModal();
+        } else if (status === 'failed') {
+          showToast(t('toast.payFailed'));
+        }
+      });
+    } catch (e) {
+      if (el.giftBtn) el.giftBtn.disabled = false;
+      showToast(t('toast.invoiceFail'));
+    }
+  }
+  function openGiftModal() {
+    if (!el.giftModal) { shareGiftLink(); return; } // no modal → straight to share
+    if (el.giftLinkText) el.giftLinkText.textContent = _giftLink || '';
+    el.giftModal.classList.add('show');
+  }
+  function closeGiftModal() { if (el.giftModal) el.giftModal.classList.remove('show'); }
+  function shareGiftLink() {
+    if (!_giftLink) return;
+    if (tg && tg.openTelegramLink) {
+      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(_giftLink)}&text=${encodeURIComponent(t('gift.shareText'))}`);
+    }
+  }
+
   function addPaidUnlock(id) {
     if (!Array.isArray(state.paidUnlockedUpgrades)) state.paidUnlockedUpgrades = [];
     if (!state.paidUnlockedUpgrades.includes(id)) state.paidUnlockedUpgrades.push(id);
@@ -3110,6 +3163,11 @@
     shareCardSpinner: document.getElementById('shareCardSpinner'),
     shareCardShareBtn: document.getElementById('shareCardShareBtn'),
     shareCardCloseBtn: document.getElementById('shareCardCloseBtn'),
+    giftBtn: document.getElementById('giftBtn'),
+    giftModal: document.getElementById('giftModal'),
+    giftLinkText: document.getElementById('giftLinkText'),
+    giftSendBtn: document.getElementById('giftSendBtn'),
+    giftCloseBtn: document.getElementById('giftCloseBtn'),
     adNocapBtn: document.getElementById('adNocapBtn'),
     adBoost2xBtn: document.getElementById('adBoost2xBtn'),
     adBypassProgress: document.getElementById('adBypassProgress'),
@@ -4384,6 +4442,11 @@
   if (el.shareCardShareBtn) el.shareCardShareBtn.addEventListener('click', doShareCard);
   if (el.shareCardCloseBtn) el.shareCardCloseBtn.addEventListener('click', closeShareCard);
   if (el.shareModal) el.shareModal.addEventListener('click', (e) => { if (e.target === el.shareModal) closeShareCard(); });
+  // #61 gift a boost
+  if (el.giftBtn) el.giftBtn.addEventListener('click', buyGift);
+  if (el.giftSendBtn) el.giftSendBtn.addEventListener('click', shareGiftLink);
+  if (el.giftCloseBtn) el.giftCloseBtn.addEventListener('click', closeGiftModal);
+  if (el.giftModal) el.giftModal.addEventListener('click', (e) => { if (e.target === el.giftModal) closeGiftModal(); });
   if (el.langRuBtn) el.langRuBtn.addEventListener('click', () => setLang('ru'));
   if (el.langEnBtn) el.langEnBtn.addEventListener('click', () => setLang('en'));
   if (el.settingsCloseBtn) el.settingsCloseBtn.addEventListener('click', () => el.settingsModal.classList.remove('show'));

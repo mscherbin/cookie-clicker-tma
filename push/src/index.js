@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=107';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=108';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -522,6 +522,13 @@ const STATUS_FLEX_STARS = 150; // price in Stars (one-time)
 const STATUS_FLAIRS = ['🔥', '💎', '⚡', '🚀', '❤️', '🪐'];
 function sanitizeFlair(f) { return (typeof f === 'string' && STATUS_FLAIRS.includes(f)) ? f : null; }
 
+// Paid "gift a boost to a friend" (#61) — buyer pays, gets a one-time claim link to
+// forward; the FRIEND who opens it gets the boost (buyer gets nothing applied). If
+// the friend is NEW, the link doubles as a referral (buyer = referrer). Reuses the
+// payment contour, the /start deep-link, and the boost2x_expires_at window.
+const GIFT_PROD2X_STARS = 15;                  // price in Stars
+const GIFT_PROD2X_DURATION_MS = 4 * 3600 * 1000; // 4h of ×2 production for the recipient
+
 // Anti-farm for /prestige/confirm: a new confirmed prestige needs at least this
 // much wall-clock time since the last one. Any legit prestige takes far longer
 // (you must re-buy all content), so this only ever blocks scripted hammering.
@@ -895,6 +902,13 @@ async function handleTelegramWebhook(request, env) {
     const userId = msg.from.id;
     await logEvent(env, userId, 'bot_start');
     const startParam = msg.text.trim().split(/\s+/)[1];
+    // #61 gift claim: /start gift<giftId>. Handles the claim + both confirmations and
+    // returns — no generic welcome (the gift.claimed reply carries the open-game button).
+    const giftM = startParam && /^gift([A-Za-z0-9_-]{6,64})$/.exec(startParam);
+    if (giftM) {
+      await handleGiftClaim(env, userId, giftM[1], msg.from, langFromCode(msg.from.language_code));
+      return jsonResponse({ ok: true });
+    }
     if (startParam) {
       // Only referral codes (refNNN) count as a ref_click — a Keitaro/marketing
       // subid arriving via /start <subid> must NOT pollute the referral funnel.
@@ -1823,6 +1837,101 @@ async function handleSetStatusFlair(request, env) {
   return jsonResponse({ ok: true, flair });
 }
 
+// POST /create-gift-invoice { initData } — buy a "gift a ×2 boost to a friend" (15⭐,
+// #61). NO refuse-if-owned — gifts are bought repeatedly. giftId is derived from the
+// invoice id so a retried webhook can't create a duplicate gift. The gift row + the
+// buyer's claim-link message are created by the webhook; we return giftId here too so
+// the client can show the share link immediately on 'paid'.
+async function handleCreateGiftInvoice(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ ok: false, error: 'bad_json' }, 400); }
+  const result = await validateInitData(body.initData || '', env.BOT_TOKEN);
+  if (!result) return jsonResponse({ ok: false, error: 'invalid_init_data' }, 401);
+  const userId = result.user.id;
+  if (!env.DB) return jsonResponse({ ok: false, error: 'no_db' }, 500);
+
+  const invoiceId = crypto.randomUUID();
+  const now = Date.now();
+  try {
+    await ensureUser(env, userId, now);
+    await env.DB.prepare('INSERT INTO star_invoices (invoice_id, user_id, amount, status, created_ts, kind) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(invoiceId, userId, 0, 'pending', now, 'gift_prod2x').run();
+  } catch (e) { return jsonResponse({ ok: false, error: 'db' }, 500); }
+
+  const res = await tgCall(env, 'createInvoiceLink', {
+    title: 'Подарок другу: ×2 на 4 часа',
+    description: 'Подари другу ×2 производство печенек на 4 часа. После оплаты получишь ссылку — отправь её другу.',
+    payload: invoiceId,
+    currency: 'XTR',
+    prices: [{ label: 'Подарок ×2 (4ч)', amount: GIFT_PROD2X_STARS }],
+  });
+  if (!res || !res.ok || !res.result) {
+    return jsonResponse({ ok: false, error: 'invoice_failed' }, 502);
+  }
+  return jsonResponse({ ok: true, link: res.result, giftId: giftIdFromInvoice(invoiceId) });
+}
+
+// Deterministic, start-param-safe gift id derived from the invoice UUID (hex only),
+// so the webhook's INSERT OR IGNORE is idempotent and the client can predict it.
+function giftIdFromInvoice(invoiceId) { return String(invoiceId).replace(/-/g, ''); }
+
+// #61 gift claim, called from /start on `gift<giftId>`. Applies the ×2 boost to the
+// CLAIMER (not the buyer), once (idempotent via a conditional status flip), and for a
+// genuinely NEW claimer routes the claim through the referral contour (buyer =
+// referrer) so the normal referral bonus fires. Sends a confirmation to both sides.
+// Best-effort throughout — a hiccup here must never make Telegram retry /start.
+async function handleGiftClaim(env, claimerId, giftId, claimerUser, claimerLang) {
+  if (!env.DB) return;
+  const claimerName = ((claimerUser && claimerUser.first_name) ? String(claimerUser.first_name) : '').slice(0, 32)
+    || (claimerLang === 'ru' ? 'Друг' : 'A friend');
+  let gift = null;
+  try {
+    gift = await env.DB.prepare('SELECT gift_id, buyer_id, buyer_name, buyer_lang, status FROM gifts WHERE gift_id = ?').bind(giftId).first();
+  } catch (e) { /* table missing / db hiccup */ }
+  if (!gift) { await sendPush(env, claimerId, pt(claimerLang, 'gift.notFound'), claimerLang); return; }
+  if (Number(gift.buyer_id) === Number(claimerId)) { await sendBotText(env, claimerId, pt(claimerLang, 'gift.self')); return; }
+
+  // Idempotent claim: the conditional flip only succeeds the first time, so a repeat
+  // open (or a race between two friends) can never apply the boost twice.
+  const now = Date.now();
+  let upd = null;
+  try {
+    upd = await env.DB.prepare("UPDATE gifts SET status = 'claimed', claimed_by = ?, claimed_ts = ? WHERE gift_id = ? AND status = 'unclaimed'")
+      .bind(claimerId, now, giftId).run();
+  } catch (e) { /* db hiccup */ }
+  if (!upd || !upd.meta || upd.meta.changes === 0) { await sendBotText(env, claimerId, pt(claimerLang, 'gift.alreadyClaimed')); return; }
+
+  // Apply the ×2 window to the claimer (extend from max(now, current), like every
+  // other boost2x grant). Delivered to their client on the next /checkin.
+  try {
+    await ensureUser(env, claimerId, now);
+    const row = await env.DB.prepare('SELECT boost2x_expires_at AS e FROM users WHERE user_id = ?').bind(claimerId).first();
+    const base = Math.max((row && Number.isFinite(row.e) ? row.e : 0), now);
+    await env.DB.prepare('UPDATE users SET boost2x_expires_at = ? WHERE user_id = ?').bind(base + GIFT_PROD2X_DURATION_MS, claimerId).run();
+  } catch (e) { console.log('gift boost apply failed', e); }
+
+  // Attribution: only for a genuinely NEW recipient (never opened the game). Reuse the
+  // referral contour — log a ref_click as if they'd clicked the buyer's referral link,
+  // so ref_install/ref_active + the standard referral bonus fire when they play. All
+  // first-touch (referrer_id / source set once), so an existing player is never
+  // re-attributed even if this ran.
+  try {
+    const opened = await env.DB.prepare("SELECT 1 FROM events WHERE user_id = ? AND event = 'app_open' LIMIT 1").bind(claimerId).first();
+    if (!opened) {
+      const refCode = 'ref' + gift.buyer_id;
+      await logEvent(env, claimerId, 'ref_click', refCode);
+      await captureAttribution(env, claimerId, refCode);
+    }
+  } catch (e) { /* attribution best-effort */ }
+  try { await logEvent(env, claimerId, 'gift_claimed'); } catch (e) { /* analytics best-effort */ }
+
+  // Confirm to both sides (plain text → names need no escaping).
+  const buyerName = (gift.buyer_name && gift.buyer_name.trim()) || (claimerLang === 'ru' ? 'Друг' : 'A friend');
+  await sendPush(env, claimerId, pt(claimerLang, 'gift.claimed', { name: buyerName }), claimerLang);
+  const buyerLang = (gift.buyer_lang === 'ru' || gift.buyer_lang === 'en') ? gift.buyer_lang : 'en';
+  await sendBotText(env, Number(gift.buyer_id), pt(buyerLang, 'gift.taken', { name: claimerName }));
+}
+
 // POST /set-shoutout-optout { initData, optOut } — the player toggles whether they
 // may be featured in the channel's leaderboard shoutouts (#48). Default is opted-IN
 // (featured); this lets anyone opt OUT. Persisted to users.shoutout_opt_out; the
@@ -1983,6 +2092,18 @@ async function handleSuccessfulPayment(env, msg) {
         "ELSE paid_unlocked_upgrades || ',' || ? END " +
         "WHERE user_id = ?"
       ).bind(inv.upgrade_id, inv.upgrade_id, inv.upgrade_id, userId).run();
+    } else if (inv.kind === 'gift_prod2x') {
+      // #61 gift: create an UNCLAIMED gift row — the BUYER gets nothing applied (it's
+      // for a friend). Idempotent: giftId is derived from the invoice, INSERT OR
+      // IGNORE, so a retried webhook can't mint a second gift. Then DM the buyer the
+      // claim link to forward. Store the buyer's name/lang for the claim messages.
+      const giftId = giftIdFromInvoice(invoiceId);
+      const buyerName = (msg.from && msg.from.first_name ? String(msg.from.first_name) : '').slice(0, 32);
+      const buyerLang = langFromCode(msg.from && msg.from.language_code);
+      await env.DB.prepare("INSERT OR IGNORE INTO gifts (gift_id, buyer_id, buyer_name, buyer_lang, kind, status, created_ts) VALUES (?, ?, ?, ?, 'gift_prod2x', 'unclaimed', ?)")
+        .bind(giftId, userId, buyerName, buyerLang, Date.now()).run();
+      const link = `https://t.me/${BOT_USERNAME}?start=gift${giftId}`;
+      await sendBotText(env, userId, pt(buyerLang, 'gift.ready', { link }));
     } else if (inv.kind === 'status_flex') {
       // One-time COSMETIC leaderboard status (#52). Purely visual — set the flag
       // and the chosen flair (validated, carried on the invoice's upgrade_id). No
@@ -2733,6 +2854,12 @@ const PUSH_STRINGS = {
     'push.openGame': '🍪 Открыть игру',
     'shout.top3': '🏆 Новый герой в ТОП-3 Cookie Clicker — {name}, сейчас #{rank}! 🍪 Печёт быстрее почти всех. Сможешь обогнать?',
     'shout.cta': '🍪 Играть',
+    'gift.ready': '🎁 Подарок готов! Отправь эту ссылку другу — он получит ×2 производство на 4 часа:\n{link}\nПодарок заберёт первый, кто откроет ссылку.',
+    'gift.claimed': '🎁 {name} подарил тебе ×2 производство на 4 часа! Открывай игру — буст уже активен.',
+    'gift.taken': '🎁 Твой подарок забрал {name}! Спасибо, что делишься 🍪',
+    'gift.self': '🎁 Это твой собственный подарок — перешли ссылку другу, чтобы он забрал буст 🙂',
+    'gift.alreadyClaimed': '🎁 Этот подарок уже забрали. Каждая ссылка работает один раз.',
+    'gift.notFound': '🎁 Ссылка на подарок недействительна или устарела. Но ты всегда можешь зайти и печь печеньки!',
     'evt.happyHour': '🎉 Печеньковый час начался! Все печеньки x2 следующий час — заходи скорее.',
     'evt.weekend': '🎊 Печеньковые выходные начались! x1.5 к производству и золотые печеньки падают вдвое чаще — весь уик-энд.',
     'evt.refEvent': '🎉 Событие рефералов! Награда за приглашённых друзей ×{mult}.{tail}',
@@ -2766,6 +2893,12 @@ const PUSH_STRINGS = {
     'push.openGame': '🍪 Open game',
     'shout.top3': '🏆 A new hero just hit the TOP-3 in Cookie Clicker — {name}, now #{rank}! 🍪 Baking faster than almost everyone. Think you can climb higher?',
     'shout.cta': '🍪 Play',
+    'gift.ready': '🎁 Your gift is ready! Send this link to a friend — they get ×2 production for 4 hours:\n{link}\nThe first friend to open it claims the gift.',
+    'gift.claimed': '🎁 {name} gifted you ×2 production for 4 hours! Open the game — your boost is already active.',
+    'gift.taken': '🎁 {name} claimed your gift! Thanks for sharing 🍪',
+    'gift.self': "🎁 This is your own gift — forward the link to a friend so they can claim the boost 🙂",
+    'gift.alreadyClaimed': '🎁 This gift has already been claimed. Each link works once.',
+    'gift.notFound': "🎁 This gift link is invalid or expired. But you can always jump in and bake cookies!",
     'evt.happyHour': '🎉 Cookie Hour has started! All cookies ×2 for the next hour — jump in!',
     'evt.weekend': '🎊 Cookie Weekend has started! ×1.5 production and golden cookies twice as often — all weekend.',
     'evt.refEvent': '🎉 Referral event! Reward for invited friends ×{mult}.{tail}',
@@ -3438,6 +3571,10 @@ export default {
 
     if (url.pathname === '/set-status-flair' && request.method === 'POST') {
       return handleSetStatusFlair(request, env);
+    }
+
+    if (url.pathname === '/create-gift-invoice' && request.method === 'POST') {
+      return handleCreateGiftInvoice(request, env);
     }
 
     if (url.pathname === '/set-shoutout-optout' && request.method === 'POST') {

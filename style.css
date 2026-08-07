@@ -1331,6 +1331,20 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
 .share-do-btn { margin-bottom: 10px; }
 .share-do-btn:disabled { opacity: 0.5; pointer-events: none; }
 
+/* #61 gift claim-link box in the gift modal. */
+.gift-link {
+  margin: 12px 0 16px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px dashed var(--gold);
+  border-radius: 10px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 600;
+  word-break: break-all;
+  text-align: center;
+}
+
 /* --- Player profile line (name + current referral title) --- */
 .player-profile {
   display: flex;
