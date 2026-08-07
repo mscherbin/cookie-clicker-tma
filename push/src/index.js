@@ -16,7 +16,7 @@
 // (and thus the freshly-versioned css/js). Bump this to the current frontend
 // version on every deploy that must reach players immediately. Must also be
 // updated in BotFather's Menu Button URL (that launch path bypasses the worker).
-const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=105';
+const GAME_URL = 'https://mscherbin.github.io/cookie-clicker-tma/?v=106';
 const BOT_USERNAME = 'bestcookieclickerbot'; // for the /go redirect deep link
 const CHANNEL_LINK = 'https://t.me/bestcookieclicker'; // our announcements channel
 // Must match game.js's OFFLINE_FULL_RATE_SECONDS / OFFLINE_RATE / computeOfflineGain.
@@ -582,11 +582,18 @@ async function getEconomyConfig(env) {
     dailyPushCap: DAILY_PUSH_CAP_DEFAULT,
     // Hours-before-reset window for the weekly "last hours" push.
     weekLastHours: WEEK_LAST_HOURS_DEFAULT,
+    // #34 share-card tier thresholds by lifetimeBaked (product decision: NOT by
+    // ascensions). Boundaries: bronze < silver ≤ gold ≤ cosmos ≤ singularity.
+    // Config-tunable so tiers can be re-calibrated without a frontend redeploy.
+    shareTierSilver: 1e5,        // 100K
+    shareTierGold: 1e7,          // 10M
+    shareTierCosmos: 1e9,        // 1B
+    shareTierSingularity: 1e11,  // 100B
   };
   if (env.DB) {
     try {
       const rows = await env.DB.prepare(
-        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end', 'channel_bonus_chat', 'channel_bonus_chat_ru', 'channel_bonus_seconds', 'channel_bonus_min', 'daily_push_cap', 'week_last_hours')"
+        "SELECT key, value FROM config WHERE key IN ('ref_boost_max', 'ref_boost_tau', 'offline_base_hours', 'offline_max_extra_hours', 'offline_tau', 'ref_event_active', 'ref_event_multiplier', 'ref_event_start', 'ref_event_end', 'channel_bonus_chat', 'channel_bonus_chat_ru', 'channel_bonus_seconds', 'channel_bonus_min', 'daily_push_cap', 'week_last_hours', 'share_tier_silver', 'share_tier_gold', 'share_tier_cosmos', 'share_tier_singularity')"
       ).all();
       const map = {};
       const rawMap = {};
@@ -606,6 +613,10 @@ async function getEconomyConfig(env) {
       if (Number.isFinite(map.channel_bonus_min) && map.channel_bonus_min >= 0) cfg.channelBonusMin = map.channel_bonus_min;
       if (Number.isFinite(map.daily_push_cap) && map.daily_push_cap >= 0) cfg.dailyPushCap = map.daily_push_cap;
       if (Number.isFinite(map.week_last_hours) && map.week_last_hours > 0) cfg.weekLastHours = map.week_last_hours;
+      if (Number.isFinite(map.share_tier_silver) && map.share_tier_silver > 0) cfg.shareTierSilver = map.share_tier_silver;
+      if (Number.isFinite(map.share_tier_gold) && map.share_tier_gold > 0) cfg.shareTierGold = map.share_tier_gold;
+      if (Number.isFinite(map.share_tier_cosmos) && map.share_tier_cosmos > 0) cfg.shareTierCosmos = map.share_tier_cosmos;
+      if (Number.isFinite(map.share_tier_singularity) && map.share_tier_singularity > 0) cfg.shareTierSingularity = map.share_tier_singularity;
     } catch (e) { /* table may not exist yet — fall back to defaults */ }
   }
   _configCache = cfg;
@@ -2362,6 +2373,9 @@ async function handleCheckin(request, env) {
   const cfg = await getEconomyConfig(env);
   const refConfig = { max: cfg.refBoostMax, tau: cfg.refBoostTau };
   const offlineConfig = { base: cfg.offlineBaseHours, maxExtra: cfg.offlineMaxExtra, tau: cfg.offlineTau };
+  // #34 share-card tier thresholds (config-tunable) so the client picks the tier by
+  // lifetimeBaked without a frontend redeploy when they're recalibrated.
+  const shareTiers = { silver: cfg.shareTierSilver, gold: cfg.shareTierGold, cosmos: cfg.shareTierCosmos, singularity: cfg.shareTierSingularity };
   const refEvent = refEventActiveNow(cfg, now)
     ? { active: true, multiplier: cfg.refEventMultiplier, endAt: cfg.refEventEnd || 0 }
     : { active: false };
@@ -2383,7 +2397,7 @@ async function handleCheckin(request, env) {
     if (widx >= 0) weeklyRank = widx + 1;
   } catch (e) { /* rank views best-effort — never break checkin */ }
 
-  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, hasStarterPack, hasStatusFlex, statusFlair, shoutoutOptOut, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed, rank, rankTotal, weeklyBaked, weeklyRank, weeklyTotal, weekEndsAt: weekEndsAt(now) });
+  return jsonResponse({ ok: true, pendingReward, activeReferrals, maxActiveFriendsEver, refConfig, offlineConfig, shareTiers, refEvent, paidOfflineCredit, boostExpiresAt, boost2xExpiresAt, hasPermProdBoost, hasClickBypass, hasStarterPack, hasStatusFlex, statusFlair, shoutoutOptOut, prestigeCount: serverPrestigeCount, isPioneer: isPrestigePioneer, paidUnlockedUpgrades, adsRewardsUsed, adsDailyLimit: AD_DAILY_LIMIT, adClickBypassViews, adClickBypassTarget: AD_CLICK_BYPASS_TARGET, channelBonusClaimed, rank, rankTotal, weeklyBaked, weeklyRank, weeklyTotal, weekEndsAt: weekEndsAt(now) });
 }
 
 // Builds the ranked leaderboard from KV metadata (one list() sweep, no per-user

@@ -4,7 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Cookie Clicker TMA</title>
-<link rel="stylesheet" href="style.css?v=105" />
+<link rel="stylesheet" href="style.css?v=106" />
+<!-- Inter (share-card canvas per the designer spec) — loaded up front so document.fonts.load resolves before rendering; canvas falls back to system-ui if it fails. -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
 </head>
@@ -127,6 +130,9 @@
         <button id="ascendBtn" class="ascend-btn">Вознестись</button>
       </div>
 
+      <!-- #34 share card: flex your progress + pull friends in (biggest viral lever). -->
+      <button id="shareCardBtn" class="share-card-btn" data-i18n="btn.shareCard">📤 Поделиться карточкой</button>
+
       <div class="stats-card">
         <div class="shop-title" data-i18n="stats.head">📊 Статистика</div>
         <div id="statsList" class="stats-list"></div>
@@ -159,6 +165,8 @@
       <div id="leaderboardSelf" class="leaderboard-self" hidden></div>
       <!-- #52 subtle "stand out in the top" entry point (non-owners only) → Shop. -->
       <button id="lbFlexCta" class="lb-flex-cta" hidden data-i18n="lb.flexCta">✨ Выделиться в топе · 150 ⭐</button>
+      <!-- #34 share your rank card from the leaderboard too. -->
+      <button id="lbShareBtn" class="share-card-btn" data-i18n="btn.shareCard">📤 Поделиться карточкой</button>
     </section>
 
     <section id="tab-friends" class="tab-panel">
@@ -289,8 +297,21 @@
       <button id="settingsCloseBtn" class="settings-close-btn" data-i18n="set.close">Закрыть</button>
     </div>
   </div>
+
+  <!-- #34 Share-card preview + share modal. -->
+  <div id="shareModal" class="daily-modal share-modal">
+    <div class="daily-modal-card share-modal-card">
+      <div class="settings-head" data-i18n="share.modalTitle">📤 Твоя карточка</div>
+      <div class="share-card-frame">
+        <div id="shareCardSpinner" class="share-spinner" data-i18n="share.rendering">Рисуем карточку…</div>
+        <img id="shareCardImg" class="share-card-img" alt="" hidden />
+      </div>
+      <button id="shareCardShareBtn" class="ascend-btn share-do-btn" data-i18n="share.doShare" disabled>📤 Поделиться</button>
+      <button id="shareCardCloseBtn" class="settings-close-btn" data-i18n="set.close">Закрыть</button>
+    </div>
+  </div>
 </div>
 
-<script src="game.js?v=105"></script>
+<script src="game.js?v=106"></script>
 </body>
 </html>

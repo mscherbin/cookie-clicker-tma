@@ -1278,6 +1278,37 @@ body[data-active-tab="friends"] #rewardTeaser { display: none; }
   cursor: pointer;
 }
 
+/* #34 share card — trigger button + preview modal. */
+.share-card-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 13px;
+  background: linear-gradient(135deg, var(--gold), var(--accent));
+  color: var(--accent-text);
+  border: none;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.share-modal-card { max-width: 460px; }
+.share-card-frame {
+  position: relative;
+  width: 100%;
+  margin: 12px 0 16px;
+  aspect-ratio: 1080 / 1350;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.share-card-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.share-spinner { color: var(--hint); font-size: 14px; font-weight: 600; }
+.share-do-btn { margin-bottom: 10px; }
+.share-do-btn:disabled { opacity: 0.5; pointer-events: none; }
+
 /* --- Player profile line (name + current referral title) --- */
 .player-profile {
   display: flex;

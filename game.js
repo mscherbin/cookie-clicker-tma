@@ -198,6 +198,10 @@
       'confirm.cloudPush': 'Здесь: всего испечено {here} 🍪.\nСейчас в облаке: всего испечено {cloud} 🍪.\n\nЗаменить сохранение в облаке данными с этого устройства?',
       'confirm.cloudPull': 'Здесь: всего испечено {here} 🍪.\nВ облаке: всего испечено {cloud} 🍪.\n\nЗаменить прогресс на этом устройстве данными из облака? (текущее состояние сохранится как резервная копия)',
       'share.text': 'Залипаю в Cookie Clicker — залетай печь печеньки со мной! 🍪',
+      'btn.shareCard': '📤 Поделиться карточкой',
+      'share.modalTitle': '📤 Твоя карточка', 'share.rendering': 'Рисуем карточку…', 'share.doShare': '📤 Поделиться',
+      'share.cardCaption': 'Смотри мою карточку в Cookie Clicker 🍪 Обгонишь? Заходи по ссылке — оба получим бонус:',
+      'toast.shareFail': 'Не удалось собрать карточку — попробуй ещё раз', 'toast.shareSaved': 'Карточка сохранена — отправь её с реф-ссылкой!',
       'evt.refReward': '🎉 Награда за друзей ×{mult}', 'evt.callFriends': 'зови друзей!',
     },
     en: {
@@ -355,6 +359,10 @@
       'confirm.cloudPush': 'This device: {here} 🍪 baked.\nIn the cloud now: {cloud} 🍪 baked.\n\nReplace the cloud save with the data from this device?',
       'confirm.cloudPull': 'This device: {here} 🍪 baked.\nIn the cloud: {cloud} 🍪 baked.\n\nReplace this device progress with the cloud save? (current state is saved as a backup)',
       'share.text': 'Hooked on Cookie Clicker — come bake cookies with me! 🍪',
+      'btn.shareCard': '📤 Share my card',
+      'share.modalTitle': '📤 Your card', 'share.rendering': 'Rendering your card…', 'share.doShare': '📤 Share',
+      'share.cardCaption': 'Check out my Cookie Clicker card 🍪 Think you can beat me? Tap my link — we both get a bonus:',
+      'toast.shareFail': "Couldn't build the card — try again", 'toast.shareSaved': 'Card saved — send it with your referral link!',
       'evt.refReward': '🎉 Friend reward ×{mult}', 'evt.callFriends': 'invite friends!',
     },
   };
@@ -1237,6 +1245,363 @@
     const deepLink = `https://t.me/${BOT_USERNAME}?start=ref${myId}`;
     const shareText = t('share.text');
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(shareText)}`);
+  }
+
+  // ===================== #34 Share card (canvas render) =====================
+  // Renders a shareable image strictly from the designer handoff in
+  // share_card_constructor/ (canvas_spec.json boxes + tier colors + localization),
+  // filled with the player's LIVE data, then shares it via Telegram/Web Share with
+  // the referral link in the caption (the in-image CTA is decorative — a rastered
+  // button is not clickable, per the handoff). Our biggest viral lever.
+  const SHARE_BASE = 'share_card_constructor/';
+  const SHARE_SPEC_URL = SHARE_BASE + 'spec/canvas_spec.json';
+  const SHARE_LOC_URL = SHARE_BASE + 'spec/localization_ru_en.json';
+  const SHARE_TIER_DEFAULTS = { silver: 1e5, gold: 1e7, cosmos: 1e9, singularity: 1e11 };
+  let _shareSpec = null, _shareLoc = null, _interReady = null;
+  const _shareImg = {};
+
+  function shareThresholds() {
+    const c = state.shareTiers || {};
+    const g = (v, d) => (Number.isFinite(v) && v > 0 ? v : d);
+    return {
+      silver: g(c.silver, SHARE_TIER_DEFAULTS.silver),
+      gold: g(c.gold, SHARE_TIER_DEFAULTS.gold),
+      cosmos: g(c.cosmos, SHARE_TIER_DEFAULTS.cosmos),
+      singularity: g(c.singularity, SHARE_TIER_DEFAULTS.singularity),
+    };
+  }
+  // Product decision: tier by lifetimeBaked, NOT ascensions (else ~98.8% stuck in bronze).
+  function tierFor(lifetime) {
+    const th = shareThresholds();
+    if (lifetime >= th.singularity) return 'singularity';
+    if (lifetime >= th.cosmos) return 'cosmos';
+    if (lifetime >= th.gold) return 'gold';
+    if (lifetime >= th.silver) return 'silver';
+    return 'bronze';
+  }
+  // Compact number per the spec: maxDecimals 1, drop trailing zero (4.2M / 18.4K / 987T).
+  function shareCompact(n) {
+    n = Math.floor(Math.max(0, n || 0));
+    if (n < 1000) return String(n);
+    const units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc',
+      'UDc', 'DDc', 'TDc', 'QaDc', 'QiDc', 'SxDc', 'SpDc', 'ODc', 'NDc', 'Vg'];
+    let u = 0, v = n;
+    while (v >= 1000 && u < units.length - 1) { v /= 1000; u++; }
+    const s = v >= 100 ? String(Math.round(v)) : String(Math.round(v * 10) / 10);
+    return s + units[u];
+  }
+
+  function loadImg(src) {
+    if (_shareImg[src]) return _shareImg[src];
+    _shareImg[src] = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('img ' + src));
+      img.src = src;
+    });
+    return _shareImg[src];
+  }
+  // Load a glyph SVG recolored to `color` (the raw assets are gold; on a gold chip we
+  // want a dark glyph). Cached per (name,color).
+  function loadGlyph(name, color) {
+    const key = 'glyph:' + name + ':' + color;
+    if (_shareImg[key]) return _shareImg[key];
+    _shareImg[key] = fetch(SHARE_BASE + 'assets/glyphs/' + name + '.svg')
+      .then(r => r.text())
+      .then(svg => {
+        const recolored = svg.replace(/#FFD34D/gi, color).replace(/#FFF1A3/gi, color);
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('glyph ' + name));
+          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(recolored);
+        });
+      });
+    return _shareImg[key];
+  }
+  // Inter (per the spec) via the Google Fonts <link> in index.html; wait for the
+  // weights we draw with. Never blocks forever — the canvas font string falls back
+  // to system-ui if Inter isn't ready.
+  function ensureInterFont() {
+    if (_interReady) return _interReady;
+    _interReady = (async () => {
+      if (!document.fonts || !document.fonts.load) return;
+      try {
+        await Promise.all([
+          document.fonts.load('800 100px Inter'), document.fonts.load('700 40px Inter'),
+          document.fonts.load('600 30px Inter'), document.fonts.load('500 24px Inter'),
+        ]);
+      } catch (e) { /* fall back to system-ui in the font strings */ }
+    })();
+    return _interReady;
+  }
+  async function ensureShareSpec() {
+    if (!_shareSpec) _shareSpec = await fetch(SHARE_SPEC_URL).then(r => r.json());
+    if (!_shareLoc) _shareLoc = await fetch(SHARE_LOC_URL).then(r => r.json());
+  }
+
+  const SHARE_FONT = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  function sf(weight, px) { return `${weight} ${px}px ${SHARE_FONT}`; }
+  function roundRectPath(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  // Largest font (max→min) that fits `text` within maxWidth using measureText.
+  function fitFont(ctx, text, weight, maxPx, minPx, maxWidth) {
+    let px = maxPx;
+    while (px > minPx) {
+      ctx.font = sf(weight, px);
+      if (ctx.measureText(text).width <= maxWidth) break;
+      px -= 2;
+    }
+    ctx.font = sf(weight, px);
+    return px;
+  }
+  function ellipsize(ctx, text, weight, px, maxWidth) {
+    ctx.font = sf(weight, px);
+    if (ctx.measureText(text).width <= maxWidth) return text;
+    let s = text;
+    while (s.length > 1 && ctx.measureText(s + '…').width > maxWidth) s = s.slice(0, -1);
+    return s + '…';
+  }
+
+  // The one place that draws the card. `format` = 'portrait' | 'square'.
+  async function renderShareCard(format) {
+    await ensureShareSpec();
+    await ensureInterFont();
+    const spec = _shareSpec[format];
+    const Z = spec.zones;
+    const lang = (state.lang === 'ru') ? 'ru' : 'en';
+    const L = (_shareLoc[lang]) || _shareLoc.en;
+    const tk = (k, vars) => { let s = L[k] || k; if (vars) for (const p in vars) s = s.split('{' + p + '}').join(vars[p]); return s; };
+
+    // --- live data ---
+    const lifetime = lifetimeCookiesTotal();
+    const tier = tierFor(lifetime);
+    const T = _shareSpec.tiers[tier];
+    const asc = state.ascensionCount || 0;
+    const rank = Number.isFinite(state.lastKnownRank) ? state.lastKnownRank : null;
+    const rankTotal = Number.isFinite(state.rankTotal) ? state.rankTotal : null;
+    const cps = getCps();
+    const user = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
+    const firstName = (user.first_name && String(user.first_name).trim()) || ownDisplayName();
+    const photoUrl = user.photo_url || null;
+
+    const cv = document.createElement('canvas');
+    cv.width = spec.canvas.width; cv.height = spec.canvas.height;
+    const ctx = cv.getContext('2d');
+    ctx.textBaseline = 'alphabetic';
+
+    // 1) base + soft central glow behind the hero
+    ctx.fillStyle = T.base; ctx.fillRect(0, 0, cv.width, cv.height);
+    const hc = Z.heroCookie, hcx = hc.x + hc.w / 2, hcy = hc.y + hc.h / 2;
+    const grad = ctx.createRadialGradient(hcx, hcy, 0, hcx, hcy, hc.w * 1.15);
+    grad.addColorStop(0, hexA(T.glow, 0.22));
+    grad.addColorStop(1, hexA(T.glow, 0));
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, cv.width, cv.height);
+
+    // 2) decorative overlay (frame + rays + dots + separators) from the handoff SVG
+    try { ctx.drawImage(await loadImg(SHARE_BASE + (format === 'square' ? T.overlaySquare : T.overlayPortrait)), 0, 0, cv.width, cv.height); } catch (e) { /* frame optional */ }
+
+    // helper: a translucent panel with a soft accent border
+    const panel = (z, r) => {
+      roundRectPath(ctx, z.x, z.y, z.w, z.h, r);
+      ctx.fillStyle = hexA(T.panel, 0.82); ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = hexA(T.accent, 0.55); ctx.stroke();
+    };
+    const centerText = (text, cx, y, weight, px, color) => {
+      ctx.font = sf(weight, px); ctx.textAlign = 'center'; ctx.fillStyle = color;
+      ctx.fillText(text, cx, y);
+    };
+
+    // 3) brand (COOKIE / CLICKER stacked) + bot handle
+    const b = Z.brand;
+    ctx.textAlign = 'left';
+    const brandWords = tk('share.brand').split(' ');
+    const brandPx = format === 'square' ? 30 : 34;
+    ctx.font = sf(800, brandPx); ctx.fillStyle = T.accent2;
+    ctx.fillText(brandWords[0] || '', b.x, b.y + brandPx);
+    if (brandWords[1]) ctx.fillText(brandWords.slice(1).join(' '), b.x, b.y + brandPx * 2 - 2);
+    const handlePx = format === 'square' ? 22 : 26;
+    ctx.font = sf(500, handlePx); ctx.fillStyle = hexA(T.accent, 0.85);
+    ctx.fillText(tk('share.handle'), b.x + 230, b.y + b.h / 2 + handlePx / 2 - 4);
+
+    // 4) tier badge: ★ × N + ascensions label
+    const tb = Z.tierBadge;
+    panel(tb, tb.h / 2);
+    const ascPx = _shareSpec.dynamicFields.ascensionCount[format === 'square' ? 'squareFontPx' : 'portraitFontPx'];
+    centerText('★ × ' + asc, tb.x + tb.w / 2, tb.y + tb.h * 0.52 + ascPx / 2 - 6, 800, ascPx, T.accent2);
+    centerText(tk('share.ascensions'), tb.x + tb.w / 2, tb.y + tb.h - (format === 'square' ? 8 : 12), 600, format === 'square' ? 15 : 18, hexA(T.accent, 0.85));
+
+    // 5) hero cookie
+    try { ctx.drawImage(await loadImg(SHARE_BASE + 'assets/hero/hero_cookie_2x.png'), hc.x, hc.y, hc.w, hc.h); } catch (e) { /* hero optional */ }
+
+    // 6) lifetime baked (shrink-to-fit, gold gradient)
+    const lb = Z.lifetimeBaked;
+    const lbFont = _shareSpec.dynamicFields.lifetimeBaked[format === 'square' ? 'squareFontPx' : 'portraitFontPx'];
+    const lbText = shareCompact(lifetime);
+    const lbPx = fitFont(ctx, lbText, 800, lbFont.max, lbFont.min, lb.w);
+    const lbGrad = ctx.createLinearGradient(0, lb.y, 0, lb.y + lb.h);
+    lbGrad.addColorStop(0, T.accent2); lbGrad.addColorStop(1, T.accent);
+    centerText(lbText, lb.x + lb.w / 2, lb.y + lb.h / 2 + lbPx * 0.36, 800, lbPx, lbGrad);
+
+    // 7) hero label
+    const hl = Z.heroLabel;
+    centerText(tk('share.bakedTotal'), hl.x + hl.w / 2, hl.y + hl.h - 6, 700, format === 'square' ? 22 : 26, hexA(T.accent, 0.92));
+
+    // 8) rank + cps cards (honest data: no rank → hide rankCard, CPS spans full row)
+    const chip = async (z, glyphName, cy) => {
+      const cxp = z.x + (format === 'square' ? 46 : 52), r = format === 'square' ? 30 : 36;
+      ctx.beginPath(); ctx.arc(cxp, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = T.accent2; ctx.fill();
+      try { const g = await loadGlyph(glyphName, T.base); const gs = r * 1.25; ctx.drawImage(g, cxp - gs / 2, cy - gs / 2, gs, gs); } catch (e) {}
+      return cxp + r;
+    };
+    const statBlock = async (z, glyphName, label, value) => {
+      panel(z, format === 'square' ? 22 : 26);
+      const cy = z.y + z.h / 2;
+      const gx = await chip(z, glyphName, cy);
+      const tx = gx + (format === 'square' ? 22 : 28);
+      ctx.textAlign = 'left';
+      ctx.font = sf(600, format === 'square' ? 17 : 20); ctx.fillStyle = hexA(T.accent, 0.9);
+      ctx.fillText(label, tx, z.y + (format === 'square' ? 34 : 42));
+      const valPx = fitFont(ctx, value, 800, format === 'square' ? 40 : 48, 22, z.x + z.w - tx - 24);
+      ctx.fillStyle = T.accent2; ctx.textAlign = 'left';
+      ctx.fillText(value, tx, z.y + z.h - (format === 'square' ? 22 : 28));
+      return tx;
+    };
+    if (rank !== null) {
+      const tx = await statBlock(Z.rankCard, 'trophy', tk('share.rank'), '#' + rank);
+      if (rankTotal && rankTotal > 0) {
+        const pct = Math.max(1, Math.ceil((rank / rankTotal) * 100));
+        ctx.font = sf(600, format === 'square' ? 14 : 16); ctx.fillStyle = hexA(T.accent, 0.7); ctx.textAlign = 'left';
+        ctx.fillText(tk('share.top', { percent: pct }), tx, Z.rankCard.y + Z.rankCard.h - (format === 'square' ? 6 : 8));
+      }
+      await statBlock(Z.cpsCard, 'gauge', tk('share.cps'), shareCompact(cps));
+    } else {
+      // rank absent → CPS spans the full stats row (spec: x=78, w=924)
+      const full = { x: 78, y: Z.cpsCard.y, w: 924, h: Z.cpsCard.h };
+      await statBlock(full, 'gauge', tk('share.cps'), shareCompact(cps));
+    }
+
+    // 9) player row: avatar (photo or initial) + first_name + role
+    const pl = Z.player;
+    panel(pl, format === 'square' ? 22 : 24);
+    const av = format === 'square' ? 30 : 34, avx = pl.x + (format === 'square' ? 44 : 50), avy = pl.y + pl.h / 2;
+    ctx.save(); ctx.beginPath(); ctx.arc(avx, avy, av, 0, Math.PI * 2); ctx.closePath();
+    ctx.fillStyle = hexA(T.accent, 0.9); ctx.fill();
+    if (photoUrl) {
+      try { const p = await loadImg(photoUrl); ctx.clip(); ctx.drawImage(p, avx - av, avy - av, av * 2, av * 2); }
+      catch (e) { drawInitial(ctx, firstName, avx, avy, av, T.base); }
+    } else { drawInitial(ctx, firstName, avx, avy, av, T.base); }
+    ctx.restore();
+    const px0 = avx + av + (format === 'square' ? 22 : 28);
+    ctx.textAlign = 'left';
+    const nameTxt = ellipsize(ctx, firstName, 800, format === 'square' ? 30 : 34, _shareSpec.dynamicFields.first_name.maxWidthPx);
+    ctx.font = sf(800, format === 'square' ? 30 : 34); ctx.fillStyle = T.accent2;
+    ctx.fillText(nameTxt, px0, pl.y + (format === 'square' ? 34 : 40));
+    ctx.font = sf(600, format === 'square' ? 16 : 20); ctx.fillStyle = hexA(T.accent, 0.85);
+    ctx.fillText(tk('share.playerRole'), px0, pl.y + pl.h - (format === 'square' ? 14 : 18));
+
+    // 10) CTA (decorative — the real link goes in the share caption, not the raster)
+    const c = Z.cta;
+    panel(c, format === 'square' ? 26 : 32);
+    const giftR = format === 'square' ? 34 : 40, giftX = c.x + (format === 'square' ? 40 : 46) + giftR, giftY = c.y + (format === 'square' ? 44 : 56);
+    roundRectPath(ctx, giftX - giftR, giftY - giftR, giftR * 2, giftR * 2, giftR * 0.5);
+    ctx.fillStyle = T.accent2; ctx.fill();
+    try { const g = await loadGlyph('gift', T.base); const gs = giftR * 1.3; ctx.drawImage(g, giftX - gs / 2, giftY - gs / 2, gs, gs); } catch (e) {}
+    const ctx0 = giftX + giftR + (format === 'square' ? 22 : 28);
+    ctx.textAlign = 'left';
+    ctx.font = sf(800, format === 'square' ? 34 : 40); ctx.fillStyle = T.accent2;
+    ctx.fillText(tk('share.ctaTitle'), ctx0, c.y + (format === 'square' ? 52 : 64));
+    ctx.font = sf(600, format === 'square' ? 20 : 24); ctx.fillStyle = hexA(T.accent, 0.92);
+    ctx.fillText(tk('share.ctaBonus'), ctx0, c.y + (format === 'square' ? 84 : 102));
+    // play button (bottom-right of the CTA)
+    const btnH = format === 'square' ? 52 : 60, btnLabel = tk('share.ctaButton') + '  →';
+    ctx.font = sf(800, format === 'square' ? 22 : 26);
+    const btnW = ctx.measureText(btnLabel).width + (format === 'square' ? 56 : 68);
+    const btnX = c.x + c.w - btnW - (format === 'square' ? 20 : 24), btnY = c.y + c.h - btnH - (format === 'square' ? 16 : 20);
+    roundRectPath(ctx, btnX, btnY, btnW, btnH, btnH / 2);
+    ctx.fillStyle = T.accent2; ctx.fill();
+    centerText(btnLabel, btnX + btnW / 2, btnY + btnH / 2 + (format === 'square' ? 8 : 9), 800, format === 'square' ? 22 : 26, T.base);
+
+    // 11) footer
+    const f = Z.footer;
+    centerText(tk('share.footer'), f.x + f.w / 2, f.y + f.h - 8, 600, format === 'square' ? 17 : 20, hexA(T.accent, 0.75));
+
+    ctx.textAlign = 'left';
+    return cv;
+  }
+
+  function drawInitial(ctx, name, cx, cy, r, color) {
+    const ch = (name || '?').trim().charAt(0).toUpperCase() || '?';
+    ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.font = sf(800, r * 1.1);
+    ctx.fillText(ch, cx, cy + r * 0.38);
+  }
+  // #RRGGBB + alpha → rgba() string.
+  function hexA(hex, a) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+
+  // --- Share flow: render → preview modal → native/Telegram share -------------
+  let _shareBusy = false, _shareCanvas = null;
+  async function openShareCard() {
+    if (_shareBusy) return;
+    _shareBusy = true;
+    if (el.shareModal) el.shareModal.classList.add('show');
+    if (el.shareCardImg) el.shareCardImg.hidden = true;
+    if (el.shareCardSpinner) el.shareCardSpinner.hidden = false;
+    if (el.shareCardShareBtn) el.shareCardShareBtn.disabled = true;
+    try {
+      _shareCanvas = await renderShareCard('portrait');
+      if (el.shareCardImg) { el.shareCardImg.src = _shareCanvas.toDataURL('image/png'); el.shareCardImg.hidden = false; }
+      if (el.shareCardSpinner) el.shareCardSpinner.hidden = true;
+      if (el.shareCardShareBtn) el.shareCardShareBtn.disabled = false;
+    } catch (e) {
+      showToast(t('toast.shareFail'));
+      closeShareCard();
+    } finally { _shareBusy = false; }
+  }
+  function closeShareCard() { if (el.shareModal) el.shareModal.classList.remove('show'); }
+  function refDeepLink() {
+    const myId = ownTelegramUserId();
+    return myId ? `https://t.me/${BOT_USERNAME}?start=ref${myId}` : `https://t.me/${BOT_USERNAME}`;
+  }
+  async function doShareCard() {
+    if (!_shareCanvas) return;
+    const link = refDeepLink();
+    const caption = t('share.cardCaption') + '\n' + link; // ref link lives in the TEXT, not the raster (handoff rule)
+    const blob = await new Promise(res => _shareCanvas.toBlob(res, 'image/png'));
+    // Preferred: native share of the real image file + caption (Web Share L2).
+    if (blob && navigator.canShare) {
+      const file = new File([blob], 'cookie-clicker.png', { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], text: caption }); closeShareCard(); return; }
+        catch (e) { if (e && e.name === 'AbortError') return; /* else fall through */ }
+      }
+    }
+    // Fallback: save the image, then open Telegram's share sheet with the ref link.
+    if (blob) {
+      try {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = 'cookie-clicker.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      } catch (e) { /* ignore */ }
+    }
+    if (tg && tg.openTelegramLink) {
+      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(t('share.cardCaption'))}`);
+    }
+    showToast(t('toast.shareSaved'), 4000);
   }
 
   // Open our channel (subscribing happens outside the mini-app, so we can't
@@ -2736,6 +3101,13 @@
     statusFlairPicker: document.getElementById('statusFlairPicker'),
     lbFlexCta: document.getElementById('lbFlexCta'),
     shoutoutOptOutChk: document.getElementById('shoutoutOptOutChk'),
+    shareCardBtn: document.getElementById('shareCardBtn'),
+    lbShareBtn: document.getElementById('lbShareBtn'),
+    shareModal: document.getElementById('shareModal'),
+    shareCardImg: document.getElementById('shareCardImg'),
+    shareCardSpinner: document.getElementById('shareCardSpinner'),
+    shareCardShareBtn: document.getElementById('shareCardShareBtn'),
+    shareCardCloseBtn: document.getElementById('shareCardCloseBtn'),
     adNocapBtn: document.getElementById('adNocapBtn'),
     adBoost2xBtn: document.getElementById('adBoost2xBtn'),
     adBypassProgress: document.getElementById('adBypassProgress'),
@@ -3957,6 +4329,12 @@
     el.settingsModal.classList.add('show');
   });
   if (el.shoutoutOptOutChk) el.shoutoutOptOutChk.addEventListener('change', (e) => setShoutoutOptOut(e.target.checked));
+  // #34 share card entry points + modal
+  if (el.shareCardBtn) el.shareCardBtn.addEventListener('click', openShareCard);
+  if (el.lbShareBtn) el.lbShareBtn.addEventListener('click', openShareCard);
+  if (el.shareCardShareBtn) el.shareCardShareBtn.addEventListener('click', doShareCard);
+  if (el.shareCardCloseBtn) el.shareCardCloseBtn.addEventListener('click', closeShareCard);
+  if (el.shareModal) el.shareModal.addEventListener('click', (e) => { if (e.target === el.shareModal) closeShareCard(); });
   if (el.langRuBtn) el.langRuBtn.addEventListener('click', () => setLang('ru'));
   if (el.langEnBtn) el.langEnBtn.addEventListener('click', () => setLang('en'));
   if (el.settingsCloseBtn) el.settingsCloseBtn.addEventListener('click', () => el.settingsModal.classList.remove('show'));
